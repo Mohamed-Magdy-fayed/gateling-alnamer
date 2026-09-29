@@ -1,0 +1,20 @@
+# dependencies and build output
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+test-results/
+playwright-report/
+
+# environment files (every environment keeps its own local copy)
+.env
+.env.*
+!.env.example
+
+# private: planning docs, contract, AI tooling
+docs/
+CLAUDE.md
+AGENTS.md
+.claude/
+scripts/autobuild.ps1
+*.ogg
