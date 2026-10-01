@@ -8,6 +8,7 @@ const baseURL = `http://localhost:${PORT}`;
 // by Playwright, never left running in a bare shell.
 export default defineConfig({
   testDir: "./e2e",
+  snapshotPathTemplate: "{testDir}/__screenshots__/f1-baseline/{arg}{ext}",
   fullyParallel: false,
   workers: 1,
   retries: 0,
