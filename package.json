@@ -21,8 +21,10 @@
     "db:up": "docker compose up -d --wait",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
+    "db:seed": "tsx --conditions=react-server scripts/seed.mts",
     "check:env": "node scripts/check-env.mjs",
-    "env:init": "node scripts/env-init.mjs"
+    "env:init": "node scripts/env-init.mjs",
+    "setup": "node scripts/setup.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
