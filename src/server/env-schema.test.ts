@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EnvError, parseServerEnv } from "./env-schema";
+import { describeProviders, EnvError, parseServerEnv } from "./env-schema";
 
 const local = { APP_MODE: "demo", DATABASE_URL: "postgres://u:p@localhost:5432/db" };
 
@@ -110,6 +110,115 @@ describe("parseServerEnv", () => {
       DATABASE_URL: "postgres://user:topsecret@h/db",
     });
     expect(message).not.toContain("topsecret");
+  });
+
+  describe("provider selectors", () => {
+    const live = {
+      APP_MODE: "live",
+      DATABASE_URL: local.DATABASE_URL,
+      BASE_URL: "https://alnamer.example",
+      PAYMENT_PROVIDER: "myfatoorah",
+      VIDEO_PROVIDER: "bunny",
+      STORAGE_DRIVER: "firebase",
+      EMAIL_TRANSPORT: "smtp",
+      SMTP_HOST: "smtp.example",
+      JOBS_MODE: "inngest",
+      INNGEST_EVENT_KEY: "event-key-value",
+      INNGEST_SIGNING_KEY: "signing-key-value",
+    };
+
+    it("resolves the minimal local demo to mock providers, mailpit and inline jobs", () => {
+      expect(parseServerEnv(local).providers).toEqual({
+        payment: "mock",
+        video: "mock",
+        storage: "local",
+        email: "mailpit",
+        emailIsDefault: true,
+        jobs: "inline",
+      });
+    });
+
+    it("defaults demo email to smtp when SMTP_HOST is set", () => {
+      const { providers } = parseServerEnv({ ...local, SMTP_HOST: "smtp.example" });
+      expect(providers.email).toBe("smtp");
+      expect(providers.emailIsDefault).toBe(true);
+    });
+
+    it("defaults demo jobs to inngest when Inngest keys are set, inngest-dev when INNGEST_DEV is", () => {
+      const keys = { INNGEST_EVENT_KEY: "a", INNGEST_SIGNING_KEY: "b" };
+      expect(parseServerEnv({ ...local, ...keys }).providers.jobs).toBe("inngest");
+      expect(parseServerEnv({ ...local, INNGEST_DEV: "1" }).providers.jobs).toBe("inngest-dev");
+    });
+
+    it("honours explicit selectors in demo", () => {
+      const { providers } = parseServerEnv({
+        ...local,
+        EMAIL_TRANSPORT: "mailpit",
+        STORAGE_DRIVER: "local",
+        VIDEO_PROVIDER: "sample",
+      });
+      expect(providers.email).toBe("mailpit");
+      expect(providers.emailIsDefault).toBe(false);
+      expect(providers.video).toBe("sample");
+    });
+
+    it("fails an unknown selector value, naming the key", () => {
+      const message = failure({ ...local, PAYMENT_PROVIDER: "stripe" });
+      expect(message).toContain("PAYMENT_PROVIDER");
+      expect(message).not.toContain("stripe");
+    });
+
+    it("fails EMAIL_TRANSPORT=smtp without SMTP_HOST", () => {
+      expect(failure({ ...local, EMAIL_TRANSPORT: "smtp" })).toContain("SMTP_HOST");
+    });
+
+    it("fails JOBS_MODE=inngest without Inngest keys", () => {
+      expect(failure({ ...local, JOBS_MODE: "inngest" })).toContain("INNGEST_EVENT_KEY");
+    });
+
+    it("passes a complete live environment", () => {
+      const { providers } = parseServerEnv(live);
+      expect(providers).toMatchObject({ payment: "myfatoorah", jobs: "inngest", email: "smtp" });
+    });
+
+    it.each([
+      ["PAYMENT_PROVIDER", "mock"],
+      ["VIDEO_PROVIDER", "mock"],
+      ["VIDEO_PROVIDER", "sample"],
+      ["STORAGE_DRIVER", "local"],
+      ["EMAIL_TRANSPORT", "mailpit"],
+      ["JOBS_MODE", "inline"],
+      ["JOBS_MODE", "inngest-dev"],
+    ])("fails live with %s=%s", (key, value) => {
+      expect(failure({ ...live, [key]: value })).toContain(key);
+    });
+
+    it.each([
+      "PAYMENT_PROVIDER",
+      "VIDEO_PROVIDER",
+      "STORAGE_DRIVER",
+      "EMAIL_TRANSPORT",
+      "JOBS_MODE",
+    ])("fails live when %s is not explicit", (key) => {
+      expect(failure({ ...live, [key]: undefined })).toContain(key);
+    });
+
+    it("fails live without Inngest keys, without echoing the other key", () => {
+      const message = failure({ ...live, INNGEST_EVENT_KEY: undefined });
+      expect(message).toContain("INNGEST_EVENT_KEY");
+      expect(message).not.toContain("signing-key-value");
+    });
+  });
+
+  describe("describeProviders", () => {
+    it("lists the resolved choices without any credential value", () => {
+      const line = describeProviders(
+        parseServerEnv({ ...local, SMTP_HOST: "smtp.example", SMTP_PASSWORD: "pw-value" }),
+      );
+      expect(line).toBe(
+        "APP_MODE=demo payment=mock video=mock storage=local email=smtp jobs=inline",
+      );
+    });
   });
 
   it("treats blank values as unset", () => {

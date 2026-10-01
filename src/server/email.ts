@@ -4,18 +4,45 @@ import { isDeployed, serverEnv } from "@/server/env";
 
 type Mail = { to: string; subject: string; text: string; html: string };
 
+const MAILPIT_HOST = "localhost";
+const MAILPIT_PORT = 1025;
+const DEFAULT_FROM_EMAIL = "noreply@alnamer.local";
+
+function logToConsole(mail: Mail): void {
+  console.info(`[dev mail] to=${mail.to} subject=${mail.subject}\n${mail.text}`);
+}
+
 export async function sendMail(mail: Mail): Promise<void> {
   const env = serverEnv();
-  if (!env.SMTP_HOST || !env.SMTP_FROM_EMAIL) {
+  const { email, emailIsDefault } = env.providers;
+
+  if (email === "mailpit") {
     if (isDeployed()) throw new Error("SMTP is not configured on this deployment.");
-    // Local development without SMTP: print the message so the flow can be tested.
-    console.info(`[dev mail] to=${mail.to} subject=${mail.subject}\n${mail.text}`);
+    const transport = nodemailer.createTransport({ host: MAILPIT_HOST, port: MAILPIT_PORT });
+    try {
+      await transport.sendMail({
+        from: {
+          name: env.SMTP_FROM_NAME ?? "Al-Namer",
+          address: env.SMTP_FROM_EMAIL ?? DEFAULT_FROM_EMAIL,
+        },
+        ...mail,
+      });
+    } catch (error: unknown) {
+      // Nothing was configured and Mailpit is not running: print so the flow can still be tested.
+      if (!emailIsDefault) throw error;
+      logToConsole(mail);
+    }
     return;
   }
+
+  if (!env.SMTP_HOST || !env.SMTP_FROM_EMAIL) {
+    throw new Error("SMTP_HOST and SMTP_FROM_EMAIL are required when EMAIL_TRANSPORT=smtp.");
+  }
+  const port = env.SMTP_PORT ?? 587;
   const transport = nodemailer.createTransport({
     host: env.SMTP_HOST,
-    port: env.SMTP_PORT ?? 587,
-    secure: (env.SMTP_PORT ?? 587) === 465,
+    port,
+    secure: port === 465,
     auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASSWORD } : undefined,
   });
   await transport.sendMail({
