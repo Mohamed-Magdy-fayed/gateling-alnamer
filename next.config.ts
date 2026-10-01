@@ -1,4 +1,6 @@
 import type { NextConfig } from "next";
+import { PHASE_PRODUCTION_BUILD } from "next/constants";
+import { parseServerEnv } from "./src/server/env-schema";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -18,4 +20,8 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/** Production builds fail fast on an invalid environment (APP_MODE required). */
+export default function config(phase: string): NextConfig {
+  if (phase === PHASE_PRODUCTION_BUILD) parseServerEnv(process.env);
+  return nextConfig;
+}

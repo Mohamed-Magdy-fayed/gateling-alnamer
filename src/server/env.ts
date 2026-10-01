@@ -1,31 +1,13 @@
 import "server-only";
-import { z } from "zod";
+import { parseServerEnv, type ServerEnv } from "./env-schema";
 
-const schema = z.object({
-  DATABASE_URL: z.string().min(1),
-  VERCEL_ENV: z.enum(["development", "preview", "production"]).optional(),
-  BASE_URL: z.url().optional(),
-  SMTP_HOST: z.string().min(1).optional(),
-  SMTP_PORT: z.coerce.number().int().positive().optional(),
-  SMTP_USER: z.string().min(1).optional(),
-  SMTP_PASSWORD: z.string().min(1).optional(),
-  SMTP_FROM_EMAIL: z.email().optional(),
-  SMTP_FROM_NAME: z.string().min(1).optional(),
-});
-
-export type ServerEnv = z.infer<typeof schema>;
+export type { ServerEnv };
 
 let cached: ServerEnv | undefined;
 
-/** Validated lazily so `next build` never needs runtime secrets. Errors name keys, never values. */
+/** Validated lazily and cached. Errors name keys, never values (see env-schema.ts). */
 export function serverEnv(): ServerEnv {
-  if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
-  if (!parsed.success) {
-    const keys = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
-    throw new Error(`Invalid server environment: ${keys}`);
-  }
-  cached = parsed.data;
+  cached ??= parseServerEnv(process.env);
   return cached;
 }
 

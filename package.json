@@ -20,7 +20,8 @@
     "db:up": "docker compose up -d",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
-    "check:env": "node scripts/check-env.mjs"
+    "check:env": "node scripts/check-env.mjs",
+    "env:init": "node scripts/env-init.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
