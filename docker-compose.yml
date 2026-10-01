@@ -1,7 +1,6 @@
 services:
   db:
     image: postgres:17-alpine
-    container_name: alnamer_db
     ports:
       - "${DB_PORT:-5432}:5432"
     environment:
@@ -10,14 +9,75 @@ services:
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - alnamer_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  db-test:
+    image: postgres:17-alpine
+    ports:
+      - "${TEST_DB_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: alnamer_test
+      POSTGRES_PASSWORD: alnamer_test
+      POSTGRES_DB: alnamer_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alnamer_test -d alnamer_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  redis-rest:
+    image: hiett/serverless-redis-http:latest
+    ports:
+      - "8079:80"
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: ${LOCAL_REDIS_TOKEN}
+      SRH_CONNECTION_STRING: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   mailpit:
     image: axllent/mailpit
-    container_name: alnamer_mailpit
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: 1
       MP_SMTP_AUTH_ALLOW_INSECURE: 1
     ports:
       - "1025:1025"
       - "8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  inngest:
+    image: inngest/inngest
+    command: inngest dev -u http://host.docker.internal:3000/api/inngest
+    ports:
+      - "8288:8288"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8288"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 volumes:
   alnamer_pgdata:

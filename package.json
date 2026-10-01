@@ -18,7 +18,7 @@
     "check": "npm run typecheck && npm run lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:up": "docker compose up -d",
+    "db:up": "docker compose up -d --wait",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
     "check:env": "node scripts/check-env.mjs",
