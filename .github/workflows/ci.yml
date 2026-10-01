@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [build/fresh]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-test-build:
+    runs-on: ubuntu-latest
+    env:
+      CI: "true"
+      APP_MODE: demo
+      DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run check
+
+      - run: npm test
+
+      - run: npm run build
