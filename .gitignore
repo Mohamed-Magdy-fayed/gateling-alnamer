@@ -2,7 +2,9 @@
 node_modules/
 .next/
 out/
+coverage/
 *.tsbuildinfo
+next-env.d.ts
 test-results/
 playwright-report/
 
@@ -11,7 +13,7 @@ playwright-report/
 .env.*
 !.env.example
 
-# private: planning docs, contract, AI tooling
+# private: planning docs, contract, AI tooling, local runner
 docs/
 CLAUDE.md
 AGENTS.md

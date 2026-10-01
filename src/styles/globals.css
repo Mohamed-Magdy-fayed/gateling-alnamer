@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+/* Al-Namer tokens (docs: DESIGN.md section 2). Components use the semantic names only. */
+:root {
+  --surface-canvas: #fbf8f3;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f3eee5;
+  --surface-inverse: #10262b;
+  --text-primary: #14232a;
+  --text-secondary: #4a5a60;
+  --text-muted: #5e6b71;
+  --text-inverse: #f7f3ec;
+  --border-subtle: #e6ded1;
+  --border-strong: #8f8473;
+  --primary: #0f6b6b;
+  --primary-hover: #0b5858;
+  --primary-fg: #ffffff;
+  --primary-soft: #e2f1ef;
+  --primary-soft-fg: #0b5252;
+  --accent: #c99a2e;
+  --accent-fg: #1b1405;
+  --accent-text: #87610f;
+  --success: #1e7a4c;
+  --success-soft: #e3f3ea;
+  --warning: #9a5800;
+  --warning-soft: #fff1d6;
+  --danger: #b42318;
+  --danger-soft: #fde8e6;
+  --info: #1f5fad;
+  --info-soft: #e5eefa;
+  --focus: #1a6fc4;
+  /* Media player stays dark in both themes. */
+  --media-surface: #0b1417;
+  --media-text: #c9d6d8;
+  --shadow-1: 0 1px 2px rgb(60 45 20 / 0.06), 0 1px 1px rgb(60 45 20 / 0.04);
+  --shadow-2: 0 4px 12px rgb(60 45 20 / 0.08), 0 2px 4px rgb(60 45 20 / 0.05);
+  --shadow-3: 0 16px 40px rgb(60 45 20 / 0.14), 0 4px 12px rgb(60 45 20 / 0.06);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-canvas: #0d1a1e;
+    --surface-raised: #13242a;
+    --surface-sunken: #0a1417;
+    --surface-inverse: #f3eee5;
+    --text-primary: #eef2f0;
+    --text-secondary: #b3c1c2;
+    --text-muted: #8fa0a2;
+    --text-inverse: #10262b;
+    --border-subtle: #23373d;
+    --border-strong: #5e7479;
+    --primary: #4fc1b6;
+    --primary-hover: #6ed0c6;
+    --primary-fg: #06201e;
+    --primary-soft: #123b3a;
+    --primary-soft-fg: #9ee3da;
+    --accent: #e6b84f;
+    --accent-text: #f0cb75;
+    --success: #5bc68e;
+    --success-soft: #11301f;
+    --warning: #f2b451;
+    --warning-soft: #33250a;
+    --danger: #f2877c;
+    --danger-soft: #3a1714;
+    --info: #7fb1f0;
+    --info-soft: #132a45;
+    --focus: #7fb8ff;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 4px 12px rgb(0 0 0 / 0.45);
+    --shadow-3: 0 16px 40px rgb(0 0 0 / 0.55);
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--surface-canvas);
+  --color-raised: var(--surface-raised);
+  --color-sunken: var(--surface-sunken);
+  --color-inverse: var(--surface-inverse);
+  --color-fg: var(--text-primary);
+  --color-fg-2: var(--text-secondary);
+  --color-fg-muted: var(--text-muted);
+  --color-fg-inverse: var(--text-inverse);
+  --color-line: var(--border-subtle);
+  --color-line-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-fg: var(--primary-soft-fg);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-text: var(--accent-text);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-focus: var(--focus);
+  --color-media: var(--media-surface);
+  --color-media-fg: var(--media-text);
+  --shadow-e1: var(--shadow-1);
+  --shadow-e2: var(--shadow-2);
+  --shadow-e3: var(--shadow-3);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --font-display: var(--font-readex), system-ui, sans-serif;
+  --font-body: var(--font-plex), system-ui, sans-serif;
+}
+
+html {
+  background: var(--surface-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--surface-canvas);
+  line-height: 1.75;
+  min-height: 100dvh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Watermark random walk (protection, so it still moves under reduced motion: it jumps instead). */
+@keyframes watermark-walk {
+  0% {
+    transform: translate(0%, 0%);
+  }
+  20% {
+    transform: translate(55%, 140%);
+  }
+  40% {
+    transform: translate(-40%, 260%);
+  }
+  60% {
+    transform: translate(35%, 380%);
+  }
+  80% {
+    transform: translate(-50%, 120%);
+  }
+  100% {
+    transform: translate(0%, 0%);
+  }
+}
+.watermark-walk {
+  animation: watermark-walk 18s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .watermark-walk {
+    animation-timing-function: steps(1, end);
+  }
+  * {
+    scroll-behavior: auto;
+  }
+}
