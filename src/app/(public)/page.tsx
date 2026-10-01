@@ -40,7 +40,7 @@ export default async function HomePage() {
                 {t.home.heroTitleHighlight}
                 <span
                   aria-hidden
-                  className="absolute inset-x-0 -bottom-1 h-2 rounded-full bg-accent/70"
+                  className="absolute inset-x-0 -bottom-1 h-2 rounded-full bg-highlight/70"
                 />
               </span>{" "}
               {t.home.heroTitleEnd}
@@ -248,7 +248,7 @@ export default async function HomePage() {
       >
         <GeometricPattern className="text-fg-inverse opacity-[0.08]" />
         <Container size="marketing" className="relative flex flex-col gap-6 py-16 md:py-20">
-          <Sparkles aria-hidden className="size-8 text-accent" strokeWidth={1.5} />
+          <Sparkles aria-hidden className="size-8 text-highlight" strokeWidth={1.5} />
           <h2 className="max-w-3xl text-[clamp(1.5rem,1.3rem+0.9vw,1.875rem)] font-semibold">
             {t.home.teacherTitle}
           </h2>
@@ -257,7 +257,7 @@ export default async function HomePage() {
             <ButtonLink
               href="/sign-up?role=teacher"
               size="lg"
-              className="bg-accent text-accent-fg hover:bg-accent/90"
+              className="bg-highlight text-highlight-fg hover:bg-highlight/90"
             >
               {t.home.teacherCta}
             </ButtonLink>

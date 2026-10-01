@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
-import { cn } from "./cn";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type FieldProps = ComponentProps<"input"> & {
   label: string;
@@ -8,24 +9,17 @@ type FieldProps = ComponentProps<"input"> & {
   ltr?: boolean;
 };
 
-export function Field({ label, hint, ltr, id, name, className, ...props }: FieldProps) {
+export function Field({ label, hint, ltr, id, name, ...props }: FieldProps) {
   const fieldId = id ?? `field-${name}`;
   const hintId = hint ? `${fieldId}-hint` : undefined;
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={fieldId} className="text-sm font-medium text-fg">
-        {label}
-      </label>
-      <input
+      <Label htmlFor={fieldId}>{label}</Label>
+      <Input
         id={fieldId}
         name={name}
         dir={ltr ? "ltr" : undefined}
         aria-describedby={hintId}
-        className={cn(
-          "min-h-11 w-full rounded-[var(--radius-sm)] border border-line-strong bg-raised px-3 text-fg placeholder:text-fg-muted",
-          "focus-visible:border-primary aria-invalid:border-danger",
-          className,
-        )}
         {...props}
       />
       {hint ? (

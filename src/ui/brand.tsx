@@ -14,7 +14,7 @@ export function Wordmark({ label, className }: { label: string; className?: stri
           d="M16 2l3.8 5.2L26 6l-1.2 6.2L30 16l-5.2 3.8L26 26l-6.2-1.2L16 30l-3.8-5.2L6 26l1.2-6.2L2 16l5.2-3.8L6 6l6.2 1.2L16 2z"
           fill="currentColor"
         />
-        <circle cx="16" cy="16" r="4.5" fill="var(--accent)" />
+        <circle cx="16" cy="16" r="4.5" fill="var(--highlight)" />
       </svg>
       {label}
     </span>
