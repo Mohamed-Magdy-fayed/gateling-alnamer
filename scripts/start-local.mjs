@@ -1,9 +1,9 @@
 // `next start` with `.env` forced and a local-database guard (see lib/local-env.mjs).
 import { spawnSync } from "node:child_process";
-import { loadLocalEnv } from "./lib/local-env.mjs";
+import { loadLocalEnv, parseLocalArgs } from "./lib/local-env.mjs";
 
 try {
-  loadLocalEnv();
+  loadLocalEnv(parseLocalArgs(process.argv.slice(2)));
 } catch (error) {
   console.error(`start:local: ${error instanceof Error ? error.message : error}`);
   process.exit(1);

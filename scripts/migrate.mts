@@ -1,11 +1,19 @@
 // Applies generated migrations. Used by `npm run db:migrate` locally (with `.env`)
 // and by `vercel-build` on Vercel (with the scope's own DATABASE_URL).
-import { config } from "dotenv";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+import { loadLocalEnv, parseLocalArgs } from "./lib/local-env.mjs";
 
-if (!process.env.VERCEL) config({ path: ".env" });
+// Locally the guard refuses a non-local DATABASE_URL (`--test-db` targets the db-test container).
+if (!process.env.VERCEL) {
+  try {
+    loadLocalEnv(parseLocalArgs(process.argv.slice(2)));
+  } catch (error) {
+    console.error(`db:migrate: ${error instanceof Error ? error.message : error}`);
+    process.exit(1);
+  }
+}
 
 const url = process.env.DATABASE_URL;
 if (!url) {
