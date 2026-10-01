@@ -1,10 +1,13 @@
-// `next build` with `.env` forced first. A production build otherwise auto-loads
-// `.env.production.local`, which holds real Production credentials, and Next never
-// overrides keys that are already in process.env.
+// `next build` with `.env` forced first (see lib/local-env.mjs).
 import { spawnSync } from "node:child_process";
-import { config } from "dotenv";
+import { loadLocalEnv } from "./lib/local-env.mjs";
 
-config({ path: ".env", override: true });
+try {
+  loadLocalEnv();
+} catch (error) {
+  console.error(`build:local: ${error instanceof Error ? error.message : error}`);
+  process.exit(1);
+}
 const result = spawnSync(process.execPath, ["./node_modules/next/dist/bin/next", "build"], {
   stdio: "inherit",
   env: process.env,

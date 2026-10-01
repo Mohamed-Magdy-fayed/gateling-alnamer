@@ -11,6 +11,7 @@
     "start": "next start",
     "vercel-build": "tsx scripts/migrate.mts && next build",
     "build:local": "node scripts/build-local.mjs",
+    "start:local": "node scripts/start-local.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",

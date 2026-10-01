@@ -1,0 +1,15 @@
+// `next start` with `.env` forced and a local-database guard (see lib/local-env.mjs).
+import { spawnSync } from "node:child_process";
+import { loadLocalEnv } from "./lib/local-env.mjs";
+
+try {
+  loadLocalEnv();
+} catch (error) {
+  console.error(`start:local: ${error instanceof Error ? error.message : error}`);
+  process.exit(1);
+}
+const result = spawnSync(process.execPath, ["./node_modules/next/dist/bin/next", "start"], {
+  stdio: "inherit",
+  env: process.env,
+});
+process.exit(result.status ?? 1);
