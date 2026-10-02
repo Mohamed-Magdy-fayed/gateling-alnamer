@@ -247,6 +247,10 @@ export const en: Dictionary = {
       under18Consent:
         "Because you're under 18, a parent or guardian must agree before you create an account.",
       linkParent: "Parent account linking is coming soon, so a parent can follow your progress.",
+      lockout:
+        "Sign-in from this device is paused after too many attempts. You can try again after {time}.",
+      rateLimited: "Too many requests in a short time. Wait a moment and try again.",
+      captchaFailed: "We couldn't confirm you're not a bot. Please try again.",
     },
     errors: {
       invalid: "Check the details you entered.",

@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { uniqueClientIpPerTest } from "./helpers/client-ip";
 
 // F1.9 visual guard: home, sign-in and the student dashboard (ar, light) at 375 and 1440 must not
 // change when shadcn/ui is adopted. Baselines live in e2e/__screenshots__/f1-baseline/.
@@ -20,6 +21,7 @@ async function settle(page: Page) {
   await page.evaluate(() => document.fonts.ready);
 }
 
+uniqueClientIpPerTest();
 test.use({ colorScheme: "light", locale: "ar-EG" });
 
 for (const viewport of VIEWPORTS) {

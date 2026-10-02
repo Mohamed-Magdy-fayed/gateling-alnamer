@@ -34,4 +34,8 @@ export class PostgresRateLimiter implements RateLimiter {
       resetAt: new Date(startMs + windowMs),
     };
   }
+
+  async reset(key: string): Promise<void> {
+    await this.executor.delete(rateLimitCounters).where(eq(rateLimitCounters.key, key));
+  }
 }

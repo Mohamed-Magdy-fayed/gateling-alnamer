@@ -55,4 +55,8 @@ export class RedisRateLimiter implements RateLimiter {
     if (allowed === 1) return { allowed: true, remaining: max - count, resetAt };
     return { allowed: false, remaining: 0, resetAt };
   }
+
+  async reset(key: string): Promise<void> {
+    await this.redis.del(`${KEY_PREFIX}${key}`);
+  }
 }

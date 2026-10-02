@@ -80,12 +80,26 @@ function Message({ state, t }: { state: FormState; t: AuthText }) {
   );
 }
 
+/** True from a lockout or rate-limit answer until the time it says the block ends. */
+function useRetryBlocked(retryAt: number | undefined): boolean {
+  const [blocked, setBlocked] = useState(false);
+  useEffect(() => {
+    const remaining = retryAt === undefined ? 0 : retryAt - Date.now();
+    setBlocked(remaining > 0);
+    if (remaining <= 0) return;
+    const timer = setTimeout(() => setBlocked(false), remaining);
+    return () => clearTimeout(timer);
+  }, [retryAt]);
+  return blocked;
+}
+
 function RequiredNote({ t }: { t: AuthText }) {
   return <p className="text-sm text-fg-muted">{t.fields.requiredNote}</p>;
 }
 
 export function SignInForm({ t }: { t: AuthText }) {
   const [state, action] = useActionState(signInAction, idle);
+  const blocked = useRetryBlocked(state.retryAt);
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
       <Message state={state} t={t} />
@@ -112,7 +126,7 @@ export function SignInForm({ t }: { t: AuthText }) {
           {t.signIn.forgot}
         </Link>
       )}
-      <SubmitButton>{t.signIn.submit}</SubmitButton>
+      <SubmitButton disabled={blocked}>{t.signIn.submit}</SubmitButton>
       <p className="text-center text-sm text-fg-2">
         {t.signIn.noAccount}{" "}
         <Link href="/sign-up" className={linkClass}>
@@ -137,6 +151,7 @@ type SignUpFormProps = { t: AuthText; defaultRole: string; locale: Locale };
 
 export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
   const [state, action] = useActionState(signUpAction, idle);
+  const blocked = useRetryBlocked(state.retryAt);
   const dir = dirOf(locale);
   const errors = state.fieldErrors ?? {};
   // The role follows the last action state until the user picks one: React resets the form after a
@@ -250,7 +265,7 @@ export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
           </div>
         </div>
       ) : null}
-      <SubmitButton>{t.signUp.submit}</SubmitButton>
+      <SubmitButton disabled={blocked}>{t.signUp.submit}</SubmitButton>
       <p className="text-center text-sm text-fg-2">
         {t.signUp.haveAccount}{" "}
         <Link href="/sign-in" className={linkClass}>
@@ -263,11 +278,12 @@ export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
 
 export function ForgotPasswordForm({ t }: { t: AuthText }) {
   const [state, action] = useActionState(requestPasswordResetAction, idle);
+  const blocked = useRetryBlocked(state.retryAt);
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
       <Message state={state} t={t} />
       <Field name="email" type="email" label={t.fields.email} autoComplete="email" required ltr />
-      <SubmitButton>{t.forgot.submit}</SubmitButton>
+      <SubmitButton disabled={blocked}>{t.forgot.submit}</SubmitButton>
       <Link
         href={
           state.email
@@ -284,6 +300,7 @@ export function ForgotPasswordForm({ t }: { t: AuthText }) {
 
 export function ResetPasswordForm({ t, email }: { t: AuthText; email: string }) {
   const [state, action] = useActionState(resetPasswordAction, idle);
+  const blocked = useRetryBlocked(state.retryAt);
   if (state.status === "success") {
     return (
       <div className="flex flex-col gap-4">
@@ -327,7 +344,7 @@ export function ResetPasswordForm({ t, email }: { t: AuthText; email: string }) 
         minLength={8}
         required
       />
-      <SubmitButton>{t.reset.submit}</SubmitButton>
+      <SubmitButton disabled={blocked}>{t.reset.submit}</SubmitButton>
     </form>
   );
 }

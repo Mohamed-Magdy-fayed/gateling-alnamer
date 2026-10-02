@@ -3,12 +3,21 @@
 import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { format } from "@/i18n/config";
+import type { Dictionary } from "@/i18n/ar";
+import { format, formatTime, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
 import { credentials, users } from "@/server/db/schema";
 import { sendEvent } from "@/server/jobs/send";
+import {
+  clearSignInFailures,
+  type GuardResult,
+  guardCodeSend,
+  guardCodeVerify,
+  guardSignIn,
+  guardSignUp,
+} from "./abuse";
 import {
   deleteCode,
   issueCode,
@@ -19,6 +28,7 @@ import {
 } from "./codes";
 import { authenticate } from "./credentials";
 import { hashPassword } from "./password";
+import { requestContext } from "./request-context";
 import { createSession, destroySession, invalidateUserSessions } from "./session";
 import { type SignUpField, signUpUser } from "./sign-up";
 
@@ -32,7 +42,32 @@ export type FormState = {
   offerReset?: boolean;
   /** Non-secret values echoed back so a failed submit does not clear the form. */
   values?: Record<string, string>;
+  /** Epoch ms when a lockout or rate limit ends; the form keeps its submit button disabled until then. */
+  retryAt?: number;
 };
+
+type Blocked = Exclude<GuardResult, { ok: true }>;
+
+/**
+ * The one message for a guard block. A captcha step-up shows the captchaFailed copy until the widget
+ * lands (A2.3); everything here depends only on counters, never on whether an account exists.
+ */
+function blockedState(blocked: Blocked, t: Dictionary, locale: Locale): FormState {
+  const retryAt = blocked.until?.getTime();
+  if (blocked.blocked === "locked") {
+    const time = formatTime(locale, blocked.until ?? clock.now());
+    return {
+      status: "error",
+      message: format(t.auth.states.lockout, { time }),
+      offerReset: true,
+      retryAt,
+    };
+  }
+  if (blocked.blocked === "rateLimited") {
+    return { status: "error", message: t.auth.states.rateLimited, retryAt };
+  }
+  return { status: "error", message: t.auth.states.captchaFailed };
+}
 
 const email = z.string().trim().pipe(z.email()).pipe(z.string().max(254));
 const password = z.string().min(8).max(128);
@@ -62,6 +97,9 @@ function echo(raw: Record<string, unknown>): Record<string, string> {
 export async function signUpAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const { t, locale } = await getDictionary();
   const raw = fields(formData);
+  const { ip } = await requestContext();
+  const guard = await guardSignUp({ ip });
+  if (!("ok" in guard)) return { ...blockedState(guard, t, locale), values: echo(raw) };
   const result = await signUpUser(raw, { locale, now: clock.now() });
   if (!result.ok) {
     if (result.code === "duplicate") {
@@ -87,8 +125,9 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
 }
 
 export async function signInAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const raw = fields(formData);
+  const device = await requestContext();
   const failed: FormState = {
     status: "error",
     message: t.auth.errors.credentials,
@@ -97,8 +136,14 @@ export async function signInAction(_prev: FormState, formData: FormData): Promis
   const parsed = signInSchema.safeParse(raw);
   if (!parsed.success) return failed;
 
+  const who = { identifier: parsed.data.identifier, ...device };
+  const captchaToken = typeof raw.captcha_token === "string" ? raw.captcha_token : undefined;
+  const guard = await guardSignIn({ ...who, captchaToken });
+  if (!("ok" in guard)) return { ...blockedState(guard, t, locale), values: failed.values };
+
   const userId = await authenticate(parsed.data.identifier, parsed.data.password);
   if (!userId) return failed;
+  await clearSignInFailures(who);
 
   // Never let a session from before sign-in survive it (fixation, switching accounts).
   await destroySession();
@@ -116,8 +161,11 @@ export async function requestPasswordResetAction(
   formData: FormData,
 ): Promise<FormState> {
   const { t, locale } = await getDictionary();
+  const { ip } = await requestContext();
   const parsed = forgotSchema.safeParse(fields(formData));
   if (!parsed.success) return { status: "error", message: t.auth.errors.invalid };
+  const guard = await guardCodeSend({ identifier: parsed.data.email, ip });
+  if (!("ok" in guard)) return blockedState(guard, t, locale);
 
   const user = await db().query.users.findFirst({
     columns: { id: true, name: true, email: true },
@@ -158,10 +206,13 @@ export async function resetPasswordAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
+  await requestContext();
   const parsed = resetSchema.safeParse(fields(formData));
   if (!parsed.success) return { status: "error", message: t.auth.errors.invalid };
   const input = parsed.data;
+  const guard = await guardCodeVerify({ identifier: input.email });
+  if (!("ok" in guard)) return blockedState(guard, t, locale);
 
   const user = await db().query.users.findFirst({
     columns: { id: true, email: true },

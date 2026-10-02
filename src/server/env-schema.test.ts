@@ -126,6 +126,7 @@ describe("parseServerEnv", () => {
       INNGEST_EVENT_KEY: "event-key-value",
       INNGEST_SIGNING_KEY: "signing-key-value",
       INNGEST_ENCRYPTION_KEY: "encryption-key-value",
+      DEVICE_COOKIE_SECRET: "d".repeat(40),
       UPSTASH_REDIS_REST_URL: "https://redis.example",
       UPSTASH_REDIS_REST_TOKEN: "redis-token-value",
     };
@@ -229,6 +230,22 @@ describe("parseServerEnv", () => {
       const message = failure({ ...live, INNGEST_ENCRYPTION_KEY: undefined });
       expect(message).toContain("INNGEST_ENCRYPTION_KEY");
       expect(message).not.toContain("signing-key-value");
+    });
+
+    it("fails live without DEVICE_COOKIE_SECRET, naming the key only", () => {
+      expect(failure({ ...live, DEVICE_COOKIE_SECRET: undefined })).toContain(
+        "DEVICE_COOKIE_SECRET",
+      );
+    });
+
+    it("fails when DEVICE_COOKIE_SECRET is shorter than 32 characters, without echoing it", () => {
+      const message = failure({ ...live, DEVICE_COOKIE_SECRET: "short-secret-value" });
+      expect(message).toContain("DEVICE_COOKIE_SECRET");
+      expect(message).not.toContain("short-secret-value");
+    });
+
+    it("leaves DEVICE_COOKIE_SECRET optional in demo", () => {
+      expect(() => parseServerEnv(local)).not.toThrow();
     });
 
     it("leaves INNGEST_ENCRYPTION_KEY optional in demo", () => {

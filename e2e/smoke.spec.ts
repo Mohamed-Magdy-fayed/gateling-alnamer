@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { uniqueClientIpPerTest } from "./helpers/client-ip";
 import { extractCode, waitForMailText } from "./helpers/mailpit";
 
 // Arabic is the default locale; labels below are the `ar` dictionary values.
@@ -22,6 +23,7 @@ const DOB_YEAR = "السنة";
 const CONSENT = "أقرّ بأنني حصلت على موافقة ولي أمري على إنشاء هذا الحساب.";
 const PARENT_ROLE = "ولي أمر";
 const PARENT_AGE_ERROR = "حساب ولي الأمر يتطلب تاريخ ميلاد يثبت أن عمرك 18 عامًا أو أكثر.";
+const LOCKOUT = "تم إيقاف تسجيل الدخول من هذا الجهاز مؤقتًا";
 const LINK_PARENT = "ربط حساب ولي الأمر قادم قريبًا ليتمكن من متابعة تقدّمك.";
 
 const runId = Date.now().toString(36);
@@ -52,6 +54,8 @@ async function signIn(page: Page, withPassword: string) {
 }
 
 test.describe.configure({ mode: "serial" });
+
+uniqueClientIpPerTest();
 
 test("public pages answer 200 and show the brand", async ({ page }) => {
   for (const path of ["/", "/courses", "/legal/terms"]) {
@@ -106,6 +110,35 @@ test("sign-up an adult student with a username, sign out, sign in with the usern
   await page.waitForURL((url) => url.pathname === "/");
 
   await signIn(page, password);
+});
+
+test("10 wrong passwords lock sign-in for that device and the message shows a time", async ({
+  page,
+}) => {
+  const lockEmail = `smoke-lock-${runId}@alnamer.local`;
+  await page.goto("/sign-up");
+  await page.getByLabel(FIELD_NAME).fill("Smoke Lockout");
+  await page.getByLabel(FIELD_EMAIL).fill(lockEmail);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await pickDate(page, 25, 4, 14);
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  await page.waitForURL("**/dashboard");
+  await page.getByRole("button", { name: SIGN_OUT }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+
+  await page.goto("/sign-in");
+  const alert = page.locator('[data-slot="alert"]');
+  // The first attempt only sets the device cookie's pair; the lockout lands within a dozen tries.
+  for (let attempt = 1; attempt <= 12; attempt++) {
+    await page.getByLabel(FIELD_IDENTIFIER).fill(lockEmail);
+    await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(`wrong-pass-${attempt}`);
+    await page.getByRole("button", { name: SIGN_IN, exact: true }).click();
+    await expect(alert).toBeFocused();
+    if ((await alert.innerText()).includes(LOCKOUT)) break;
+  }
+  await expect(alert).toContainText(LOCKOUT);
+  await expect(alert).toContainText(/\d{1,2}:\d{2}/);
+  await expect(page.getByRole("button", { name: SIGN_IN, exact: true })).toBeDisabled();
 });
 
 test("an under-18 student needs the consent tick, then the dashboard asks to link a parent", async ({

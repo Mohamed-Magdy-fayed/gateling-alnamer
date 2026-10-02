@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { ar } from "./ar";
-import { defaultLocale, dirOf, format, formatDate, formatNumber, isLocale, plural } from "./config";
+import {
+  defaultLocale,
+  dirOf,
+  format,
+  formatDate,
+  formatNumber,
+  formatTime,
+  isLocale,
+  plural,
+} from "./config";
 import { en } from "./en";
 
 const ARABIC_INDIC_DIGITS = /[٠-٩]/;
@@ -57,6 +66,20 @@ describe("formatDate", () => {
 
   it("formats English as day month year", () => {
     expect(formatDate("en", date)).toBe("1 October 2026");
+  });
+});
+
+describe("formatTime", () => {
+  const date = new Date("2030-01-01T10:45:00.000Z");
+
+  it("uses Latin digits in Arabic and the Cairo clock", () => {
+    const out = formatTime("ar", date);
+    expect(out).toMatch(/12:45/);
+    expect(out).not.toMatch(ARABIC_INDIC_DIGITS);
+  });
+
+  it("formats English hours and minutes", () => {
+    expect(formatTime("en", date)).toMatch(/12:45/);
   });
 });
 

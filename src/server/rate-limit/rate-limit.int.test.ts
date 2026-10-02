@@ -55,6 +55,22 @@ describe("PostgresRateLimiter", () => {
   });
 });
 
+describe("PostgresRateLimiter.reset", () => {
+  it("deletes every window of the key and leaves other keys alone", async () => {
+    setClockForTests(T0);
+    const limiter = new PostgresRateLimiter(conn);
+    const key = unique("pg-reset");
+    const other = unique("pg-keep");
+    await limiter.limit(key, { max: 1, windowSec: 60 });
+    await limiter.limit(other, { max: 1, windowSec: 60 });
+    expect((await limiter.limit(key, { max: 1, windowSec: 60 })).allowed).toBe(false);
+
+    await limiter.reset(key);
+    expect((await limiter.limit(key, { max: 1, windowSec: 60 })).allowed).toBe(true);
+    expect((await limiter.limit(other, { max: 1, windowSec: 60 })).allowed).toBe(false);
+  });
+});
+
 function localRedis(): Redis | null {
   let url = process.env.UPSTASH_REDIS_REST_URL;
   let token = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -87,6 +103,15 @@ describe("RedisRateLimiter (local REST proxy)", () => {
     expect(results[2]?.resetAt.getTime()).toBeGreaterThan(Date.now());
   });
 
+  it.skipIf(!redis)("reset clears the window", async () => {
+    const limiter = new RedisRateLimiter(redis as Redis);
+    const key = unique("redis-reset");
+    await limiter.limit(key, { max: 1, windowSec: 30 });
+    expect((await limiter.limit(key, { max: 1, windowSec: 30 })).allowed).toBe(false);
+    await limiter.reset(key);
+    expect((await limiter.limit(key, { max: 1, windowSec: 30 })).allowed).toBe(true);
+  });
+
   it.skipIf(!redis)("lets exactly max through under 20 concurrent calls", async () => {
     const limiter = new RedisRateLimiter(redis as Redis);
     const key = unique("redis-concurrent");
@@ -113,7 +138,10 @@ describe("RedisRateLimiter validation", () => {
 });
 
 describe("createRateLimiter", () => {
-  const failing: RateLimiter = { limit: () => Promise.reject(new Error("redis down")) };
+  const failing: RateLimiter = {
+    limit: () => Promise.reject(new Error("redis down")),
+    reset: () => Promise.reject(new Error("redis down")),
+  };
 
   it("falls back to Postgres when Redis throws, warning at most once a minute", async () => {
     setClockForTests(T0);

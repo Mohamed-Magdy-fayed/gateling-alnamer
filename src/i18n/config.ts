@@ -34,6 +34,15 @@ export function formatDate(locale: Locale, date: Date): string {
   }).format(date);
 }
 
+/** Clock time (hours and minutes, Latin digits) on the platform's Cairo clock, whatever the server's zone. */
+export function formatTime(locale: Locale, date: Date): string {
+  return new Intl.DateTimeFormat(locale === "ar" ? "ar-u-nu-latn" : "en-GB", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "Africa/Cairo",
+  }).format(date);
+}
+
 /** Arabic needs every CLDR category; each form holds a `{count}` placeholder where it reads naturally. */
 export type ArPlural = Record<"zero" | "one" | "two" | "few" | "many" | "other", string>;
 /** English only distinguishes one / other. */
