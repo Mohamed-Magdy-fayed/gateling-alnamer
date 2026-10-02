@@ -3,6 +3,7 @@ import { IBM_Plex_Sans_Arabic, Readex_Pro } from "next/font/google";
 import type { ReactNode } from "react";
 import { dirOf } from "@/i18n/config";
 import { getDictionary, getLocale } from "@/i18n/server";
+import { TrpcProvider } from "@/lib/trpc/client";
 import "@/styles/globals.css";
 
 const readex = Readex_Pro({
@@ -34,7 +35,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const locale = await getLocale();
   return (
     <html lang={locale} dir={dirOf(locale)} className={`${readex.variable} ${plex.variable}`}>
-      <body>{children}</body>
+      <body>
+        <TrpcProvider>{children}</TrpcProvider>
+      </body>
     </html>
   );
 }
