@@ -82,18 +82,6 @@ export const sessions = pgTable(
   (t) => [index("sessions_user_idx").on(t.userId)],
 );
 
-export const passwordResetCodes = pgTable("password_reset_codes", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  codeHash: text("code_hash").notNull(),
-  attempts: integer("attempts").notNull().default(0),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  consumedAt: timestamp("consumed_at", { withTimezone: true }),
-  createdAt,
-});
-
 export const verificationCodes = pgTable(
   "verification_codes",
   {

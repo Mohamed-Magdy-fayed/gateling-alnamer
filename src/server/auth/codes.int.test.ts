@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setClockForTests } from "@/server/clock";
 import { RESET_CODE_TTL_MS, RESET_MAX_ATTEMPTS } from "@/server/config/policy";
 import * as schema from "@/server/db/schema";
-import { passwordResetCodes, users, verificationCodes } from "@/server/db/schema";
+import { users, verificationCodes } from "@/server/db/schema";
 import { issueCode, purgeCodesOlderThan, verifyCode, verifyCodeDecoy } from "./codes";
 import { authKey, keyedHash } from "./keys";
 
@@ -242,66 +242,5 @@ describe("purgeCodesOlderThan", () => {
       await conn.select().from(verificationCodes).where(eq(verificationCodes.userId, userId))
     ).map((r) => r.codeHash);
     expect(left.sort()).toEqual(["purge-live", "purge-recent-consumed", "purge-recent-expired"]);
-  });
-});
-
-describe("verification_codes_copy migration", () => {
-  const dir = path.join(process.cwd(), "src/server/db/migrations");
-  const file = readdirSync(dir).find((n) => n.endsWith("_verification_codes_copy.sql"));
-
-  it("exists", () => {
-    expect(file).toBeDefined();
-  });
-
-  it("copies only live reset codes and backfills email_verified_at", async () => {
-    const statements = readFileSync(path.join(dir, file ?? "missing.sql"), "utf8").split(
-      "--> statement-breakpoint",
-    );
-    const created = new Date("2026-01-01T00:00:00Z");
-    const rollback = new Error("rollback");
-    let hashes: string[] = [];
-    let live: typeof verificationCodes.$inferSelect | undefined;
-    let withEmailAt: Date | null | undefined;
-    let noEmailAt: Date | null | undefined;
-
-    await conn
-      .transaction(async (tx) => {
-        const mk = async (email: string | null, username: string | null) => {
-          const [u] = await tx
-            .insert(users)
-            .values({ name: "M", email, username, createdAt: created })
-            .returning({ id: users.id });
-          if (!u) throw new Error("no user");
-          return u.id;
-        };
-        const withEmail = await mk("mig-a@example.test", null);
-        const noEmail = await mk(null, "mig_user");
-        const u2 = await mk("mig-b@example.test", null);
-        const u3 = await mk("mig-c@example.test", null);
-        const future = new Date(Date.now() + 600_000);
-        await tx.insert(passwordResetCodes).values([
-          { userId: withEmail, codeHash: "live-hash", attempts: 2, expiresAt: future },
-          { userId: u2, codeHash: "expired-hash", expiresAt: new Date(Date.now() - 1000) },
-          { userId: u3, codeHash: "consumed-hash", expiresAt: future, consumedAt: new Date() },
-        ]);
-        for (const statement of statements) await tx.execute(sql.raw(statement));
-        const copied = await tx.select().from(verificationCodes);
-        const verified = await tx.select({ id: users.id, at: users.emailVerifiedAt }).from(users);
-        hashes = copied.map((c) => c.codeHash).filter((h) => h.endsWith("-hash"));
-        live = copied.find((c) => c.codeHash === "live-hash");
-        withEmailAt = verified.find((v) => v.id === withEmail)?.at;
-        noEmailAt = verified.find((v) => v.id === noEmail)?.at;
-        throw rollback;
-      })
-      .catch((e: unknown) => {
-        if (e !== rollback) throw e;
-      });
-
-    expect(hashes).toEqual(["live-hash"]);
-    expect(live?.purpose).toBe("password_reset");
-    expect(live?.emailStatus).toBe("sent");
-    expect(live?.attempts).toBe(2);
-    expect(withEmailAt).toEqual(created);
-    expect(noEmailAt).toBeNull();
   });
 });
