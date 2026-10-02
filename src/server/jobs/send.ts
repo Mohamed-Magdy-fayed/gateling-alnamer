@@ -21,5 +21,5 @@ export async function sendEvent<K extends EventName>(name: K, data: EventMap[K])
     await inlineHandlers[name](data);
     return;
   }
-  await inngest.send({ name, data });
+  await inngest.send({ name, data: { encrypted: data } });
 }

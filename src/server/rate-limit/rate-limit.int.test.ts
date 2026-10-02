@@ -86,6 +86,30 @@ describe("RedisRateLimiter (local REST proxy)", () => {
     expect(results[0]?.remaining).toBe(1);
     expect(results[2]?.resetAt.getTime()).toBeGreaterThan(Date.now());
   });
+
+  it.skipIf(!redis)("lets exactly max through under 20 concurrent calls", async () => {
+    const limiter = new RedisRateLimiter(redis as Redis);
+    const key = unique("redis-concurrent");
+    const results = await Promise.all(
+      Array.from({ length: 20 }, () => limiter.limit(key, { max: 5, windowSec: 30 })),
+    );
+    expect(results.filter((r) => r.allowed)).toHaveLength(5);
+  });
+});
+
+describe("RedisRateLimiter validation", () => {
+  const limiter = new RedisRateLimiter(new Redis({ url: "http://127.0.0.1:1", token: "x" }));
+
+  it.each([
+    [0, 60],
+    [-1, 60],
+    [1.5, 60],
+    [3, 0],
+    [3, -5],
+    [3, Number.NaN],
+  ])("rejects max=%s windowSec=%s before touching Redis", async (max, windowSec) => {
+    await expect(limiter.limit("k", { max, windowSec })).rejects.toThrow();
+  });
 });
 
 describe("createRateLimiter", () => {

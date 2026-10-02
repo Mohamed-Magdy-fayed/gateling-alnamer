@@ -50,6 +50,10 @@ describe("audit repository", () => {
     await expect(client`delete from audit_log`).rejects.toThrow(/append-only/);
   });
 
+  it("rejects TRUNCATE on audit_log", async () => {
+    await expect(client`truncate audit_log`).rejects.toThrow(/append-only/);
+  });
+
   it("rejects an UPDATE that only nulls actor_id", async () => {
     const [user] = await client`
       insert into users (name, email) values ('B', 'audit-null@example.test') returning id`;

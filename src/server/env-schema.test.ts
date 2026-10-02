@@ -125,6 +125,7 @@ describe("parseServerEnv", () => {
       JOBS_MODE: "inngest",
       INNGEST_EVENT_KEY: "event-key-value",
       INNGEST_SIGNING_KEY: "signing-key-value",
+      INNGEST_ENCRYPTION_KEY: "encryption-key-value",
       UPSTASH_REDIS_REST_URL: "https://redis.example",
       UPSTASH_REDIS_REST_TOKEN: "redis-token-value",
     };
@@ -222,6 +223,16 @@ describe("parseServerEnv", () => {
       const message = failure({ ...live, INNGEST_EVENT_KEY: undefined });
       expect(message).toContain("INNGEST_EVENT_KEY");
       expect(message).not.toContain("signing-key-value");
+    });
+
+    it("fails live without INNGEST_ENCRYPTION_KEY, naming the key only", () => {
+      const message = failure({ ...live, INNGEST_ENCRYPTION_KEY: undefined });
+      expect(message).toContain("INNGEST_ENCRYPTION_KEY");
+      expect(message).not.toContain("signing-key-value");
+    });
+
+    it("leaves INNGEST_ENCRYPTION_KEY optional in demo", () => {
+      expect(() => parseServerEnv(local)).not.toThrow();
     });
   });
 

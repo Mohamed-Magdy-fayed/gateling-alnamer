@@ -7,3 +7,9 @@ export type EventMap = {
 };
 
 export type EventName = keyof EventMap;
+
+/**
+ * Payloads travel under `data.encrypted`: the encryption middleware encrypts exactly that field, so
+ * event data is ciphertext at rest in Inngest. Always wrap on send and unwrap in handlers.
+ */
+export type WireData<T> = { encrypted: T };

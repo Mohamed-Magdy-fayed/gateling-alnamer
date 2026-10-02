@@ -43,6 +43,13 @@
       "when": 1790921538723,
       "tag": "0005_mighty_madripoor",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790923245408,
+      "tag": "0006_audit_truncate_guard",
+      "breakpoints": true
     }
   ]
 }

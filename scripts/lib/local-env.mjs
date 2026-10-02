@@ -54,10 +54,15 @@ export function loadLocalEnv({
   if (useTestDatabase) {
     env.TEST_DATABASE_URL = env.TEST_DATABASE_URL || DEFAULT_TEST_DATABASE_URL;
     env.DATABASE_URL = env.TEST_DATABASE_URL;
+    // migrate prefers the direct url; a leftover one from .env must not outrank the test database.
+    delete env.DATABASE_URL_UNPOOLED;
     if (requireLocalDatabase) assertLocalDatabase(env, "TEST_DATABASE_URL");
     return env;
   }
-  if (requireLocalDatabase) assertLocalDatabase(env);
+  if (requireLocalDatabase) {
+    assertLocalDatabase(env);
+    if (env.DATABASE_URL_UNPOOLED) assertLocalDatabase(env, "DATABASE_URL_UNPOOLED");
+  }
   return env;
 }
 

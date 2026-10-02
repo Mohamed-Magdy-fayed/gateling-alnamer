@@ -37,6 +37,7 @@ const schema = z.object({
   JOBS_MODE: selector(SELECTORS.JOBS_MODE),
   INNGEST_EVENT_KEY: optionalText,
   INNGEST_SIGNING_KEY: optionalText,
+  INNGEST_ENCRYPTION_KEY: optionalText,
   DATABASE_URL: z.preprocess(blankAsUnset, z.string().min(1)),
   VERCEL: optionalText,
   VERCEL_ENV: z.preprocess(
@@ -159,6 +160,9 @@ function selectorProblems(env: RawEnv, providers: ResolvedProviders): string[] {
         problems.push(`${key} is required when JOBS_MODE=inngest or APP_MODE=live; ${FIX_HINT}.`);
       }
     }
+  }
+  if (env.APP_MODE === "live" && !env.INNGEST_ENCRYPTION_KEY) {
+    problems.push(`INNGEST_ENCRYPTION_KEY is required when APP_MODE=live; ${FIX_HINT}.`);
   }
   return problems;
 }

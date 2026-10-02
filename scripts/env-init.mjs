@@ -8,7 +8,12 @@ import { parse } from "dotenv";
 
 const example = path.join(import.meta.dirname, "..", ".env.example");
 const target = path.join(process.cwd(), ".env");
-const GENERATED = ["IBAN_ENCRYPTION_KEY", "TOTP_ENCRYPTION_KEY", "DEVICE_COOKIE_SECRET"];
+const GENERATED = [
+  "IBAN_ENCRYPTION_KEY",
+  "TOTP_ENCRYPTION_KEY",
+  "DEVICE_COOKIE_SECRET",
+  "INNGEST_ENCRYPTION_KEY",
+];
 const REDIS_TOKEN = "LOCAL_REDIS_TOKEN";
 const REDIS_REST_TOKEN = "UPSTASH_REDIS_REST_TOKEN";
 const secret = () => randomBytes(32).toString("base64");

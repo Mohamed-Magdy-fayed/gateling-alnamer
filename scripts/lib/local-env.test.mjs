@@ -86,6 +86,17 @@ describe("loadLocalEnv", () => {
     expect(target.DATABASE_URL).toBe(DEFAULT_TEST_DATABASE_URL);
   });
 
+  it("drops DATABASE_URL_UNPOOLED with --test-db and refuses a remote one otherwise", () => {
+    writeFileSync(
+      path.join(dir, ".env"),
+      "DATABASE_URL=postgres://u:p@localhost:5432/d\nDATABASE_URL_UNPOOLED=postgres://u:p@prod.example.com/d\n",
+    );
+    const target = {};
+    loadLocalEnv({ cwd: dir, env: target, useTestDatabase: true });
+    expect(target.DATABASE_URL_UNPOOLED).toBeUndefined();
+    expect(() => loadLocalEnv({ cwd: dir, env: {} })).toThrow(/DATABASE_URL_UNPOOLED/);
+  });
+
   it("uses TEST_DATABASE_URL from .env with --test-db", () => {
     writeFileSync(
       path.join(dir, ".env"),

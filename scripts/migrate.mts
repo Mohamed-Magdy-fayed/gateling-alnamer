@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 import { loadLocalEnv, parseLocalArgs } from "./lib/local-env.mjs";
+import { pickMigrationUrl, withMigrationLock } from "./lib/migrate-core.mjs";
 
 // Locally the guard refuses a non-local DATABASE_URL (`--test-db` targets the db-test container).
 if (!process.env.VERCEL) {
@@ -15,7 +16,9 @@ if (!process.env.VERCEL) {
   }
 }
 
-const url = process.env.DATABASE_URL;
+// Session advisory locks need a direct connection; Neon's Vercel integration sets DATABASE_URL_UNPOOLED.
+// The local guard above already vetted whichever of the two is used.
+const url = pickMigrationUrl(process.env);
 if (!url) {
   console.error("DATABASE_URL is not set; cannot migrate.");
   process.exit(1);
@@ -25,17 +28,15 @@ if (!url) {
 const MIGRATION_LOCK_KEY = 7461201;
 
 const client = postgres(url, { max: 1, onnotice: () => {} });
-try {
-  await client`select pg_advisory_lock(${MIGRATION_LOCK_KEY})`;
-  await migrate(drizzle(client), {
-    migrationsFolder: "src/server/db/migrations",
-    migrationsTable: "__alnamer_migrations",
-  });
-  console.log("Migrations applied.");
-} finally {
-  try {
-    await client`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`;
-  } finally {
-    await client.end();
-  }
-}
+await withMigrationLock({
+  lock: () => client`select pg_advisory_lock(${MIGRATION_LOCK_KEY})`,
+  unlock: () => client`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`,
+  end: () => client.end(),
+  work: async () => {
+    await migrate(drizzle(client), {
+      migrationsFolder: "src/server/db/migrations",
+      migrationsTable: "__alnamer_migrations",
+    });
+    console.log("Migrations applied.");
+  },
+});

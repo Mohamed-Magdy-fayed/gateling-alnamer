@@ -33,7 +33,10 @@ describe("sendEvent", () => {
     jobs = mode;
     const { sendEvent } = await import("./send");
     await sendEvent("email/send", mail);
-    expect(sendMock).toHaveBeenCalledWith({ name: "email/send", data: mail });
+    expect(sendMock).toHaveBeenCalledWith({
+      name: "email/send",
+      data: { encrypted: mail },
+    });
     expect(sendMailMock).not.toHaveBeenCalled();
   });
 });
