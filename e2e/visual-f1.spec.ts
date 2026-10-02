@@ -23,7 +23,7 @@ async function settle(page: Page) {
 test.use({ colorScheme: "light", locale: "ar-EG" });
 
 for (const viewport of VIEWPORTS) {
-  test.describe(`viewport ${viewport.label}`, () => {
+  test.describe(`viewport ${viewport.label} @visual`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
 
     const shot = { maxDiffPixelRatio: 0.01, animations: "disabled", fullPage: true } as const;

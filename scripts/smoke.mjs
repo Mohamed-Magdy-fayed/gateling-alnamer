@@ -71,5 +71,9 @@ await checkServices();
 run(["node_modules/tsx/dist/cli.mjs", "scripts/migrate.mts", "--test-db"], "db:migrate");
 if (!process.argv.includes("--no-build") && buildIsStale())
   run(["scripts/build-local.mjs", "--test-db"], "build:local");
-run(["node_modules/@playwright/test/cli.js", "test"], "the smoke spec");
+// Screenshot baselines are recorded on the Windows dev machine; font rendering differs on
+// Linux CI, so CI runs the functional smoke only (SMOKE_SKIP_VISUAL=1).
+const playwrightArgs = ["node_modules/@playwright/test/cli.js", "test"];
+if (process.env.SMOKE_SKIP_VISUAL === "1") playwrightArgs.push("--grep-invert", "@visual");
+run(playwrightArgs, "the smoke spec");
 console.log("smoke: OK");

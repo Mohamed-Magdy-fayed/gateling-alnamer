@@ -102,6 +102,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
 
       - run: npm run smoke
+        env:
+          SMOKE_SKIP_VISUAL: "1"
 
       - name: Upload Playwright report
         if: failure()
