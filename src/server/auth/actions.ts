@@ -67,6 +67,8 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
     }
     const fieldErrors: Partial<Record<SignUpField, string>> = {};
     for (const field of result.fields) {
+      // `role` is a radio with a default, so it only fails on a forged post: no field to point at.
+      if (field === "role") continue;
       const reason = result.reasons?.[field];
       fieldErrors[field] = t.auth.errors.field[reason ?? field];
     }

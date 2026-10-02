@@ -50,7 +50,7 @@ function daysIn(year: string, month: string): number {
 
 const pad = (value: string) => value.padStart(2, "0");
 
-/** Date of birth as three selects (day, month, year): no calendar popup, order is the same in RTL. */
+/** Date of birth as three selects (day, month, year): no calendar popup. The grid follows the writing direction, so the day sits at the inline-start edge in both locales. */
 export function DateInput({
   name,
   legend,
@@ -66,7 +66,7 @@ export function DateInput({
   const id = `field-${name}`;
 
   const monthNames = useMemo(() => {
-    const formatter = new Intl.DateTimeFormat(locale === "ar" ? "ar-u-nu-latn" : "en", {
+    const formatter = new Intl.DateTimeFormat(locale === "ar" ? "ar-u-nu-latn-ca-gregory" : "en", {
       month: "long",
       timeZone: "UTC",
     });
@@ -82,7 +82,8 @@ export function DateInput({
   const iso = complete ? `${parts.year}-${pad(parts.month)}-${pad(parts.day)}` : "";
 
   function update(next: Parts) {
-    const day = next.day !== "" && Number(next.day) > daysIn(next.year, next.month) ? "" : next.day;
+    const last = daysIn(next.year, next.month);
+    const day = next.day !== "" && Number(next.day) > last ? String(last) : next.day;
     const fixed = { ...next, day };
     setParts(fixed);
     const done = fixed.day !== "" && fixed.month !== "" && fixed.year !== "";
@@ -108,6 +109,7 @@ export function DateInput({
             aria-label={labels.day}
             aria-invalid={invalid}
             aria-required={mandatory}
+            aria-describedby={describedby}
           >
             <SelectValue placeholder={labels.day} />
           </SelectTrigger>
@@ -125,7 +127,12 @@ export function DateInput({
           value={parts.month}
           onValueChange={(month) => update({ ...parts, month })}
         >
-          <SelectTrigger aria-label={labels.month} aria-invalid={invalid} aria-required={mandatory}>
+          <SelectTrigger
+            aria-label={labels.month}
+            aria-invalid={invalid}
+            aria-required={mandatory}
+            aria-describedby={describedby}
+          >
             <SelectValue placeholder={labels.month} />
           </SelectTrigger>
           <SelectContent>
@@ -142,7 +149,12 @@ export function DateInput({
           value={parts.year}
           onValueChange={(year) => update({ ...parts, year })}
         >
-          <SelectTrigger aria-label={labels.year} aria-invalid={invalid} aria-required={mandatory}>
+          <SelectTrigger
+            aria-label={labels.year}
+            aria-invalid={invalid}
+            aria-required={mandatory}
+            aria-describedby={describedby}
+          >
             <SelectValue placeholder={labels.year} />
           </SelectTrigger>
           <SelectContent>

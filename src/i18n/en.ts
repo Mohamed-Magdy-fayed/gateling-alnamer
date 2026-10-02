@@ -217,7 +217,7 @@ export const en: Dictionary = {
       dobYear: "Year",
       consent: "I confirm my parent or guardian agrees to me creating this account.",
       username: "Username (optional)",
-      usernameHint: "3 to 20 characters: lowercase English letters, numbers, _ and .",
+      usernameHint: "3 to 20 characters: lowercase English letters, numbers, underscore and dot.",
     },
     forgot: {
       title: "Reset your password",
@@ -241,12 +241,12 @@ export const en: Dictionary = {
       passwordHint: "At least 8 characters.",
       identifier: "Email or username",
       showPassword: "Show password",
-      hidePassword: "Hide password",
+      requiredNote: "All fields are required unless marked optional.",
     },
     states: {
       under18Consent:
         "Because you're under 18, a parent or guardian must agree before you create an account.",
-      linkParent: "Link a parent account so they can follow your progress.",
+      linkParent: "Parent account linking is coming soon, so a parent can follow your progress.",
     },
     errors: {
       invalid: "Check the details you entered.",
@@ -257,9 +257,8 @@ export const en: Dictionary = {
         name: "Enter your name (at least 2 characters).",
         email: "Enter a valid email address.",
         username:
-          "This username is not valid. Use 3 to 20 lowercase English letters, numbers, _ or .",
+          "This username is not valid. Use 3 to 20 lowercase English letters, numbers, underscore or dot.",
         password: "The password must be 8 to 128 characters.",
-        role: "Choose an account type.",
         date_of_birth: "Choose a valid date of birth.",
         guardian_consent: "Tick the box to confirm your parent or guardian agrees.",
         parentAge: "A parent account needs a date of birth showing you are 18 or older.",

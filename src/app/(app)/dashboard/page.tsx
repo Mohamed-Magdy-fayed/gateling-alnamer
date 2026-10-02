@@ -48,14 +48,14 @@ export default async function DashboardPage({
             {t.dashboard.viewAs}
             <Badge tone="highlight">{t.common.sample}</Badge>
           </span>
-          <ul className="flex flex-wrap gap-1 rounded-[var(--radius-md)] bg-sunken p-1">
+          <ul className="flex flex-wrap gap-1 rounded-md bg-sunken p-1">
             {dashboardViews.map((item) => (
               <li key={item}>
                 <Link
                   href={{ pathname: "/dashboard", query: { view: item } }}
                   aria-current={item === view ? "page" : undefined}
                   className={cn(
-                    "flex min-h-11 items-center rounded-[var(--radius-sm)] px-3 text-sm font-medium",
+                    "flex min-h-11 items-center rounded-sm px-3 text-sm font-medium",
                     item === view ? "bg-raised text-fg shadow-e1" : "text-fg-2 hover:text-fg",
                   )}
                 >

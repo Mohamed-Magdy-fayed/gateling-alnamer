@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckIcon } from "lucide-react";
 import { RadioGroup as RadioGroupPrimitive } from "radix-ui";
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
@@ -24,13 +25,16 @@ function RadioGroupItem({
     <RadioGroupPrimitive.Item
       data-slot="radio-group-item"
       className={cn(
-        "flex min-h-11 items-center justify-center rounded-md border border-input bg-card px-3 text-sm font-medium text-foreground",
-        "focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
+        "flex min-h-11 items-center justify-center gap-2 rounded-md border border-input bg-card px-3 text-sm font-medium text-foreground",
+        "hover:border-primary focus-visible:outline-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-55",
         "data-[state=checked]:border-primary data-[state=checked]:bg-primary-soft data-[state=checked]:text-primary-soft-fg",
         className,
       )}
       {...props}
     >
+      <RadioGroupPrimitive.Indicator className="flex">
+        <CheckIcon aria-hidden className="size-4" />
+      </RadioGroupPrimitive.Indicator>
       {children}
     </RadioGroupPrimitive.Item>
   );

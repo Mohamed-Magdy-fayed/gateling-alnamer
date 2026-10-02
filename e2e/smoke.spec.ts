@@ -22,7 +22,7 @@ const DOB_YEAR = "السنة";
 const CONSENT = "أقرّ بأنني حصلت على موافقة ولي أمري على إنشاء هذا الحساب.";
 const PARENT_ROLE = "ولي أمر";
 const PARENT_AGE_ERROR = "حساب ولي الأمر يتطلب تاريخ ميلاد يثبت أن عمرك 18 عامًا أو أكثر.";
-const LINK_PARENT = "اربط حساب ولي أمرك ليتابع تقدّمك.";
+const LINK_PARENT = "ربط حساب ولي الأمر قادم قريبًا ليتمكن من متابعة تقدّمك.";
 
 const runId = Date.now().toString(36);
 const email = `smoke-${runId}@alnamer.local`;
@@ -157,7 +157,7 @@ test("a parent under 18 is refused with the age message", async ({ page }) => {
   await pickDate(page, 12, 2, 9);
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
   await expect(page).toHaveURL(/[/]sign-up/);
-  await expect(page.getByText(PARENT_AGE_ERROR)).toBeVisible();
+  await expect(page.locator("#field-date_of_birth-error")).toHaveText(PARENT_AGE_ERROR);
 });
 
 test("a parent needs a date of birth, then signs up as an adult", async ({ page }) => {
@@ -293,4 +293,45 @@ test.describe("first paint with an emulated dark scheme", () => {
       await page.evaluate(() => (window as unknown as { __themeAtDcl?: string }).__themeAtDcl),
     ).toBe("dark");
   });
+});
+
+const SHOW_PASSWORD = "إظهار كلمة المرور";
+
+test("a failed sign-up submit focuses the error summary, which links to the failing fields", async ({
+  page,
+}) => {
+  await page.goto("/sign-up");
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  const summary = page.locator('[data-slot="alert"]');
+  await expect(summary).toBeFocused();
+  await summary.getByRole("link").first().click();
+  await expect(page.getByLabel(FIELD_NAME)).toBeFocused();
+});
+
+test("a failed sign-in focuses the error alert", async ({ page }) => {
+  await page.goto("/sign-in");
+  await page.getByLabel(FIELD_IDENTIFIER).fill("nobody@alnamer.local");
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill("wrong-pass-1");
+  await page.getByRole("button", { name: SIGN_IN, exact: true }).click();
+  await expect(page.locator('[data-slot="alert"]')).toBeFocused();
+});
+
+test("a failed parent submit keeps Parent selected and shows no consent box", async ({ page }) => {
+  await startParentSignUp(page);
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  await expect(page).toHaveURL(/[/]sign-up/);
+  await expect(page.getByRole("radio", { name: PARENT_ROLE })).toBeChecked();
+  await expect(page.getByLabel(CONSENT)).toHaveCount(0);
+});
+
+test("the password toggle keeps one name and exposes aria-pressed", async ({ page }) => {
+  await page.goto("/sign-in");
+  const toggle = page.getByRole("button", { name: SHOW_PASSWORD });
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await toggle.click();
+  await expect(page.getByRole("button", { name: SHOW_PASSWORD })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByLabel(FIELD_PASSWORD, { exact: true })).toHaveAttribute("type", "text");
 });

@@ -11,9 +11,8 @@ type PasswordInputProps = Omit<ComponentProps<"input">, "type"> & {
   label: string;
   hint?: string;
   error?: string;
-  /** Accessible names for the toggle, from the dictionary. */
-  showLabel: string;
-  hideLabel: string;
+  /** Constant accessible name of the toggle (the state is `aria-pressed`), from the dictionary. */
+  toggleLabel: string;
 };
 
 /** Password field with a show/hide toggle. The value is an LTR island aligned to the start edge. */
@@ -22,8 +21,7 @@ export function PasswordInput({
   label,
   hint,
   error,
-  showLabel,
-  hideLabel,
+  toggleLabel,
   id,
   className,
   ...props
@@ -47,7 +45,8 @@ export function PasswordInput({
         <button
           type="button"
           onClick={() => setVisible((current) => !current)}
-          aria-label={visible ? hideLabel : showLabel}
+          aria-label={toggleLabel}
+          aria-pressed={visible}
           className="absolute inset-y-0 end-0 flex w-11 items-center justify-center text-fg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus"
         >
           <Icon aria-hidden className="size-4" strokeWidth={1.75} />

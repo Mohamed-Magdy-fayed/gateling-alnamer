@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { DateInput } from "@/components/al/date-input";
 import { PasswordInput } from "@/components/al/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,10 +23,41 @@ import { SubmitButton } from "@/ui/submit-button";
 type AuthText = Dictionary["auth"];
 const idle: FormState = { status: "idle" };
 
-function Message({ state, t }: { state: FormState; t: AuthText }) {
-  if (state.status === "idle" || !state.message) return null;
+const linkClass = "font-medium text-primary underline-offset-4 hover:underline";
+const summaryLinkClass = "font-medium underline underline-offset-4";
+
+/** Focuses the field a summary entry points at (a plain fragment jump does not focus buttons). */
+function FieldLink({ field, children }: { field: string; children: string }) {
+  const id = `field-${field}`;
   return (
-    <Alert tone={state.status === "error" ? "danger" : "success"}>
+    <a
+      href={`#${id}`}
+      className={summaryLinkClass}
+      onClick={(event) => {
+        event.preventDefault();
+        document.getElementById(id)?.focus();
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+/**
+ * Form-level result. After every submit it takes focus (a `tabIndex={-1}` alert) so keyboard and
+ * screen-reader users land on the outcome; field-format errors are listed as links to the fields.
+ */
+function Message({ state, t }: { state: FormState; t: AuthText }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (state.status !== "idle") ref.current?.focus();
+  }, [state]);
+  if (state.status === "idle" || !state.message) return null;
+  const failing = Object.entries(state.fieldErrors ?? {}).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  );
+  return (
+    <Alert ref={ref} tabIndex={-1} tone={state.status === "error" ? "danger" : "success"}>
       {state.message}
       {state.offerReset ? (
         <>
@@ -36,21 +67,35 @@ function Message({ state, t }: { state: FormState; t: AuthText }) {
           </Link>
         </>
       ) : null}
+      {failing.length > 0 ? (
+        <ul className="mt-1 list-disc ps-5">
+          {failing.map(([field, message]) => (
+            <li key={field}>
+              <FieldLink field={field}>{message}</FieldLink>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </Alert>
   );
 }
 
-const linkClass = "font-medium text-primary underline-offset-4 hover:underline";
+function RequiredNote({ t }: { t: AuthText }) {
+  return <p className="text-sm text-fg-muted">{t.fields.requiredNote}</p>;
+}
 
 export function SignInForm({ t }: { t: AuthText }) {
   const [state, action] = useActionState(signInAction, idle);
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
       <Message state={state} t={t} />
+      <RequiredNote t={t} />
       <Field
         name="identifier"
         label={t.fields.identifier}
         autoComplete="username"
+        autoCapitalize="none"
+        spellCheck={false}
         defaultValue={state.values?.identifier}
         required
         ltr
@@ -59,13 +104,14 @@ export function SignInForm({ t }: { t: AuthText }) {
         name="password"
         label={t.fields.password}
         autoComplete="current-password"
-        showLabel={t.fields.showPassword}
-        hideLabel={t.fields.hidePassword}
+        toggleLabel={t.fields.showPassword}
         required
       />
-      <Link href="/forgot-password" className={cn(linkClass, "self-start text-sm")}>
-        {t.signIn.forgot}
-      </Link>
+      {state.offerReset ? null : (
+        <Link href="/forgot-password" className={cn(linkClass, "self-start text-sm")}>
+          {t.signIn.forgot}
+        </Link>
+      )}
       <SubmitButton>{t.signIn.submit}</SubmitButton>
       <p className="text-center text-sm text-fg-2">
         {t.signIn.noAccount}{" "}
@@ -80,29 +126,39 @@ export function SignInForm({ t }: { t: AuthText }) {
 const roles = ["student", "parent"] as const;
 type Role = (typeof roles)[number];
 
+/** A form id that does not exist: keeps Radix from resetting the radio group when React resets the form. */
+const NO_FORM = "role-radio-detached";
+
+function toRole(value: string | undefined): Role {
+  return roles.find((item) => item === value) ?? "student";
+}
+
 type SignUpFormProps = { t: AuthText; defaultRole: string; locale: Locale };
 
 export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
   const [state, action] = useActionState(signUpAction, idle);
   const dir = dirOf(locale);
   const errors = state.fieldErrors ?? {};
-  const [role, setRole] = useState<Role>(
-    roles.find((item) => item === (state.values?.role ?? defaultRole)) ?? "student",
-  );
+  // The role follows the last action state until the user picks one: React resets the form after a
+  // failed submit, so the radio is controlled by the submitted value instead of by the DOM.
+  const [picked, setPicked] = useState<Role | null>(null);
+  const role = picked ?? toRole(state.values?.role ?? defaultRole);
   const [dob, setDob] = useState(state.values?.date_of_birth ?? "");
   const needsConsent = role === "student" && dob !== "" && isUnder18(dob, new Date());
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
       <Message state={state} t={t} />
+      <RequiredNote t={t} />
       <fieldset className="flex flex-col gap-2">
+        <input type="hidden" name="role" value={role} />
         <legend id="signup-role-legend" className="mb-1.5 text-sm font-medium">
           {t.signUp.roleLegend}
         </legend>
         <RadioGroup
-          name="role"
+          form={NO_FORM}
           dir={dir}
           value={role}
-          onValueChange={(value) => setRole(value === "parent" ? "parent" : "student")}
+          onValueChange={(value) => setPicked(toRole(value))}
           aria-labelledby="signup-role-legend"
           className="grid-cols-2"
         >
@@ -150,8 +206,7 @@ export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
         hint={t.fields.passwordHint}
         error={errors.password}
         autoComplete="new-password"
-        showLabel={t.fields.showPassword}
-        hideLabel={t.fields.hidePassword}
+        toggleLabel={t.fields.showPassword}
         required
         minLength={8}
       />
@@ -169,29 +224,29 @@ export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
       {needsConsent ? (
         <div className="flex flex-col gap-3">
           <Alert tone="info">{t.states.under18Consent}</Alert>
-          <div className="flex items-start gap-3">
-            <Checkbox
-              id="field-guardian_consent"
-              name="guardian_consent"
-              defaultChecked={state.values?.guardian_consent === "on"}
-              aria-invalid={errors.guardian_consent ? true : undefined}
-              aria-describedby={describedBy("field-guardian_consent", {
-                error: errors.guardian_consent,
-              })}
-              className="mt-0.5"
-            />
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="field-guardian_consent" className="leading-6 font-normal">
-                {t.signUp.consent}
-              </Label>
-              <p
-                id="field-guardian_consent-error"
-                aria-live="polite"
-                className={errors.guardian_consent ? "text-sm text-destructive" : "sr-only"}
-              >
-                {errors.guardian_consent}
-              </p>
-            </div>
+          <div className="flex flex-col gap-1">
+            <Label
+              htmlFor="field-guardian_consent"
+              className="flex min-h-11 cursor-pointer items-start gap-3 py-2.5 leading-6 font-normal"
+            >
+              <Checkbox
+                id="field-guardian_consent"
+                name="guardian_consent"
+                defaultChecked={state.values?.guardian_consent === "on"}
+                aria-invalid={errors.guardian_consent ? true : undefined}
+                aria-describedby={describedBy("field-guardian_consent", {
+                  error: errors.guardian_consent,
+                })}
+              />
+              <span>{t.signUp.consent}</span>
+            </Label>
+            <p
+              id="field-guardian_consent-error"
+              aria-live="polite"
+              className={errors.guardian_consent ? "text-sm text-destructive" : "sr-only"}
+            >
+              {errors.guardian_consent}
+            </p>
           </div>
         </div>
       ) : null}
@@ -242,6 +297,7 @@ export function ResetPasswordForm({ t, email }: { t: AuthText; email: string }) 
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
       <Message state={state} t={t} />
+      <RequiredNote t={t} />
       <Field
         name="email"
         type="email"
@@ -262,15 +318,14 @@ export function ResetPasswordForm({ t, email }: { t: AuthText; email: string }) 
         ltr
         className="tabular tracking-[0.4em]"
       />
-      <Field
+      <PasswordInput
         name="password"
-        type="password"
         label={t.reset.newPassword}
         hint={t.fields.passwordHint}
         autoComplete="new-password"
+        toggleLabel={t.fields.showPassword}
         minLength={8}
         required
-        ltr
       />
       <SubmitButton>{t.reset.submit}</SubmitButton>
     </form>
