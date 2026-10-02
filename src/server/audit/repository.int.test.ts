@@ -50,13 +50,25 @@ describe("audit repository", () => {
     await expect(client`delete from audit_log`).rejects.toThrow(/append-only/);
   });
 
-  it("keeps the row when its actor user is deleted", async () => {
+  it("rejects an UPDATE that only nulls actor_id", async () => {
+    const [user] = await client`
+      insert into users (name, email) values ('B', 'audit-null@example.test') returning id`;
+    const actorId = String(user?.id);
+    await repository.writeAudit(conn, { actorId, action: "test.null-actor", subjectType: "user" });
+    await expect(
+      client`update audit_log set actor_id = null where actor_id = ${actorId}`,
+    ).rejects.toThrow(/append-only/);
+  });
+
+  it("refuses to delete a user who has audit rows", async () => {
     const [user] = await client`
       insert into users (name, email) values ('A', 'audit-actor@example.test') returning id`;
     const actorId = String(user?.id);
     await repository.writeAudit(conn, { actorId, action: "test.actor", subjectType: "user" });
-    await client`delete from users where id = ${actorId}`;
+    await expect(client`delete from users where id = ${actorId}`).rejects.toThrow(
+      /foreign key|violates/i,
+    );
     const rows = await repository.listAudit({ subjectType: "user" }, conn);
-    expect(rows.find((r) => r.action === "test.actor")?.actorId).toBeNull();
+    expect(rows.find((r) => r.action === "test.actor")?.actorId).toBe(actorId);
   });
 });

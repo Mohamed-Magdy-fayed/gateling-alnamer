@@ -22,6 +22,20 @@
       "when": 1790921161428,
       "tag": "0002_audit_trigger_and_settings_row",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790921342648,
+      "tag": "0003_pale_vanisher",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790921345958,
+      "tag": "0004_audit_trigger_strict",
+      "breakpoints": true
     }
   ]
 }
