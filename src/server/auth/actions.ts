@@ -12,7 +12,7 @@ import { credentials, passwordResetCodes, users } from "@/server/db/schema";
 import { sendEvent } from "@/server/jobs/send";
 import { authenticate } from "./credentials";
 import { hashPassword, randomCode, sha256 } from "./password";
-import { createSession, destroyAllSessions, destroySession } from "./session";
+import { createSession, destroySession, invalidateUserSessions } from "./session";
 
 export type FormState = { status: "idle" | "error" | "success"; message?: string; email?: string };
 
@@ -181,7 +181,7 @@ export async function resetPasswordAction(
       .where(eq(passwordResetCodes.id, record.id));
   });
   // A password reset signs the account out everywhere.
-  await destroyAllSessions(user.id);
+  await invalidateUserSessions(user.id);
   return { status: "success", message: t.auth.reset.done };
 }
 
