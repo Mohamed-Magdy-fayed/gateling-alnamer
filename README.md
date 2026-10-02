@@ -24,8 +24,9 @@ npm run dev
 | `npm run <script> -- --test-db` | `build:local`, `start:local`, `db:migrate`, `db:seed` and `setup` accept `--test-db`: use the throwaway `db-test` container (`TEST_DATABASE_URL`, default `postgres://alnamer_test:alnamer_test@localhost:5433/alnamer_test`) instead of the `.env` database. |
 | `npm run check` | Typecheck + Biome. |
 | `npm test` | Vitest unit tests. |
-| `npm run smoke` | Playwright smoke test of the demo journeys on `start:local --test-db` (needs `db-test` and Mailpit up). |
-| `npm run verify` | `check` + `test` + `build:local --test-db`. Run before every push. |
+| `npm run test:int` | Integration tests against the `db-test` container (`npm run db:up` first). |
+| `npm run smoke` | Playwright smoke test of the demo journeys on `start:local --test-db` (needs `db-test` and Mailpit up). Serves on port 3410. |
+| `npm run verify` | `check` + `test` + `test:int` + `build:local --test-db`. Stops with a "start Docker" message if `db-test` is unreachable. Run before every push. |
 | `npm run setup` | One-shot local setup (see above). |
 | `npm run env:init` | Create `.env` from `.env.example`, or append the missing keys (prints key names only). |
 | `npm run db:up` | `docker compose up -d --wait`. |
@@ -33,6 +34,10 @@ npm run dev
 | `npm run db:migrate` | Apply migrations (local-database guard on). |
 | `npm run db:seed` | Upsert the role accounts (refused on Vercel and on non-local databases). |
 | `npm run check:env` | Report which env keys are set (names only); `-- --markdown` writes `docs-public/env.md`. |
+
+Ports: the app runs on 3400 (`dev`); the smoke test serves on 3410.
+
+Recipes for common changes are in `docs-public/recipes/` (tRPC procedure, Inngest function, data migration).
 
 Never run a plain `next build` locally while `.env.production.local` exists: Next would load the real Production credentials. `build:local` prevents that.
 

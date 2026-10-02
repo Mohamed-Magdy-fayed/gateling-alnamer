@@ -20,7 +20,7 @@
     "test:watch": "vitest",
     "test:int": "vitest run --config vitest.int.config.ts",
     "smoke": "node scripts/smoke.mjs",
-    "verify": "npm run check && npm test && npm run build:local -- --test-db",
+    "verify": "npm run check && npm test && node scripts/require-test-db.mjs && npm run test:int && npm run build:local -- --test-db",
     "db:up": "docker compose up -d --wait",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
