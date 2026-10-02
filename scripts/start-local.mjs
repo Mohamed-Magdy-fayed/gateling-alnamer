@@ -8,8 +8,11 @@ try {
   console.error(`start:local: ${error instanceof Error ? error.message : error}`);
   process.exit(1);
 }
+// Port 3400 by default: 3000 and 3100 are often held by other local projects.
+const env = sanitizedChildEnv();
+env.PORT = env.PORT || "3400";
 const result = spawnSync(process.execPath, ["./node_modules/next/dist/bin/next", "start"], {
   stdio: "inherit",
-  env: sanitizedChildEnv(),
+  env,
 });
 process.exit(result.status ?? 1);

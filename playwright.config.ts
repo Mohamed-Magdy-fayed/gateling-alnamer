@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// Not 3000: that port is often held by a dev server.
-const PORT = Number(process.env.SMOKE_PORT ?? 3100);
+// Al-Namer ports: dev and start:local 3400, smoke 3410 (3000/3100 are often held by other projects).
+const PORT = Number(process.env.SMOKE_PORT ?? 3410);
 const baseURL = `http://localhost:${PORT}`;
 
 // The smoke runs on the throwaway test database (`--test-db`); the server is owned and killed
