@@ -18,26 +18,37 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { LocalizedText } from "@/lib/localized-text";
+import { citext } from "./types";
 
 export const userRole = pgEnum("user_role", ["student", "parent", "teacher", "admin", "reviewer"]);
 export const userStatus = pgEnum("user_status", ["active", "suspended"]);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  email: text("email").unique(),
-  role: userRole("role").notNull().default("student"),
-  isSample: boolean("is_sample").notNull().default(false),
-  dateOfBirth: date("date_of_birth"),
-  guardianConsentAt: timestamp("guardian_consent_at", { withTimezone: true }),
-  locale: text("locale"),
-  status: userStatus("status").notNull().default("active"),
-  publicNumber: text("public_number").unique(),
-  isSuperAdmin: boolean("is_super_admin").notNull().default(false),
-  createdAt,
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    email: citext("email").unique(),
+    username: citext("username").unique(),
+    role: userRole("role").notNull().default("student"),
+    isSample: boolean("is_sample").notNull().default(false),
+    dateOfBirth: date("date_of_birth"),
+    guardianConsentAt: timestamp("guardian_consent_at", { withTimezone: true }),
+    locale: text("locale"),
+    status: userStatus("status").notNull().default("active"),
+    publicNumber: text("public_number").unique(),
+    isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+    createdAt,
+  },
+  (t) => [
+    check(
+      "users_username_format",
+      sql`${t.username} IS NULL OR (char_length(${t.username}) BETWEEN 3 AND 20 AND lower(${t.username}::text) ~ '^[a-z0-9_.]+$')`,
+    ),
+  ],
+);
 
 export const credentials = pgTable("credentials", {
   userId: uuid("user_id")

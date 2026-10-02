@@ -16,7 +16,7 @@ import { createSession, destroyAllSessions, destroySession } from "./session";
 
 export type FormState = { status: "idle" | "error" | "success"; message?: string; email?: string };
 
-const email = z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(254));
+const email = z.string().trim().pipe(z.email()).pipe(z.string().max(254));
 const password = z.string().min(8).max(128);
 
 const signUpSchema = z.object({
