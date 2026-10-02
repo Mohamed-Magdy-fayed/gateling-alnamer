@@ -46,9 +46,14 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
         <div className="flex flex-col gap-6">
           <div className="flex flex-wrap gap-1.5">
             <Badge tone="highlight">{t.common.sample}</Badge>
-            <Badge tone="primary">{categoryName(course.categories, "subject")}</Badge>
-            <Badge>{categoryName(course.categories, "grade")}</Badge>
-            <Badge>{categoryName(course.categories, "curriculum")}</Badge>
+            {(["subject", "grade", "curriculum"] as const).map((type) => {
+              const name = categoryName(course.categories, type);
+              return name ? (
+                <Badge key={type} tone={type === "subject" ? "primary" : "neutral"}>
+                  {name}
+                </Badge>
+              ) : null;
+            })}
           </div>
           <h1 className="text-[clamp(1.875rem,1.5rem+1.6vw,2.5rem)] font-bold">
             <bdi>{pickText(course.title, locale)}</bdi>

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ar } from "./ar";
 import {
   defaultLocale,
   dirOf,
@@ -8,6 +9,7 @@ import {
   formatNumber,
   isLocale,
 } from "./config";
+import { en } from "./en";
 
 const ARABIC_INDIC_DIGITS = /[٠-٩]/;
 
@@ -82,5 +84,25 @@ describe("formatCount", () => {
     expect(formatCount("en", forms, 1)).toBe("one");
     expect(formatCount("en", forms, 2)).toBe("2 many");
     expect(formatCount("en", forms, 5)).toBe("5 many");
+  });
+});
+
+describe("formatCount with the student-count key", () => {
+  const forms = (locale: "ar" | "en") =>
+    (locale === "ar" ? ar : en).dashboard.teacher.studentsCount;
+
+  it("reads correctly in Arabic for 0, 1, 2, 3-10 and 11+", () => {
+    expect(formatCount("ar", forms("ar"), 0)).toBe("0 طالبًا");
+    expect(formatCount("ar", forms("ar"), 1)).toBe("طالب واحد");
+    expect(formatCount("ar", forms("ar"), 2)).toBe("طالبان");
+    expect(formatCount("ar", forms("ar"), 3)).toBe("3 طلاب");
+    expect(formatCount("ar", forms("ar"), 10)).toBe("10 طلاب");
+    expect(formatCount("ar", forms("ar"), 11)).toBe("11 طالبًا");
+  });
+
+  it("reads correctly in English", () => {
+    expect(formatCount("en", forms("en"), 0)).toBe("0 students");
+    expect(formatCount("en", forms("en"), 1)).toBe("1 student");
+    expect(formatCount("en", forms("en"), 42)).toBe("42 students");
   });
 });

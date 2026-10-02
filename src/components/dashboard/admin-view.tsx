@@ -88,16 +88,17 @@ export function AdminView({
             <tbody className="divide-y divide-line">
               {orders.map((order) => {
                 const course = courses[order.course];
+                if (!course) return null;
                 return (
                   <tr key={order.number}>
                     <td className="px-4 py-3">
                       <Ltr>{order.number}</Ltr>
                     </td>
                     <td className="px-4 py-3">
-                      <bdi>{course ? pickText(course.title, locale) : ""}</bdi>
+                      <bdi>{pickText(course.title, locale)}</bdi>
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
-                      <Ltr>{formatPrice(locale, course?.priceMinor ?? 0, t.common.currency)}</Ltr>
+                      <Ltr>{formatPrice(locale, course.priceMinor, t.common.currency)}</Ltr>
                     </td>
                     <td className="px-4 py-3">
                       <Badge tone={tones[order.status]}>{a.orderStatuses[order.status]}</Badge>

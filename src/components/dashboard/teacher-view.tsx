@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import type { Dictionary } from "@/i18n/ar";
-import type { Locale } from "@/i18n/config";
+import { formatCount, type Locale } from "@/i18n/config";
 import { pickText } from "@/lib/localized-text";
 import { formatPrice } from "@/lib/money-format";
 import type { DashboardCourse } from "@/server/catalog/types";
@@ -40,8 +40,16 @@ export function TeacherView({
         <div className="grid gap-4 sm:grid-cols-3">
           {stats.map((stat, index) => (
             <Card key={stat.label} className={index === 0 ? "bg-primary-soft p-5" : "p-5"}>
-              <p className="text-sm text-fg-2">{stat.label}</p>
-              <p className="mt-1 text-2xl font-bold">
+              <p className={index === 0 ? "text-sm text-primary-soft-fg" : "text-sm text-fg-2"}>
+                {stat.label}
+              </p>
+              <p
+                className={
+                  index === 0
+                    ? "mt-1 text-2xl font-bold text-primary-soft-fg"
+                    : "mt-1 text-2xl font-bold"
+                }
+              >
                 <Ltr>{formatPrice(locale, stat.value, t.common.currency)}</Ltr>
               </p>
             </Card>
@@ -84,7 +92,7 @@ export function TeacherView({
               <div key={course.id} className="flex flex-wrap items-center gap-3 p-4">
                 <bdi className="min-w-0 flex-1 font-medium">{pickText(course.title, locale)}</bdi>
                 <span className="text-sm text-fg-muted">
-                  <Ltr>{studentCounts[index] ?? 0}</Ltr> {d.students}
+                  {formatCount(locale, d.studentsCount, studentCounts[index] ?? 0)}
                 </span>
                 <Badge tone={tones[status]}>{d.statuses[status]}</Badge>
               </div>

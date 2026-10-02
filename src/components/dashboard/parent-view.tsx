@@ -30,7 +30,7 @@ export function ParentView({ t, locale }: { t: Dictionary; locale: Locale }) {
         {t.common.comingInFullVersion}
       </p>
       <ul className="grid gap-4 md:grid-cols-2">
-        {children.map((child) => (
+        {children.map((child, index) => (
           <li key={child.name.en}>
             <Card className="flex flex-col gap-4 p-5">
               <div className="flex items-center gap-3">
@@ -58,9 +58,17 @@ export function ParentView({ t, locale }: { t: Dictionary; locale: Locale }) {
                 <span className="text-fg-2">{p.lastQuiz}</span>
                 <Ltr className="font-semibold text-success">{child.quiz}%</Ltr>
               </div>
-              <Button variant="secondary" size="sm" disabled>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled
+                aria-describedby={`buy-for-note-${index}`}
+              >
                 {p.buyFor}
               </Button>
+              <p id={`buy-for-note-${index}`} className="text-xs text-fg-muted">
+                {p.buyForSoon}
+              </p>
             </Card>
           </li>
         ))}
