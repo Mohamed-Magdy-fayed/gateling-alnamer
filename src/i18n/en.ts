@@ -281,6 +281,11 @@ export const en: Dictionary = {
       parent: "Parent",
       teacher: "Teacher",
       admin: "Admin",
+      reviewer: "Reviewer",
+    },
+    reviewer: {
+      title: "Reviewer workspace",
+      body: "Your review tools are coming soon. Nothing to review here yet.",
     },
     roleLabel: "Your account type: {role}",
     student: {

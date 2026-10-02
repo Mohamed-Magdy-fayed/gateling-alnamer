@@ -287,6 +287,11 @@ export const ar = {
       parent: "ولي أمر",
       teacher: "معلم",
       admin: "إدارة",
+      reviewer: "مراجع",
+    },
+    reviewer: {
+      title: "مساحة المراجع",
+      body: "أدوات المراجعة ستتوفر قريبًا. لا يوجد شيء للمراجعة هنا بعد.",
     },
     roleLabel: "نوع حسابك: {role}",
     student: {

@@ -2,12 +2,14 @@ import "server-only";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { getCurrentUser, type SessionUser } from "@/server/auth/session";
+import { serverEnv } from "@/server/env";
 import { AppError } from "@/server/errors";
 
-export type TrpcContext = { user: SessionUser | null };
+/** `headers` are the request headers; a context without them fails the mutation Origin check. */
+export type TrpcContext = { user: SessionUser | null; headers?: Headers };
 
-export async function createTrpcContext(): Promise<TrpcContext> {
-  return { user: await getCurrentUser() };
+export async function createTrpcContext({ req }: { req: Request }): Promise<TrpcContext> {
+  return { user: await getCurrentUser(), headers: req.headers };
 }
 
 const GENERIC_INTERNAL_MESSAGE = "Internal server error";
@@ -32,6 +34,33 @@ const mapAppErrors = t.middleware(async ({ next }) => {
   return result;
 });
 
+function hostOf(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).host.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** Mutations must come from this site: Origin present and its host equal to the request or BASE_URL host. */
+export function isAllowedOrigin(
+  headers: Headers | undefined,
+  baseUrl: string | undefined,
+): boolean {
+  const origin = hostOf(headers?.get("origin") ?? undefined);
+  if (!origin) return false;
+  const requestHost = headers?.get("host")?.toLowerCase();
+  return origin === requestHost || origin === hostOf(baseUrl);
+}
+
+const requireSameOrigin = t.middleware(async ({ type, ctx, next }) => {
+  if (type === "mutation" && !isAllowedOrigin(ctx.headers, serverEnv().BASE_URL)) {
+    throw new AppError("forbidden", { message: "origin" });
+  }
+  return next();
+});
+
 /** Server-side log of the real error. Never sent to the client. */
 export function logTrpcError({
   path,
@@ -51,5 +80,5 @@ export function logTrpcError({
 }
 
 export const router = t.router;
-export const publicProcedure = t.procedure.use(mapAppErrors);
+export const publicProcedure = t.procedure.use(mapAppErrors).use(requireSameOrigin);
 export const createCallerFactory = t.createCallerFactory;

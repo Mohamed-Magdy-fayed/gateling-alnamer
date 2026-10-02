@@ -9,7 +9,7 @@
     "dev": "next dev -p 3400",
     "build": "next build",
     "start": "next start",
-    "vercel-build": "tsx scripts/migrate.mts && next build",
+    "vercel-build": "tsx scripts/migrate.mts && tsx scripts/seed-demo.mts && next build",
     "build:local": "node scripts/build-local.mjs",
     "start:local": "node scripts/start-local.mjs",
     "typecheck": "tsc --noEmit",
@@ -26,6 +26,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.mts",
     "db:seed": "tsx --conditions=react-server scripts/seed.mts",
+    "db:seed:demo": "tsx --conditions=react-server scripts/seed-demo.mts",
     "check:env": "node scripts/check-env.mjs",
     "env:init": "node scripts/env-init.mjs",
     "setup": "node scripts/setup.mjs"

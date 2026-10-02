@@ -1,21 +1,21 @@
 import Link from "next/link";
 import { AdminView } from "@/components/dashboard/admin-view";
 import { ParentView } from "@/components/dashboard/parent-view";
+import { ReviewerView } from "@/components/dashboard/reviewer-view";
 import { StudentView } from "@/components/dashboard/student-view";
 import { TeacherView } from "@/components/dashboard/teacher-view";
+import {
+  type DashboardView,
+  dashboardViewForRole,
+  dashboardViews,
+  isDashboardView,
+} from "@/components/dashboard/views";
 import { format } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { shouldPromptParentLink } from "@/server/auth/profile";
 import { requireUser } from "@/server/auth/session";
 import { listCoursesForDashboard } from "@/server/catalog/repository";
 import { Alert, Badge, Container, cn } from "@/ui";
-
-const views = ["student", "parent", "teacher", "admin"] as const;
-type View = (typeof views)[number];
-
-function isView(value: string | undefined): value is View {
-  return views.some((view) => view === value);
-}
 
 export default async function DashboardPage({
   searchParams,
@@ -25,9 +25,8 @@ export default async function DashboardPage({
   const user = await requireUser();
   const { t, locale } = await getDictionary();
   const { view: requested } = await searchParams;
-  // Reviewers have no demo view yet; they fall back to the admin one.
-  const ownView: View = user.role === "reviewer" ? "admin" : user.role;
-  const view: View = isView(requested) ? requested : ownView;
+  const ownView = dashboardViewForRole(user.role);
+  const view: DashboardView = isDashboardView(requested) ? requested : ownView;
   const [courses, promptParentLink] = await Promise.all([
     listCoursesForDashboard(),
     shouldPromptParentLink(user.id),
@@ -50,7 +49,7 @@ export default async function DashboardPage({
             <Badge tone="highlight">{t.common.sample}</Badge>
           </span>
           <ul className="flex flex-wrap gap-1 rounded-[var(--radius-md)] bg-sunken p-1">
-            {views.map((item) => (
+            {dashboardViews.map((item) => (
               <li key={item}>
                 <Link
                   href={{ pathname: "/dashboard", query: { view: item } }}
@@ -78,6 +77,7 @@ export default async function DashboardPage({
         {view === "student" ? <StudentView t={t} locale={locale} courses={courses} /> : null}
         {view === "parent" ? <ParentView t={t} locale={locale} /> : null}
         {view === "teacher" ? <TeacherView t={t} locale={locale} courses={courses} /> : null}
+        {view === "reviewer" ? <ReviewerView t={t} /> : null}
         {view === "admin" ? <AdminView t={t} locale={locale} courses={courses} /> : null}
       </div>
     </Container>
