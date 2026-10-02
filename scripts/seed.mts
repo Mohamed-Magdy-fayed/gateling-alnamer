@@ -32,7 +32,7 @@ if (!url) {
 const { drizzle } = await import("drizzle-orm/postgres-js");
 const { default: postgres } = await import("postgres");
 const { credentials, users } = await import("../src/server/db/schema");
-const { generateSalt, hashPassword } = await import("../src/server/auth/password");
+const { hashPassword } = await import("../src/server/auth/password");
 
 const client = postgres(url, { max: 1, onnotice: () => {} });
 const db = drizzle(client);
@@ -45,9 +45,8 @@ try {
       .onConflictDoNothing({ target: users.email })
       .returning({ id: users.id });
     if (!user) continue;
-    const passwordSalt = generateSalt();
-    const passwordHash = await hashPassword(SEED_PASSWORD, passwordSalt);
-    await db.insert(credentials).values({ userId: user.id, passwordHash, passwordSalt });
+    const passwordHash = await hashPassword(SEED_PASSWORD);
+    await db.insert(credentials).values({ userId: user.id, passwordHash, passwordSalt: null });
     created += 1;
   }
   console.log(`Seeded ${ACCOUNTS.length} accounts (${created} new).`);

@@ -10,13 +10,11 @@ import { RESET_CODE_TTL_MS, RESET_MAX_ATTEMPTS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { credentials, passwordResetCodes, users } from "@/server/db/schema";
 import { sendEvent } from "@/server/jobs/send";
-import { generateSalt, hashPassword, randomCode, sha256, verifyPassword } from "./password";
+import { authenticate } from "./credentials";
+import { hashPassword, randomCode, sha256 } from "./password";
 import { createSession, destroyAllSessions, destroySession } from "./session";
 
 export type FormState = { status: "idle" | "error" | "success"; message?: string; email?: string };
-
-/** Compared against when the email is unknown, so timing does not reveal registered emails. */
-const DUMMY_SALT = "00000000000000000000000000000000";
 
 const email = z.string().trim().toLowerCase().pipe(z.email()).pipe(z.string().max(254));
 const password = z.string().min(8).max(128);
@@ -47,15 +45,14 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
   });
   if (existing) return { status: "error", message: t.auth.errors.duplicate };
 
-  const salt = generateSalt();
-  const passwordHash = await hashPassword(input.password, salt);
+  const passwordHash = await hashPassword(input.password);
   const userId = await db().transaction(async (tx) => {
     const [user] = await tx
       .insert(users)
       .values({ name: input.name, email: input.email, role: input.role })
       .returning({ id: users.id });
     if (!user) throw new Error("User insert returned no row");
-    await tx.insert(credentials).values({ userId: user.id, passwordHash, passwordSalt: salt });
+    await tx.insert(credentials).values({ userId: user.id, passwordHash, passwordSalt: null });
     return user.id;
   });
 
@@ -68,21 +65,10 @@ export async function signInAction(_prev: FormState, formData: FormData): Promis
   const parsed = signInSchema.safeParse(fields(formData));
   if (!parsed.success) return { status: "error", message: t.auth.errors.credentials };
 
-  const user = await db().query.users.findFirst({
-    columns: { id: true },
-    where: eq(users.email, parsed.data.email),
-    with: { credentials: { columns: { passwordHash: true, passwordSalt: true } } },
-  });
-  const ok = user?.credentials
-    ? await verifyPassword(
-        parsed.data.password,
-        user.credentials.passwordSalt,
-        user.credentials.passwordHash,
-      )
-    : await verifyPassword(parsed.data.password, DUMMY_SALT, "00").then(() => false);
-  if (!user || !ok) return { status: "error", message: t.auth.errors.credentials };
+  const userId = await authenticate(parsed.data.email, parsed.data.password);
+  if (!userId) return { status: "error", message: t.auth.errors.credentials };
 
-  await createSession(user.id);
+  await createSession(userId);
   redirect("/dashboard");
 }
 
@@ -179,16 +165,15 @@ export async function resetPasswordAction(
     return { status: "error", message: t.auth.errors.code };
   }
 
-  const salt = generateSalt();
-  const passwordHash = await hashPassword(input.password, salt);
+  const passwordHash = await hashPassword(input.password);
   const now = clock.now();
   await db().transaction(async (tx) => {
     await tx
       .insert(credentials)
-      .values({ userId: user.id, passwordHash, passwordSalt: salt, updatedAt: now })
+      .values({ userId: user.id, passwordHash, passwordSalt: null, updatedAt: now })
       .onConflictDoUpdate({
         target: credentials.userId,
-        set: { passwordHash, passwordSalt: salt, updatedAt: now },
+        set: { passwordHash, passwordSalt: null, updatedAt: now },
       });
     await tx
       .update(passwordResetCodes)

@@ -1,43 +1,79 @@
 import { describe, expect, it } from "vitest";
+import { DUMMY_PASSWORD_HASH } from "@/server/config/policy";
 import {
   generateSalt,
+  hashLegacyScrypt,
   hashPassword,
+  isLegacyHash,
   randomCode,
   randomToken,
   sha256,
+  verifyDummy,
   verifyPassword,
 } from "./password";
 
+const PHC_PREFIX = "$argon2id$v=19$m=19456,t=2,p=1$";
+
 describe("password hashing", () => {
-  it("verifies the password it hashed", async () => {
-    const salt = generateSalt();
-    const hash = await hashPassword("correct horse", salt);
-    expect(await verifyPassword("correct horse", salt, hash)).toBe(true);
+  it("hashes to an argon2id PHC string and verifies the round trip", async () => {
+    const passwordHash = await hashPassword("correct horse");
+    expect(passwordHash.startsWith(PHC_PREFIX)).toBe(true);
+    expect(await verifyPassword("correct horse", { passwordHash, passwordSalt: null })).toBe(true);
   });
 
   it("rejects a wrong password", async () => {
-    const salt = generateSalt();
-    const hash = await hashPassword("correct horse", salt);
-    expect(await verifyPassword("wrong horse", salt, hash)).toBe(false);
+    const passwordHash = await hashPassword("correct horse");
+    expect(await verifyPassword("wrong horse", { passwordHash, passwordSalt: null })).toBe(false);
   });
 
-  it("rejects a stored hash of a different length", async () => {
-    const salt = generateSalt();
-    const hash = await hashPassword("correct horse", salt);
-    expect(await verifyPassword("correct horse", salt, hash.slice(0, 32))).toBe(false);
+  it("uses a fresh salt for every hash", async () => {
+    expect(await hashPassword("pw")).not.toBe(await hashPassword("pw"));
   });
 
   it("normalises passwords to NFKC before hashing", async () => {
-    const salt = generateSalt();
-    expect(await hashPassword("ﬁ", salt)).toBe(await hashPassword("fi", salt));
+    const passwordHash = await hashPassword("ﬁ");
+    expect(await verifyPassword("fi", { passwordHash, passwordSalt: null })).toBe(true);
   });
 
-  it("produces different hashes for different salts", async () => {
-    expect(await hashPassword("pw", "a")).not.toBe(await hashPassword("pw", "b"));
+  it("returns false for a malformed argon2 hash instead of throwing", async () => {
+    const credential = { passwordHash: "$argon2id$garbage", passwordSalt: null };
+    expect(await verifyPassword("pw", credential)).toBe(false);
+  });
+
+  it("verifies a legacy scrypt credential and flags it for rehash", async () => {
+    const salt = generateSalt();
+    const passwordHash = await hashLegacyScrypt("correct horse", salt);
+    const credential = { passwordHash, passwordSalt: salt };
+    expect(isLegacyHash(credential)).toBe(true);
+    expect(await verifyPassword("correct horse", credential)).toBe(true);
+    expect(await verifyPassword("wrong horse", credential)).toBe(false);
+    expect(isLegacyHash({ passwordHash: await hashPassword("x"), passwordSalt: null })).toBe(false);
+  });
+
+  it("rejects a legacy hash of a different length or with no salt", async () => {
+    const salt = generateSalt();
+    const passwordHash = await hashLegacyScrypt("correct horse", salt);
+    const truncated = { passwordHash: passwordHash.slice(0, 32), passwordSalt: salt };
+    expect(await verifyPassword("correct horse", truncated)).toBe(false);
+    expect(await verifyPassword("correct horse", { passwordHash, passwordSalt: null })).toBe(false);
+  });
+
+  it("normalises legacy scrypt passwords to NFKC", async () => {
+    expect(await hashLegacyScrypt("ﬁ", "a")).toBe(await hashLegacyScrypt("fi", "a"));
   });
 
   it("generates a 32-character hex salt", () => {
     expect(generateSalt()).toMatch(/^[0-9a-f]{32}$/);
+  });
+});
+
+describe("dummy verification", () => {
+  it("ships a valid argon2id dummy hash with the standard parameters", () => {
+    expect(DUMMY_PASSWORD_HASH.startsWith(PHC_PREFIX)).toBe(true);
+  });
+
+  it("always resolves false after running one argon2 verify", async () => {
+    expect(await verifyDummy("anything")).toBe(false);
   });
 });
 

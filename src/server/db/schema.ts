@@ -36,7 +36,7 @@ export const credentials = pgTable("credentials", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   passwordHash: text("password_hash").notNull(),
-  passwordSalt: text("password_salt").notNull(),
+  passwordSalt: text("password_salt"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

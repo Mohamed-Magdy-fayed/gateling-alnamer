@@ -1,0 +1,1 @@
+ALTER TABLE "credentials" ALTER COLUMN "password_salt" DROP NOT NULL;
