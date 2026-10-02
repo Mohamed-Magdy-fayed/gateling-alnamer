@@ -1,6 +1,6 @@
 // `next build` with `.env` forced first (see lib/local-env.mjs).
 import { spawnSync } from "node:child_process";
-import { loadLocalEnv, parseLocalArgs } from "./lib/local-env.mjs";
+import { loadLocalEnv, parseLocalArgs, sanitizedChildEnv } from "./lib/local-env.mjs";
 
 try {
   loadLocalEnv(parseLocalArgs(process.argv.slice(2)));
@@ -10,6 +10,6 @@ try {
 }
 const result = spawnSync(process.execPath, ["./node_modules/next/dist/bin/next", "build"], {
   stdio: "inherit",
-  env: process.env,
+  env: sanitizedChildEnv(),
 });
 process.exit(result.status ?? 1);

@@ -13,25 +13,36 @@ const REDIS_TOKEN = "LOCAL_REDIS_TOKEN";
 const REDIS_REST_TOKEN = "UPSTASH_REDIS_REST_TOKEN";
 const secret = () => randomBytes(32).toString("base64");
 
-// The REST token must match the token the local proxy accepts, so both share one value.
-const redisToken = secret();
+const existingText = existsSync(target) ? readFileSync(target, "utf8") : "";
+const BLANK_LINE = /^([A-Z][A-Z0-9_]*)=[^\S\r\n]*(?:""|'')?[^\S\r\n]*(?=\r?$)/gm;
+// dotenv's parse drops some blank assignments, so blanks are read from the raw lines.
+const blankKeys = new Set([...existingText.matchAll(BLANK_LINE)].map((match) => match[1]));
+const present = {
+  ...Object.fromEntries([...blankKeys].map((key) => [key, ""])),
+  ...parse(existingText),
+};
+
+// The REST token must match the token the local proxy accepts, so both share one value:
+// an existing non-blank one wins, in either direction.
+const redisToken = present[REDIS_TOKEN] || present[REDIS_REST_TOKEN] || secret();
 const generated = {
   ...Object.fromEntries(GENERATED.map((key) => [key, secret()])),
   [REDIS_TOKEN]: redisToken,
   [REDIS_REST_TOKEN]: redisToken,
 };
 
-function fill(line, key, existing) {
+// A generated key that is present but blank counts as missing.
+const isMissing = (key) => !(key in present) || (key in generated && !present[key]);
+
+function fill(line, key) {
   const value = generated[key];
-  if (value === undefined) return line;
-  if (key === REDIS_REST_TOKEN && existing[REDIS_TOKEN]) return `${key}=${existing[REDIS_TOKEN]}`;
-  return `${key}=${value}`;
+  return value === undefined ? line : `${key}=${value}`;
 }
 
-const present = existsSync(target) ? parse(readFileSync(target, "utf8")) : {};
 const created = !existsSync(target);
 const added = [];
 const block = [];
+const blanks = [];
 let comments = [];
 for (const line of readFileSync(example, "utf8").split(/\r?\n/)) {
   const key = /^([A-Z][A-Z0-9_]*)=/.exec(line)?.[1];
@@ -39,8 +50,9 @@ for (const line of readFileSync(example, "utf8").split(/\r?\n/)) {
     comments = line.startsWith("#") ? [...comments, line] : [];
     continue;
   }
-  if (!(key in present)) {
-    block.push(...comments, fill(line, key, present));
+  if (isMissing(key)) {
+    if (key in present) blanks.push(key);
+    else block.push(...comments, fill(line, key));
     added.push(key);
   }
   comments = [];
@@ -55,7 +67,11 @@ if (added.length === 0) {
   console.log(`${path.basename(target)} already has every key from .env.example`);
   process.exit(0);
 }
-const current = readFileSync(target, "utf8");
+// Blank generated keys are filled where they stand; absent keys are appended.
+const current = existingText.replace(BLANK_LINE, (line, key) =>
+  blanks.includes(key) ? `${key}=${generated[key]}` : line,
+);
 const separator = current.endsWith("\n") ? "" : "\n";
-writeFileSync(target, `${current}${separator}${block.join("\n")}\n`);
+const appended = block.length > 0 ? `${block.join("\n")}\n` : "";
+writeFileSync(target, `${current}${separator}${appended}`);
 console.log(`${path.basename(target)}: added ${added.join(", ")}`);

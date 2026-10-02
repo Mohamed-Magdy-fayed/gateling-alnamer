@@ -61,4 +61,29 @@ describe("env:init", () => {
     expect(result.stdout).not.toContain("keep-me-secret");
     expect(result.stdout).not.toContain(values.TOTP_ENCRYPTION_KEY);
   });
+
+  it("treats a blank generated key as missing and fills it in place", () => {
+    writeFileSync(path.join(dir, ".env"), "APP_MODE=demo\nIBAN_ENCRYPTION_KEY=\n");
+    runInit(dir);
+    const text = readFileSync(path.join(dir, ".env"), "utf8");
+    const values = parse(text);
+    expect(Buffer.from(values.IBAN_ENCRYPTION_KEY, "base64")).toHaveLength(32);
+    expect(text.match(/^IBAN_ENCRYPTION_KEY=/gm)).toHaveLength(1);
+  });
+
+  it("reuses an existing LOCAL_REDIS_TOKEN for UPSTASH_REDIS_REST_TOKEN", () => {
+    writeFileSync(path.join(dir, ".env"), "LOCAL_REDIS_TOKEN=shared-token\n");
+    runInit(dir);
+    const values = parse(readFileSync(path.join(dir, ".env"), "utf8"));
+    expect(values.LOCAL_REDIS_TOKEN).toBe("shared-token");
+    expect(values.UPSTASH_REDIS_REST_TOKEN).toBe("shared-token");
+  });
+
+  it("reuses an existing UPSTASH_REDIS_REST_TOKEN for LOCAL_REDIS_TOKEN", () => {
+    writeFileSync(path.join(dir, ".env"), "UPSTASH_REDIS_REST_TOKEN=shared-token\n");
+    runInit(dir);
+    const values = parse(readFileSync(path.join(dir, ".env"), "utf8"));
+    expect(values.UPSTASH_REDIS_REST_TOKEN).toBe("shared-token");
+    expect(values.LOCAL_REDIS_TOKEN).toBe("shared-token");
+  });
 });

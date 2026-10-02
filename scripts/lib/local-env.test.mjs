@@ -8,6 +8,7 @@ import {
   DEFAULT_TEST_DATABASE_URL,
   loadLocalEnv,
   parseLocalArgs,
+  sanitizedChildEnv,
 } from "./local-env.mjs";
 
 const SECRET = "s3cret-pw";
@@ -133,6 +134,39 @@ describe("loadLocalEnv", () => {
     const target = {};
     loadLocalEnv({ cwd: dir, env: target, requireLocalDatabase: false });
     expect(target.FOO).toBe("bar");
+  });
+});
+
+describe("sanitizedChildEnv", () => {
+  let dir = "";
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "child-env-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("blanks schema keys and keys named in any .env* file that .env lacks", () => {
+    writeFileSync(path.join(dir, ".env"), "APP_MODE=demo\n");
+    writeFileSync(path.join(dir, ".env.production.local"), "SOME_PROD_ONLY_KEY=x\nAPP_MODE=live\n");
+    writeFileSync(path.join(dir, ".env.preview.local"), "ANOTHER_PREVIEW_KEY=y\n");
+    const child = sanitizedChildEnv({ cwd: dir, env: { APP_MODE: "demo", PATH: "p" } });
+    expect(child.SOME_PROD_ONLY_KEY).toBe("");
+    expect(child.ANOTHER_PREVIEW_KEY).toBe("");
+    expect(child.MYFATOORAH_API_KEY).toBe("");
+    expect(child.DATABASE_URL).toBe("");
+    expect(child.APP_MODE).toBe("demo");
+    expect(child.PATH).toBe("p");
+  });
+
+  it("keeps keys that .env defines and does not mutate the input", () => {
+    writeFileSync(path.join(dir, ".env"), "SMTP_HOST=localhost\n");
+    writeFileSync(path.join(dir, ".env.production.local"), "SMTP_HOST=prod\n");
+    const source = { SMTP_HOST: "localhost" };
+    const child = sanitizedChildEnv({ cwd: dir, env: source });
+    expect(child.SMTP_HOST).toBe("localhost");
+    expect(child).not.toBe(source);
+    expect(source).not.toHaveProperty("SMTP_PASSWORD");
   });
 });
 

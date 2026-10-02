@@ -1,9 +1,11 @@
 // `npm run smoke`: the smoke e2e on the throwaway test database (see docker-compose.yml `db-test`).
-// Checks the services, migrates, builds when `.next` is older than HEAD, then runs Playwright.
+// Checks the services, migrates, builds unless `.next/BUILD_ID` is newer than every file under
+// `src/` (or `--no-build` is passed), then runs Playwright.
 import { spawnSync } from "node:child_process";
-import { statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import net from "node:net";
-import { DEFAULT_TEST_DATABASE_URL } from "./lib/local-env.mjs";
+import path from "node:path";
+import { DEFAULT_TEST_DATABASE_URL, loadLocalEnv } from "./lib/local-env.mjs";
 
 const MAILPIT_API = process.env.MAILPIT_URL ?? "http://localhost:8025";
 const START_HINT = "Start Docker, then run `npm run db:up`.";
@@ -43,21 +45,31 @@ function run(args, label) {
   if (result.status !== 0) fail(`${label} failed (exit ${result.status ?? "signal"}).`);
 }
 
-function headTime() {
-  const git = spawnSync("git", ["log", "-1", "--format=%ct"], { encoding: "utf8" });
-  return git.status === 0 ? Number(git.stdout.trim()) * 1000 : Number.POSITIVE_INFINITY;
+function newestSourceTime(dir) {
+  return readdirSync(dir, { withFileTypes: true }).reduce((newest, entry) => {
+    const full = path.join(dir, entry.name);
+    const time = entry.isDirectory() ? newestSourceTime(full) : statSync(full).mtimeMs;
+    return Math.max(newest, time);
+  }, 0);
 }
 
 function buildIsStale() {
   try {
-    return statSync(".next/BUILD_ID").mtimeMs < headTime();
+    return statSync(".next/BUILD_ID").mtimeMs <= newestSourceTime("src");
   } catch {
     return true;
   }
 }
 
+// .env wins over anything inherited from the shell; the database guard is applied by --test-db.
+try {
+  loadLocalEnv({ requireLocalDatabase: false });
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
 await checkServices();
 run(["node_modules/tsx/dist/cli.mjs", "scripts/migrate.mts", "--test-db"], "db:migrate");
-if (buildIsStale()) run(["scripts/build-local.mjs", "--test-db"], "build:local");
+if (!process.argv.includes("--no-build") && buildIsStale())
+  run(["scripts/build-local.mjs", "--test-db"], "build:local");
 run(["node_modules/@playwright/test/cli.js", "test"], "the smoke spec");
 console.log("smoke: OK");
