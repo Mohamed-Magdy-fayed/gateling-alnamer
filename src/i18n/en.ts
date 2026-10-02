@@ -20,7 +20,6 @@ export const en: Dictionary = {
     mainNav: "Main navigation",
     openMenu: "Open menu",
     currency: "AED",
-    comingSoon: "Coming soon",
   },
   nav: {
     howItWorks: "How it works",
@@ -182,7 +181,6 @@ export const en: Dictionary = {
     accessDays: "Access for {days} days from purchase",
     aboutTeacher: "About the teacher",
     back: "All courses",
-    notFound: "We couldn't find this course.",
     empty: "No courses in this category yet.",
     emptyCatalogue: "No courses are published yet. Check back soon.",
   },
@@ -229,7 +227,6 @@ export const en: Dictionary = {
       duplicate: "This email is already registered.",
       code: "The code is wrong or has expired.",
       email: "We couldn't send the email right now. Try again shortly.",
-      generic: "Something went wrong. Please try again.",
     },
     resetEmail: {
       subject: "Your password reset code - Al-Namer",
@@ -266,7 +263,6 @@ export const en: Dictionary = {
       buyForSoon: "Buying courses from the parent account is not available in the test version.",
     },
     teacher: {
-      title: "Teacher dashboard",
       myCourses: "My courses",
       newCourse: "New course",
       studentsCount: {
@@ -280,13 +276,10 @@ export const en: Dictionary = {
       statuses: { published: "Published", review: "In review", draft: "Draft" },
     },
     admin: {
-      title: "Admin dashboard",
       approvals: "Awaiting approval",
       orders: "Latest orders",
       teacherApplications: "Teacher applications",
       contentReview: "Content awaiting review",
-      approve: "Approve",
-      reject: "Reject",
       order: "Order",
       amount: "Amount",
       status: "Status",
@@ -303,7 +296,6 @@ export const en: Dictionary = {
       watermarkNote:
         "The watermark keeps moving and carries the student's name and account number.",
       videoPlaceholder: "Protected video player area",
-      nextLesson: "Next lesson",
     },
   },
   legal: {

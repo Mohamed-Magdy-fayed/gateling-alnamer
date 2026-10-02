@@ -21,7 +21,6 @@ export const ar = {
     mainNav: "التنقل الرئيسي",
     openMenu: "فتح القائمة",
     currency: "AED",
-    comingSoon: "قريبًا",
   },
   nav: {
     howItWorks: "كيف تعمل",
@@ -189,7 +188,6 @@ export const ar = {
     accessDays: "الوصول لمدة {days} يومًا من الشراء",
     aboutTeacher: "عن المعلم",
     back: "كل الدورات",
-    notFound: "لم نجد هذه الدورة.",
     empty: "لا توجد دورات في هذا التصنيف بعد.",
     emptyCatalogue: "لا توجد دورات منشورة بعد. عد قريبا.",
   },
@@ -236,7 +234,6 @@ export const ar = {
       duplicate: "هذا البريد مسجل بالفعل.",
       code: "الرمز غير صحيح أو منتهي الصلاحية.",
       email: "تعذر إرسال البريد الآن. حاول مرة أخرى بعد قليل.",
-      generic: "حدث خطأ غير متوقع. حاول مرة أخرى.",
     },
     resetEmail: {
       subject: "رمز استعادة كلمة المرور - النمر",
@@ -273,7 +270,6 @@ export const ar = {
       buyForSoon: "شراء الدورات من حساب الوالد غير متاح في النسخة التجريبية.",
     },
     teacher: {
-      title: "لوحة المعلم",
       myCourses: "دوراتي",
       newCourse: "دورة جديدة",
       studentsCount: {
@@ -291,13 +287,10 @@ export const ar = {
       statuses: { published: "منشورة", review: "قيد المراجعة", draft: "مسودة" },
     },
     admin: {
-      title: "لوحة الإدارة",
       approvals: "بانتظار الاعتماد",
       orders: "آخر الطلبات",
       teacherApplications: "طلبات انضمام المعلمين",
       contentReview: "محتوى بانتظار المراجعة",
-      approve: "اعتماد",
-      reject: "رفض",
       order: "طلب",
       amount: "المبلغ",
       status: "الحالة",
@@ -313,7 +306,6 @@ export const ar = {
       back: "العودة إلى الدورة",
       watermarkNote: "العلامة المائية تتحرك باستمرار وتحمل اسم الطالب ورقم حسابه.",
       videoPlaceholder: "مكان مشغّل الفيديو المحمي",
-      nextLesson: "الدرس التالي",
     },
   },
   legal: {
