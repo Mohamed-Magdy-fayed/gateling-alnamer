@@ -164,6 +164,7 @@ export const en: Dictionary = {
     back: "All courses",
     notFound: "We couldn't find this course.",
     empty: "No courses in this category yet.",
+    emptyCatalogue: "No courses are published yet. Check back soon.",
   },
   auth: {
     signIn: {

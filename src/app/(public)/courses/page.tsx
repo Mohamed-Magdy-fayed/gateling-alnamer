@@ -2,7 +2,10 @@ import { Clock, PlayCircle } from "lucide-react";
 import Link from "next/link";
 import { format } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
-import { formatPrice, lessonCount, mockCourses } from "@/lib/mock-data";
+import { pickText } from "@/lib/localized-text";
+import { formatPrice } from "@/lib/money-format";
+import { listCoursesForDashboard, listPublishedCourses } from "@/server/catalog/repository";
+import type { CatalogCategory, CategoryType } from "@/server/catalog/types";
 import { Badge, Card, Container, cn, Ltr } from "@/ui";
 
 export default async function CoursesPage({
@@ -12,10 +15,18 @@ export default async function CoursesPage({
 }) {
   const { t, locale } = await getDictionary();
   const { subject } = await searchParams;
-  const subjects = [...new Set(mockCourses.map((course) => course.subject[locale]))];
+  const [all, counts] = await Promise.all([listPublishedCourses(), listCoursesForDashboard()]);
+  const lessonCounts = new Map(counts.map((course) => [course.id, course.lessonCount]));
+  const categoryName = (categories: CatalogCategory[], type: CategoryType) => {
+    const found = categories.find((category) => category.type === type);
+    return found ? pickText(found.name, locale) : "";
+  };
+  const subjects = [
+    ...new Set(all.map((course) => categoryName(course.categories, "subject")).filter(Boolean)),
+  ];
   const courses = subject
-    ? mockCourses.filter((course) => course.subject[locale] === subject)
-    : mockCourses;
+    ? all.filter((course) => categoryName(course.categories, "subject") === subject)
+    : all;
 
   const chip = (active: boolean) =>
     cn(
@@ -54,9 +65,9 @@ export default async function CoursesPage({
       </nav>
 
       {courses.length === 0 ? (
-        <p className="mt-8 rounded-[var(--radius-md)] border border-dashed border-line-strong bg-raised p-8 text-center text-fg-2">
-          {t.courses.empty}
-        </p>
+        <Card className="mt-8 border-dashed p-8 text-center text-fg-2">
+          {all.length === 0 ? t.courses.emptyCatalogue : t.courses.empty}
+        </Card>
       ) : null}
       <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {courses.map((course) => (
@@ -67,25 +78,27 @@ export default async function CoursesPage({
             >
               <Card className="flex h-full flex-col gap-3 p-5 transition-shadow group-hover:shadow-e2">
                 <div className="flex flex-wrap gap-1.5">
-                  <Badge tone="primary">{course.subject[locale]}</Badge>
-                  <Badge>{course.grade[locale]}</Badge>
+                  <Badge tone="primary">{categoryName(course.categories, "subject")}</Badge>
+                  <Badge>{categoryName(course.categories, "grade")}</Badge>
                 </div>
                 <h2 className="text-lg font-semibold">
-                  <bdi>{course.title[locale]}</bdi>
+                  <bdi>{pickText(course.title, locale)}</bdi>
                 </h2>
-                <p className="text-sm text-fg-muted">{course.curriculum[locale]}</p>
+                <p className="text-sm text-fg-muted">
+                  {categoryName(course.categories, "curriculum")}
+                </p>
                 <p className="text-sm text-fg-2">
-                  {format(t.courses.by, { name: course.teacher[locale] })}
+                  {format(t.courses.by, { name: pickText(course.teacher.name, locale) })}
                 </p>
                 <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-3 text-sm">
                   <span className="flex items-center gap-3 text-fg-muted">
                     <span className="flex items-center gap-1">
                       <PlayCircle aria-hidden className="size-4" strokeWidth={1.75} />
-                      {format(t.courses.lessonsCount, { count: lessonCount(course) })}
+                      {format(t.courses.lessonsCount, { count: lessonCounts.get(course.id) ?? 0 })}
                     </span>
                     <span className="flex items-center gap-1">
                       <Clock aria-hidden className="size-4" strokeWidth={1.75} />
-                      {format(t.courses.hours, { count: course.hours })}
+                      {format(t.courses.hours, { count: course.estimatedHours ?? 0 })}
                     </span>
                   </span>
                   <span className="font-semibold text-primary">

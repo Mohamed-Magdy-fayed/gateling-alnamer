@@ -45,6 +45,18 @@ test("public pages answer 200 and show the brand", async ({ page }) => {
   await expect(page.getByText(BRAND).first()).toBeVisible();
 });
 
+test("the catalogue lists 4 courses and a card opens its page", async ({ page }) => {
+  await page.goto("/courses");
+  const cards = page.locator('main a[href^="/courses/"]');
+  await expect(cards).toHaveCount(4);
+  const title = (await cards.first().locator("h2").innerText()).trim();
+  expect(title).not.toBe("");
+  await cards.first().click();
+  await page.waitForURL((url) => url.pathname.split("/").length === 3);
+  await expect(page.locator("h1")).toContainText(title);
+  await expect(page.locator("main ul li").first()).toBeVisible();
+});
+
 test("sign-up lands on the dashboard, then sign-out and sign-in work", async ({ page }) => {
   await page.goto("/sign-up");
   await page.getByLabel(FIELD_NAME).fill("Smoke Student");

@@ -154,6 +154,7 @@ export const ar = {
     back: "كل الدورات",
     notFound: "لم نجد هذه الدورة.",
     empty: "لا توجد دورات في هذا التصنيف بعد.",
+    emptyCatalogue: "لا توجد دورات منشورة بعد. عد قريبا.",
   },
   auth: {
     signIn: {

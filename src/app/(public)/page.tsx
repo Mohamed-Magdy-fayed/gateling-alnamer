@@ -14,7 +14,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getDictionary } from "@/i18n/server";
-import { formatPrice, mockCourses } from "@/lib/mock-data";
+import { pickText } from "@/lib/localized-text";
+import { formatPrice } from "@/lib/money-format";
+import { getPublishedCourseBySlug, listPublishedCourses } from "@/server/catalog/repository";
 import { Badge, ButtonLink, Card, Container, GeometricPattern, Ltr } from "@/ui";
 
 const roleIcons = [GraduationCap, Users, UserRound];
@@ -22,7 +24,8 @@ const buyingIcons = [CreditCard, CalendarClock, ShieldCheck, PlayCircle];
 
 export default async function HomePage() {
   const { t, locale } = await getDictionary();
-  const sample = mockCourses[0];
+  const [firstCourse] = await listPublishedCourses();
+  const sample = firstCourse ? await getPublishedCourseBySlug(firstCourse.slug) : null;
 
   return (
     <>
@@ -62,9 +65,11 @@ export default async function HomePage() {
                 <div>
                   <Badge tone="highlight">{t.common.sample}</Badge>
                   <h2 className="mt-3 text-xl font-semibold">
-                    <bdi>{sample.title[locale]}</bdi>
+                    <bdi>{pickText(sample.title, locale)}</bdi>
                   </h2>
-                  <p className="text-sm text-fg-muted">{sample.teacher[locale]}</p>
+                  <p className="text-sm text-fg-muted">
+                    <bdi>{pickText(sample.teacher.name, locale)}</bdi>
+                  </p>
                 </div>
                 <p className="text-lg font-semibold text-primary">
                   <Ltr>{formatPrice(locale, sample.priceMinor, t.common.currency)}</Ltr>
@@ -79,8 +84,10 @@ export default async function HomePage() {
                     ) : (
                       <PlayCircle aria-hidden className="size-4 text-fg-muted" strokeWidth={1.75} />
                     )}
-                    <span className="flex-1">{lesson.title[locale]}</span>
-                    {lesson.free ? (
+                    <span className="flex-1">
+                      <bdi>{pickText(lesson.title, locale)}</bdi>
+                    </span>
+                    {lesson.isFreePreview ? (
                       <Badge tone="success">{t.courses.freePreview}</Badge>
                     ) : (
                       <Lock aria-label={t.courses.locked} className="size-4 text-fg-muted" />
