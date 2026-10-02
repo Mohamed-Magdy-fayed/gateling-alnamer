@@ -1,6 +1,7 @@
 import { LogOut } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { ThemeSwitch } from "@/components/al/theme-switch";
 import { DemoBanner } from "@/components/demo-banner";
 import { LanguageSwitch } from "@/components/language-switch";
 import { getDictionary } from "@/i18n/server";
@@ -21,6 +22,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           </Link>
           <div className="ms-auto flex items-center gap-1">
             <LanguageSwitch locale={locale} label={t.common.switchLanguage} />
+            <ThemeSwitch />
             <form action={signOutAction}>
               <button type="submit" className={buttonClasses("ghost", "sm")}>
                 <LogOut aria-hidden className="size-4 rtl:-scale-x-100" strokeWidth={1.75} />

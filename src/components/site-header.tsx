@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getDictionary } from "@/i18n/server";
 import { getCurrentUser } from "@/server/auth/session";
 import { ButtonLink, Container, Wordmark } from "@/ui";
+import { ThemeSwitch } from "./al/theme-switch";
 import { LanguageSwitch } from "./language-switch";
 
 export async function SiteHeader() {
@@ -43,6 +44,9 @@ export async function SiteHeader() {
         </nav>
         <div className="ms-auto flex items-center gap-2">
           <LanguageSwitch locale={locale} label={t.common.switchLanguage} />
+          <div className="hidden lg:block">
+            <ThemeSwitch />
+          </div>
           {user ? (
             <ButtonLink href="/dashboard" size="sm">
               {t.common.dashboard}
@@ -87,6 +91,9 @@ export async function SiteHeader() {
                   ),
                 )}
               </ul>
+              <div className="mt-1 flex border-t border-line pt-2">
+                <ThemeSwitch />
+              </div>
             </nav>
           </details>
         </div>

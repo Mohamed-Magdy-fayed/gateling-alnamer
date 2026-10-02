@@ -18,6 +18,11 @@ export const en: Dictionary = {
     switchLanguage: "العربية",
     skipToContent: "Skip to content",
     mainNav: "Main navigation",
+    theme: {
+      toLight: "Switch to light theme",
+      toDark: "Switch to dark theme",
+      toSystem: "Switch to system theme",
+    },
     openMenu: "Open menu",
     currency: "AED",
   },

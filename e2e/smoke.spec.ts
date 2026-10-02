@@ -152,3 +152,42 @@ test("each dashboard placeholder section carries a sample badge", async ({ page 
     }
   }
 });
+
+test("the theme toggle sets data-theme and survives a reload", async ({
+  context,
+  page,
+  baseURL,
+}) => {
+  await context.addCookies([{ name: "theme", value: "light", url: baseURL as string }]);
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.getByRole("button", { name: /المظهر الداكن/ }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect
+    .poll(async () => (await context.cookies()).find((c) => c.name === "theme")?.value)
+    .toBe("dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+});
+
+test("?lang=en switches to ltr and drops the param", async ({ page }) => {
+  await page.goto("/courses?lang=en");
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  expect(new URL(page.url()).searchParams.has("lang")).toBe(false);
+});
+
+test.describe("first paint with an emulated dark scheme", () => {
+  test.use({ colorScheme: "dark" });
+  test("data-theme is dark at DOMContentLoaded with no cookie", async ({ page }) => {
+    await page.addInitScript(() => {
+      document.addEventListener("DOMContentLoaded", () => {
+        (window as unknown as { __themeAtDcl: string | undefined }).__themeAtDcl =
+          document.documentElement.dataset.theme;
+      });
+    });
+    await page.goto("/");
+    expect(
+      await page.evaluate(() => (window as unknown as { __themeAtDcl?: string }).__themeAtDcl),
+    ).toBe("dark");
+  });
+});

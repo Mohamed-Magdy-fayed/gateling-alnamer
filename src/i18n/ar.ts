@@ -19,6 +19,11 @@ export const ar = {
     switchLanguage: "English",
     skipToContent: "تخطَّ إلى المحتوى",
     mainNav: "التنقل الرئيسي",
+    theme: {
+      toLight: "التبديل إلى المظهر الفاتح",
+      toDark: "التبديل إلى المظهر الداكن",
+      toSystem: "التبديل إلى مظهر الجهاز",
+    },
     openMenu: "فتح القائمة",
     currency: "AED",
   },
