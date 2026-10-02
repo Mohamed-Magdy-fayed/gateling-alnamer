@@ -29,6 +29,7 @@ export const verificationPurpose = pgEnum("verification_purpose", [
 ]);
 export const emailStatus = pgEnum("email_status", ["queued", "sent", "failed"]);
 export const deviceRevokeReason = pgEnum("device_revoke_reason", ["self", "admin", "expired"]);
+export const parentLinkSource = pgEnum("parent_link_source", ["created_child", "invite"]);
 export const deviceRemovalKind = pgEnum("device_removal_kind", ["self", "admin"]);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -49,6 +50,10 @@ export const users = pgTable(
     status: userStatus("status").notNull().default("active"),
     publicNumber: text("public_number").unique(),
     isSuperAdmin: boolean("is_super_admin").notNull().default(false),
+    /** The parent who created this child account; RESTRICT because users are never hard-deleted (D23). */
+    createdByParentId: uuid("created_by_parent_id").references((): AnyPgColumn => users.id, {
+      onDelete: "restrict",
+    }),
     createdAt,
   },
   (t) => [
@@ -57,6 +62,41 @@ export const users = pgTable(
       sql`${t.username} IS NULL OR (char_length(${t.username}) BETWEEN 3 AND 20 AND lower(${t.username}::text) ~ '^[a-z0-9_.]+$')`,
     ),
   ],
+);
+
+export const parentLinks = pgTable(
+  "parent_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    source: parentLinkSource("source").notNull(),
+    createdAt,
+  },
+  (t) => [
+    unique("parent_links_parent_student_unique").on(t.parentId, t.studentId),
+    index("parent_links_student_idx").on(t.studentId),
+  ],
+);
+
+export const linkInvites = pgTable(
+  "link_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    redeemedAt: timestamp("redeemed_at", { withTimezone: true }),
+    redeemedBy: uuid("redeemed_by").references(() => users.id),
+    createdAt,
+  },
+  (t) => [index("link_invites_parent_idx").on(t.parentId)],
 );
 
 export const credentials = pgTable("credentials", {

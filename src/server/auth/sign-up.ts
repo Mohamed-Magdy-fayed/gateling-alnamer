@@ -67,7 +67,7 @@ function isKnownField(value: unknown): value is SignUpField {
 }
 
 /** A birth date must be a real date from MIN_BIRTH_YEAR up to the Cairo date of `now`. */
-function validDateOfBirth(value: string | undefined, now: Date): string | null {
+export function validDateOfBirth(value: string | undefined, now: Date): string | null {
   if (!value) return null;
   const parsed = parseIsoDate(value);
   if (!parsed || parsed.year < MIN_BIRTH_YEAR) return null;
@@ -75,7 +75,7 @@ function validDateOfBirth(value: string | undefined, now: Date): string | null {
   return value <= today ? value : null;
 }
 
-function isUniqueViolation(error: unknown): boolean {
+export function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   const code = (error as { code?: unknown }).code;
   if (code === "23505") return true;

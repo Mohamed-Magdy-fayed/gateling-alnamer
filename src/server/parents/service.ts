@@ -1,0 +1,532 @@
+import "server-only";
+import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
+import type { Locale } from "@/i18n/config";
+import { writeAudit } from "@/server/audit/repository";
+import {
+  type AbuseDeps,
+  guardChildCreate,
+  guardCodeSend,
+  guardInviteRedeem,
+} from "@/server/auth/abuse";
+import { ageOn, isUnder18 } from "@/server/auth/age";
+import { hashPassword } from "@/server/auth/password";
+import { nextPublicNumber } from "@/server/auth/public-number";
+import { sendCode as defaultSendCode } from "@/server/auth/send-code";
+import { invalidateUserSessionsCore } from "@/server/auth/session-invalidate";
+import {
+  isUniqueViolation,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  validDateOfBirth,
+} from "@/server/auth/sign-up";
+import { usernameSchema } from "@/server/auth/username";
+import { clock } from "@/server/clock";
+import {
+  INVITE_TTL_MS,
+  MAX_ACTIVE_INVITES_PER_PARENT,
+  MAX_CHILDREN_PER_PARENT,
+  MAX_PARENTS_PER_STUDENT,
+} from "@/server/config/policy";
+import { db } from "@/server/db";
+import {
+  credentials,
+  linkInvites,
+  type parentLinkSource,
+  parentLinks,
+  type UserRole,
+  users,
+} from "@/server/db/schema";
+import { AppError } from "@/server/errors";
+import { formatInviteCode, generateInviteCode, hashInviteCode } from "./invite-code";
+
+type Database = ReturnType<typeof db>;
+type Tx = Parameters<Parameters<Database["transaction"]>[0]>[0];
+type LinkSource = (typeof parentLinkSource.enumValues)[number];
+
+export type ParentDeps = AbuseDeps & { readonly sendCode?: typeof defaultSendCode };
+
+/** Serialises writes that count a parent's or a student's links, so caps cannot be raced past. */
+async function lock(tx: Tx, scope: "parent" | "student", id: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${scope}-links:${id}`}))`);
+}
+
+async function isActiveParent(tx: Tx, parentId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, parentId), eq(users.role, "parent"), eq(users.status, "active")))
+    .limit(1);
+  return Boolean(row);
+}
+
+async function countChildren(tx: Tx, parentId: string): Promise<number> {
+  const [row] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(parentLinks)
+    .where(eq(parentLinks.parentId, parentId));
+  return row?.n ?? 0;
+}
+
+/** First character, then `***@`, then the domain: what a parent may see of a child's email. */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at < 1) return "***";
+  return `${email.charAt(0)}***@${email.slice(at + 1)}`;
+}
+
+// ---- Child creation ----
+
+export type CreateChildField = "name" | "email" | "username" | "password" | "date_of_birth";
+export type CreateChildResult =
+  | { ok: true; childId: string }
+  | { ok: false; code: "invalid"; fields: CreateChildField[] }
+  | { ok: false; code: "duplicate" | "forbidden" | "rateLimited" | "limitChildren" };
+
+const emptyToUndefined = (value: unknown) => (value === "" || value === null ? undefined : value);
+
+const createChildSchema = z.object({
+  name: z.string().trim().min(2).max(80),
+  username: usernameSchema,
+  password: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
+  date_of_birth: z.string(),
+  email: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().pipe(z.email()).pipe(z.string().max(254)).optional(),
+  ),
+});
+
+const KNOWN_FIELDS: readonly CreateChildField[] = [
+  "name",
+  "email",
+  "username",
+  "password",
+  "date_of_birth",
+];
+
+function invalid(fields: CreateChildField[]): CreateChildResult {
+  return { ok: false, code: "invalid", fields };
+}
+
+/**
+ * A parent creates a child account: validation (the sign-up rules, the child must be under 18),
+ * then user + credential + public number + link + audit in one transaction. The parent is the
+ * guardian, so consent is recorded now and in the `parent.create_child` audit entry. An optional
+ * email gets an `email_verify` code. At most 10 children per parent and 10 creations a day.
+ */
+export async function createChild(
+  parentId: string,
+  raw: Record<string, unknown>,
+  ctx: { locale: Locale },
+  deps: ParentDeps = {},
+): Promise<CreateChildResult> {
+  const guard = await guardChildCreate({ parentId }, deps);
+  if (!("ok" in guard)) return { ok: false, code: "rateLimited" };
+
+  const parsed = createChildSchema.safeParse(raw);
+  if (!parsed.success) {
+    const fields = new Set<CreateChildField>();
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0];
+      const known = KNOWN_FIELDS.find((field) => field === key);
+      if (known) fields.add(known);
+    }
+    return invalid([...fields]);
+  }
+  const input = parsed.data;
+  const now = clock.now();
+  const dateOfBirth = validDateOfBirth(input.date_of_birth, now);
+  if (!dateOfBirth || !isUnder18(dateOfBirth, now)) return invalid(["date_of_birth"]);
+
+  const passwordHash = await hashPassword(input.password);
+
+  try {
+    const outcome = await db().transaction(async (tx) => {
+      await lock(tx, "parent", parentId);
+      if (!(await isActiveParent(tx, parentId))) return { ok: false, code: "forbidden" } as const;
+      if ((await countChildren(tx, parentId)) >= MAX_CHILDREN_PER_PARENT) {
+        return { ok: false, code: "limitChildren" } as const;
+      }
+      const [child] = await tx
+        .insert(users)
+        .values({
+          name: input.name,
+          email: input.email ?? null,
+          username: input.username,
+          role: "student",
+          dateOfBirth,
+          guardianConsentAt: now,
+          locale: ctx.locale,
+          publicNumber: await nextPublicNumber(tx),
+          createdByParentId: parentId,
+        })
+        .returning({ id: users.id });
+      if (!child) throw new Error("child insert returned no row");
+      await tx.insert(credentials).values({ userId: child.id, passwordHash, passwordSalt: null });
+      await tx
+        .insert(parentLinks)
+        .values({ parentId, studentId: child.id, source: "created_child" });
+      await writeAudit(tx, {
+        actorId: parentId,
+        action: "parent.create_child",
+        subjectType: "user",
+        subjectId: child.id,
+        after: { consent: "guardian", hasEmail: Boolean(input.email) },
+      });
+      return { ok: true, childId: child.id } as const;
+    });
+    if (!outcome.ok) return outcome;
+
+    if (input.email) {
+      const send = deps.sendCode ?? defaultSendCode;
+      await send(
+        { id: outcome.childId, name: input.name, email: input.email, locale: ctx.locale },
+        "email_verify",
+        ctx.locale,
+      );
+    }
+    return outcome;
+  } catch (error) {
+    if (isUniqueViolation(error)) return { ok: false, code: "duplicate" };
+    throw new AppError("internal");
+  }
+}
+
+// ---- Invites ----
+
+export type IssueInviteResult =
+  | { ok: true; code: string; expiresAt: Date }
+  | { ok: false; code: "forbidden" | "limitInvites" };
+
+/** Issues a link code (`XXXX-XXXX`, 7 days). Only a keyed hash is stored; at most 5 are live at once. */
+export async function issueInvite(parentId: string): Promise<IssueInviteResult> {
+  const now = clock.now();
+  const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
+  return db().transaction(async (tx) => {
+    await lock(tx, "parent", parentId);
+    if (!(await isActiveParent(tx, parentId))) return { ok: false, code: "forbidden" } as const;
+    const [live] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(linkInvites)
+      .where(
+        and(
+          eq(linkInvites.parentId, parentId),
+          isNull(linkInvites.redeemedAt),
+          gt(linkInvites.expiresAt, now),
+        ),
+      );
+    if ((live?.n ?? 0) >= MAX_ACTIVE_INVITES_PER_PARENT) {
+      return { ok: false, code: "limitInvites" } as const;
+    }
+    const code = generateInviteCode();
+    await tx.insert(linkInvites).values({ parentId, codeHash: hashInviteCode(code), expiresAt });
+    return { ok: true, code: formatInviteCode(code), expiresAt } as const;
+  });
+}
+
+export type RedeemInviteResult =
+  | { ok: true; parentId: string }
+  | { ok: false; code: "invalid" | "limitParents" | "limitChildren" | "rateLimited" };
+
+const INVALID_INVITE: RedeemInviteResult = { ok: false, code: "invalid" };
+
+/**
+ * A student redeems a code. Wrong, expired, used and not-for-you codes are all the one `invalid`
+ * result; every attempt counts against 5 per 15 minutes per student and 20 an hour per IP. A
+ * student with two parents gets `limitParents`; a parent at 10 children gets `limitChildren`.
+ */
+export async function redeemInvite(
+  input: { studentId: string; code: string; ip: string },
+  deps: ParentDeps = {},
+): Promise<RedeemInviteResult> {
+  const guard = await guardInviteRedeem({ studentId: input.studentId, ip: input.ip }, deps);
+  if (!("ok" in guard)) return { ok: false, code: "rateLimited" };
+
+  const codeHash = hashInviteCode(input.code);
+  const now = clock.now();
+  return db().transaction(async (tx): Promise<RedeemInviteResult> => {
+    await lock(tx, "student", input.studentId);
+    const [student] = await tx
+      .select({ role: users.role, status: users.status })
+      .from(users)
+      .where(eq(users.id, input.studentId))
+      .limit(1);
+    if (student?.role !== "student" || student.status !== "active") return INVALID_INVITE;
+
+    const [parents] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(parentLinks)
+      .where(eq(parentLinks.studentId, input.studentId));
+    if ((parents?.n ?? 0) >= MAX_PARENTS_PER_STUDENT) return { ok: false, code: "limitParents" };
+
+    const [invite] = await tx
+      .select({ id: linkInvites.id, parentId: linkInvites.parentId })
+      .from(linkInvites)
+      .where(
+        and(
+          eq(linkInvites.codeHash, codeHash),
+          isNull(linkInvites.redeemedAt),
+          gt(linkInvites.expiresAt, now),
+        ),
+      )
+      .limit(1);
+    if (!invite) return INVALID_INVITE;
+
+    await lock(tx, "parent", invite.parentId);
+    if (!(await isActiveParent(tx, invite.parentId))) return INVALID_INVITE;
+    const [existing] = await tx
+      .select({ id: parentLinks.id })
+      .from(parentLinks)
+      .where(
+        and(eq(parentLinks.parentId, invite.parentId), eq(parentLinks.studentId, input.studentId)),
+      )
+      .limit(1);
+    if (existing) return INVALID_INVITE;
+    if ((await countChildren(tx, invite.parentId)) >= MAX_CHILDREN_PER_PARENT) {
+      return { ok: false, code: "limitChildren" };
+    }
+
+    const [claimed] = await tx
+      .update(linkInvites)
+      .set({ redeemedAt: now, redeemedBy: input.studentId })
+      .where(
+        and(
+          eq(linkInvites.id, invite.id),
+          isNull(linkInvites.redeemedAt),
+          gt(linkInvites.expiresAt, now),
+        ),
+      )
+      .returning({ id: linkInvites.id });
+    if (!claimed) return INVALID_INVITE;
+
+    await tx
+      .insert(parentLinks)
+      .values({ parentId: invite.parentId, studentId: input.studentId, source: "invite" });
+    await writeAudit(tx, {
+      actorId: input.studentId,
+      action: "parent.link",
+      subjectType: "user",
+      subjectId: input.studentId,
+      after: { source: "invite", parentId: invite.parentId },
+    });
+    return { ok: true, parentId: invite.parentId };
+  });
+}
+
+// ---- Unlink ----
+
+export type UnlinkResult = { ok: true } | { ok: false; reason: "not_found" | "forbidden" };
+
+/**
+ * Unlink rules: an `invite` link can be removed by its parent, its student or an admin; a
+ * `created_child` link only by an admin (a child with no other recovery path must not lose its parent).
+ */
+export async function unlinkParent(input: {
+  actor: { id: string; role: UserRole };
+  parentId: string;
+  studentId: string;
+}): Promise<UnlinkResult> {
+  const { actor, parentId, studentId } = input;
+  return db().transaction(async (tx): Promise<UnlinkResult> => {
+    const [row] = await tx
+      .select({ id: parentLinks.id, source: parentLinks.source })
+      .from(parentLinks)
+      .where(and(eq(parentLinks.parentId, parentId), eq(parentLinks.studentId, studentId)))
+      .limit(1);
+    if (!row) return { ok: false, reason: "not_found" };
+
+    const isAdmin = actor.role === "admin";
+    const isParty =
+      (actor.role === "parent" && actor.id === parentId) ||
+      (actor.role === "student" && actor.id === studentId);
+    const allowed = row.source === "invite" ? isAdmin || isParty : isAdmin;
+    if (!allowed) return { ok: false, reason: "forbidden" };
+
+    await tx.delete(parentLinks).where(eq(parentLinks.id, row.id));
+    await writeAudit(tx, {
+      actorId: actor.id,
+      action: "parent.unlink",
+      subjectType: "user",
+      subjectId: studentId,
+      after: { source: row.source, parentId, actorRole: actor.role },
+    });
+    return { ok: true };
+  });
+}
+
+// ---- Password reset by a parent ----
+
+export type ResetMode = "forbidden" | "direct" | "email";
+
+/** The matrix: no link forbids; own-created or under-18-without-verified-email is direct; else email. */
+export function resetMode(input: {
+  linked: boolean;
+  parentId: string;
+  createdByParentId: string | null;
+  dateOfBirth: string | null;
+  emailVerifiedAt: Date | null;
+  now: Date;
+}): ResetMode {
+  if (!input.linked) return "forbidden";
+  if (input.createdByParentId === input.parentId) return "direct";
+  const minor = input.dateOfBirth ? isUnder18(input.dateOfBirth, input.now) : false;
+  return minor && !input.emailVerifiedAt ? "direct" : "email";
+}
+
+type ChildFacts = {
+  mode: ResetMode;
+  name: string;
+  email: string | null;
+  emailVerified: boolean;
+  locale: string | null;
+};
+
+async function childFacts(parentId: string, childId: string): Promise<ChildFacts> {
+  const [row] = await db()
+    .select({
+      linkId: parentLinks.id,
+      createdByParentId: users.createdByParentId,
+      dateOfBirth: users.dateOfBirth,
+      emailVerifiedAt: users.emailVerifiedAt,
+      name: users.name,
+      email: users.email,
+      locale: users.locale,
+    })
+    .from(users)
+    .leftJoin(
+      parentLinks,
+      and(eq(parentLinks.studentId, users.id), eq(parentLinks.parentId, parentId)),
+    )
+    .where(eq(users.id, childId))
+    .limit(1);
+  const mode = row
+    ? resetMode({
+        linked: row.linkId !== null,
+        parentId,
+        createdByParentId: row.createdByParentId,
+        dateOfBirth: row.dateOfBirth,
+        emailVerifiedAt: row.emailVerifiedAt,
+        now: clock.now(),
+      })
+    : "forbidden";
+  return {
+    mode,
+    name: row?.name ?? "",
+    email: row?.email ?? null,
+    emailVerified: Boolean(row?.emailVerifiedAt),
+    locale: row?.locale ?? null,
+  };
+}
+
+export async function canParentSetPassword(parentId: string, childId: string): Promise<ResetMode> {
+  return (await childFacts(parentId, childId)).mode;
+}
+
+export type ResetChildPasswordResult =
+  | { ok: true; mode: "direct" }
+  | { ok: true; mode: "email"; maskedEmail: string }
+  | { ok: false; reason: "forbidden" | "invalid" | "no_verified_email" | "rateLimited" };
+
+/**
+ * Applies the matrix. Direct: argon2id hash, the child's sessions end, audit `{mode:"direct"}`
+ * (the password itself is never audited). Email: a `password_reset` code goes to the child's
+ * verified email through the normal send path, audit `{mode:"email"}`; the caller only gets a mask.
+ */
+export async function resetChildPassword(
+  input: { parentId: string; childId: string; newPassword?: string },
+  ctx: { locale: Locale },
+  deps: ParentDeps = {},
+): Promise<ResetChildPasswordResult> {
+  const { parentId, childId } = input;
+  const facts = await childFacts(parentId, childId);
+  if (facts.mode === "forbidden") return { ok: false, reason: "forbidden" };
+
+  if (facts.mode === "direct") {
+    const password = input.newPassword ?? "";
+    if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
+      return { ok: false, reason: "invalid" };
+    }
+    const passwordHash = await hashPassword(password);
+    await db().transaction(async (tx) => {
+      await tx
+        .insert(credentials)
+        .values({ userId: childId, passwordHash, passwordSalt: null })
+        .onConflictDoUpdate({
+          target: credentials.userId,
+          set: { passwordHash, passwordSalt: null, updatedAt: clock.now() },
+        });
+      await writeAudit(tx, {
+        actorId: parentId,
+        action: "parent.reset_password",
+        subjectType: "user",
+        subjectId: childId,
+        after: { mode: "direct" },
+      });
+    });
+    await invalidateUserSessionsCore(childId);
+    return { ok: true, mode: "direct" };
+  }
+
+  if (!facts.email || !facts.emailVerified) return { ok: false, reason: "no_verified_email" };
+  const guard = await guardCodeSend({ identifier: facts.email, ip: `parent:${parentId}` }, deps);
+  if (!("ok" in guard)) return { ok: false, reason: "rateLimited" };
+  await db().transaction(async (tx) => {
+    await writeAudit(tx, {
+      actorId: parentId,
+      action: "parent.reset_password",
+      subjectType: "user",
+      subjectId: childId,
+      after: { mode: "email" },
+    });
+  });
+  const send = deps.sendCode ?? defaultSendCode;
+  await send(
+    { id: childId, name: facts.name, email: facts.email, locale: facts.locale },
+    "password_reset",
+    ctx.locale,
+  );
+  return { ok: true, mode: "email", maskedEmail: maskEmail(facts.email) };
+}
+
+// ---- Parent view ----
+
+/**
+ * What a parent may see of a child. `childId` is the handle the parent's own actions (reset,
+ * unlink) need; no session, device, raw email, date of birth or number is ever returned.
+ */
+export type ChildCard = {
+  childId: string;
+  displayName: string;
+  username: string | null;
+  ageYears: number | null;
+  maskedEmail: string | null;
+  source: LinkSource;
+  createdAt: Date;
+};
+
+export async function listChildrenForParent(parentId: string): Promise<ChildCard[]> {
+  const now = clock.now();
+  const rows = await db()
+    .select({
+      childId: users.id,
+      displayName: users.name,
+      username: users.username,
+      dateOfBirth: users.dateOfBirth,
+      email: users.email,
+      source: parentLinks.source,
+      createdAt: parentLinks.createdAt,
+    })
+    .from(parentLinks)
+    .innerJoin(users, eq(users.id, parentLinks.studentId))
+    .where(eq(parentLinks.parentId, parentId))
+    .orderBy(asc(parentLinks.createdAt), asc(users.id));
+  return rows.map((row) => ({
+    childId: row.childId,
+    displayName: row.displayName,
+    username: row.username,
+    ageYears: row.dateOfBirth ? ageOn(row.dateOfBirth, now) : null,
+    maskedEmail: row.email ? maskEmail(row.email) : null,
+    source: row.source,
+    createdAt: row.createdAt,
+  }));
+}

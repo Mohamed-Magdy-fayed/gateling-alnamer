@@ -9,6 +9,7 @@ import {
   auditLog,
   deviceRemovals,
   devices,
+  parentLinks,
   sessions,
   type UserRole,
   users,
@@ -400,8 +401,36 @@ export async function listActiveDevices(userId: string): Promise<DeviceListItem[
 
 export type SupportContact = { email: string; locale: string | null };
 
-/** Who hears a support request: verified admins for now; A6 extends this with the student's linked parents. */
-export async function supportContacts(_userId: string): Promise<SupportContact[]> {
+/** Who hears a support request: verified admins and the student's linked parents (verified emails only). */
+export async function supportContacts(userId: string): Promise<SupportContact[]> {
+  const [admins, parents] = await Promise.all([adminContacts(), parentContacts(userId)]);
+  const seen = new Set<string>();
+  return [...admins, ...parents].filter((c) => {
+    const key = c.email.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function parentContacts(studentId: string): Promise<SupportContact[]> {
+  const rows = await db()
+    .select({ email: users.email, locale: users.locale })
+    .from(parentLinks)
+    .innerJoin(users, eq(users.id, parentLinks.parentId))
+    .where(
+      and(
+        eq(parentLinks.studentId, studentId),
+        eq(users.role, "parent"),
+        eq(users.status, "active"),
+        isNotNull(users.emailVerifiedAt),
+        isNotNull(users.email),
+      ),
+    );
+  return rows.flatMap((r) => (r.email ? [{ email: r.email, locale: r.locale }] : []));
+}
+
+async function adminContacts(): Promise<SupportContact[]> {
   const rows = await db()
     .select({ email: users.email, locale: users.locale })
     .from(users)

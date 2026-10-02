@@ -33,6 +33,10 @@ export type AuthLimits = {
   };
   /** Failed code verifies, the D32 pattern: a pair lock per (identifier, device) and a captcha-only account counter. */
   readonly codeVerify: { readonly pair: LimitRule; readonly account: LimitRule };
+  /** Parent-created child accounts: per parent per day. */
+  readonly childCreate: { readonly parent: LimitRule };
+  /** Invite redemption attempts (right or wrong): per student and per IP. */
+  readonly inviteRedeem: { readonly student: LimitRule; readonly ip: LimitRule };
   readonly lockout: {
     /** Attempts per (identifier, device) pair; the attempt after the last allowed one is locked. */
     readonly pair: LimitRule;
@@ -56,6 +60,8 @@ export const AUTH_LIMITS: AuthLimits = {
     ip: { max: 5, windowSec: DAY },
     global: { max: 20, windowSec: DAY },
   },
+  childCreate: { parent: { max: 10, windowSec: DAY } },
+  inviteRedeem: { student: { max: 5, windowSec: MINUTES_15 }, ip: { max: 20, windowSec: HOUR } },
   codeVerify: {
     pair: { max: 10, windowSec: MINUTES_15 },
     account: { max: 30, windowSec: MINUTES_15 },
@@ -83,3 +89,9 @@ export const PENDING_RESET_TTL_MS = RESET_CODE_TTL_MS + 5 * 60 * 1000;
 
 /** The daily purge removes verification codes consumed or expired for longer than this. */
 export const CODE_PURGE_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/** A6 caps: parents per student, children per parent, live invites per parent, and an invite's life. */
+export const MAX_PARENTS_PER_STUDENT = 2;
+export const MAX_CHILDREN_PER_PARENT = 10;
+export const MAX_ACTIVE_INVITES_PER_PARENT = 5;
+export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;

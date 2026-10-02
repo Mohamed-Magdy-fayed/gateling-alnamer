@@ -128,6 +128,33 @@ export async function guardSupportRequest(
   ]);
 }
 
+/** Child creation: 10 a day per parent. */
+export async function guardChildCreate(
+  input: { parentId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  const { childCreate } = deps.limits ?? AUTH_LIMITS;
+  return within(
+    limiterOf(deps),
+    `rl:childcreate:parent:${hasherOf(deps).hash(input.parentId)}`,
+    childCreate.parent,
+  );
+}
+
+/** Invite redemption: 5 attempts per 15 minutes per student and 20 an hour per IP, wrong codes included. */
+export async function guardInviteRedeem(
+  input: { studentId: string; ip: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  const limiter = limiterOf(deps);
+  const { inviteRedeem } = deps.limits ?? AUTH_LIMITS;
+  const h = hasherOf(deps);
+  return firstBlock([
+    () => within(limiter, `rl:invite:student:${h.hash(input.studentId)}`, inviteRedeem.student),
+    () => within(limiter, `rl:invite:ip:${h.hash(input.ip)}`, inviteRedeem.ip),
+  ]);
+}
+
 /** Code send (password reset, email verify): per account and per IP; the same for unknown accounts. */
 export async function guardCodeSend(
   input: { identifier: string; ip: string },

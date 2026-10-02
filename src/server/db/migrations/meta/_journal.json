@@ -127,6 +127,13 @@
       "when": 1790961881283,
       "tag": "0017_clever_synch",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790975819465,
+      "tag": "0018_lumpy_kulan_gath",
+      "breakpoints": true
     }
   ]
 }
