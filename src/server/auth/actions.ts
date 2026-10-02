@@ -13,19 +13,27 @@ import { sendEvent } from "@/server/jobs/send";
 import { authenticate } from "./credentials";
 import { hashPassword, randomCode, sha256 } from "./password";
 import { createSession, destroySession, invalidateUserSessions } from "./session";
+import { type SignUpField, signUpUser } from "./sign-up";
 
-export type FormState = { status: "idle" | "error" | "success"; message?: string; email?: string };
+export type FormState = {
+  status: "idle" | "error" | "success";
+  message?: string;
+  email?: string;
+  /** Per-field messages (already translated) for the sign-up form. */
+  fieldErrors?: Partial<Record<SignUpField, string>>;
+  /** Set when the form-level error should offer the forgot-password link. */
+  offerReset?: boolean;
+  /** Non-secret values echoed back so a failed submit does not clear the form. */
+  values?: Record<string, string>;
+};
 
 const email = z.string().trim().pipe(z.email()).pipe(z.string().max(254));
 const password = z.string().min(8).max(128);
 
-const signUpSchema = z.object({
-  name: z.string().trim().min(2).max(80),
-  email,
-  password,
-  role: z.enum(["student", "parent", "teacher"]),
+const signInSchema = z.object({
+  identifier: z.string().trim().min(1).max(254),
+  password: z.string().min(1).max(128),
 });
-const signInSchema = z.object({ email, password: z.string().min(1).max(128) });
 const forgotSchema = z.object({ email });
 const resetSchema = z.object({ email, code: z.string().regex(/^\d{6}$/), password });
 
@@ -33,40 +41,52 @@ function fields(formData: FormData): Record<string, unknown> {
   return Object.fromEntries(formData.entries());
 }
 
+const ECHOED_FIELDS = ["name", "email", "username", "role", "date_of_birth", "guardian_consent"];
+
+function echo(raw: Record<string, unknown>): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const key of ECHOED_FIELDS) {
+    const value = raw[key];
+    if (typeof value === "string") values[key] = value;
+  }
+  return values;
+}
+
 export async function signUpAction(_prev: FormState, formData: FormData): Promise<FormState> {
-  const { t } = await getDictionary();
-  const parsed = signUpSchema.safeParse(fields(formData));
-  if (!parsed.success) return { status: "error", message: t.auth.errors.invalid };
-  const input = parsed.data;
+  const { t, locale } = await getDictionary();
+  const raw = fields(formData);
+  const result = await signUpUser(raw, { locale, now: clock.now() });
+  if (!result.ok) {
+    if (result.code === "duplicate") {
+      return {
+        status: "error",
+        message: t.auth.errors.checkDetails,
+        offerReset: true,
+        values: echo(raw),
+      };
+    }
+    const fieldErrors: Partial<Record<SignUpField, string>> = {};
+    for (const field of result.fields) fieldErrors[field] = t.auth.errors.field[field];
+    return { status: "error", message: t.auth.errors.invalid, fieldErrors, values: echo(raw) };
+  }
 
-  const existing = await db().query.users.findFirst({
-    columns: { id: true },
-    where: eq(users.email, input.email),
-  });
-  if (existing) return { status: "error", message: t.auth.errors.duplicate };
-
-  const passwordHash = await hashPassword(input.password);
-  const userId = await db().transaction(async (tx) => {
-    const [user] = await tx
-      .insert(users)
-      .values({ name: input.name, email: input.email, role: input.role })
-      .returning({ id: users.id });
-    if (!user) throw new Error("User insert returned no row");
-    await tx.insert(credentials).values({ userId: user.id, passwordHash, passwordSalt: null });
-    return user.id;
-  });
-
-  await createSession(userId);
+  await createSession(result.userId);
   redirect("/dashboard");
 }
 
 export async function signInAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const { t } = await getDictionary();
-  const parsed = signInSchema.safeParse(fields(formData));
-  if (!parsed.success) return { status: "error", message: t.auth.errors.credentials };
+  const raw = fields(formData);
+  const failed: FormState = {
+    status: "error",
+    message: t.auth.errors.credentials,
+    values: typeof raw.identifier === "string" ? { identifier: raw.identifier } : {},
+  };
+  const parsed = signInSchema.safeParse(raw);
+  if (!parsed.success) return failed;
 
-  const userId = await authenticate(parsed.data.email, parsed.data.password);
-  if (!userId) return { status: "error", message: t.auth.errors.credentials };
+  const userId = await authenticate(parsed.data.identifier, parsed.data.password);
+  if (!userId) return failed;
 
   await createSession(userId);
   redirect("/dashboard");

@@ -71,3 +71,23 @@ describe("authenticate", () => {
     expect(await authenticate("nobody@example.test", "whatever password", conn)).toBeNull();
   });
 });
+
+describe("authenticate by username", () => {
+  it("treats an identifier without @ as a username (trimmed, any case)", async () => {
+    const [user] = await db()
+      .insert(users)
+      .values({ name: "U", email: "byname@example.test", username: "by.name" })
+      .returning({ id: users.id });
+    if (!user) throw new Error("no user");
+    await db()
+      .insert(credentials)
+      .values({ userId: user.id, passwordHash: await hashPassword("user pass 123") });
+
+    expect(await authenticate(" By.Name ", "user pass 123", conn)).toBe(user.id);
+    expect(await authenticate("BYNAME@example.test", "user pass 123", conn)).toBe(user.id);
+    expect(await authenticate("by.name", "wrong pass 123", conn)).toBeNull();
+    expect(await authenticate("no.such.user", "user pass 123", conn)).toBeNull();
+    // An identifier without @ is never matched against the email column.
+    expect(await authenticate("byname", "user pass 123", conn)).toBeNull();
+  });
+});

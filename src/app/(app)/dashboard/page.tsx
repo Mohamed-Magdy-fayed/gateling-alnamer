@@ -5,9 +5,10 @@ import { StudentView } from "@/components/dashboard/student-view";
 import { TeacherView } from "@/components/dashboard/teacher-view";
 import { format } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
+import { shouldPromptParentLink } from "@/server/auth/profile";
 import { requireUser } from "@/server/auth/session";
 import { listCoursesForDashboard } from "@/server/catalog/repository";
-import { Badge, Container, cn } from "@/ui";
+import { Alert, Badge, Container, cn } from "@/ui";
 
 const views = ["student", "parent", "teacher", "admin"] as const;
 type View = (typeof views)[number];
@@ -27,7 +28,10 @@ export default async function DashboardPage({
   // Reviewers have no demo view yet; they fall back to the admin one.
   const ownView: View = user.role === "reviewer" ? "admin" : user.role;
   const view: View = isView(requested) ? requested : ownView;
-  const courses = await listCoursesForDashboard();
+  const [courses, promptParentLink] = await Promise.all([
+    listCoursesForDashboard(),
+    shouldPromptParentLink(user.id),
+  ]);
 
   return (
     <Container className="py-8">
@@ -63,6 +67,12 @@ export default async function DashboardPage({
           </ul>
         </nav>
       </div>
+
+      {promptParentLink ? (
+        <div className="mt-6">
+          <Alert tone="info">{t.auth.states.linkParent}</Alert>
+        </div>
+      ) : null}
 
       <div className="mt-8">
         {view === "student" ? <StudentView t={t} locale={locale} courses={courses} /> : null}

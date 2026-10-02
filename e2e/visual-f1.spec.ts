@@ -45,6 +45,15 @@ for (const viewport of VIEWPORTS) {
       await page.getByLabel(FIELD_NAME).fill("Visual Student");
       await page.getByLabel(FIELD_EMAIL).fill(`${viewport.label}-${email}`);
       await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill("Visual-pass-1");
+      // Student sign-up asks for a date of birth (three selects); pick an adult one by position.
+      await page.getByRole("combobox", { name: "السنة" }).click();
+      await page
+        .getByRole("option", { name: String(new Date().getFullYear() - 25), exact: true })
+        .click();
+      await page.getByRole("combobox", { name: "الشهر" }).click();
+      await page.getByRole("option").first().click();
+      await page.getByRole("combobox", { name: "اليوم" }).click();
+      await page.getByRole("option").first().click();
       await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
       await page.waitForURL("**/dashboard");
       await page.goto("/dashboard?view=student");

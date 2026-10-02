@@ -7,19 +7,25 @@ import { hashPassword, isLegacyHash, verifyDummy, verifyPassword } from "./passw
 
 type Database = ReturnType<typeof db>;
 
+/** An identifier containing "@" is an email; anything else is a username. Both are trimmed (columns are citext). */
+export function identifierCondition(identifier: string) {
+  const value = identifier.trim();
+  return value.includes("@") ? eq(users.email, value) : eq(users.username, value.toLowerCase());
+}
+
 /**
- * Checks an email and password. Returns the user id, or null for every failure.
+ * Checks an email or username and a password. Returns the user id, or null for every failure.
  * Exactly one password verify runs whether the user is unknown or the password is wrong.
  * A legacy scrypt credential is rehashed to argon2id (salt cleared) in the same transaction.
  */
 export async function authenticate(
-  email: string,
+  identifier: string,
   password: string,
   conn: Database = db(),
 ): Promise<string | null> {
   const user = await conn.query.users.findFirst({
     columns: { id: true },
-    where: eq(users.email, email),
+    where: identifierCondition(identifier),
     with: { credentials: { columns: { passwordHash: true, passwordSalt: true } } },
   });
   const credential = user?.credentials;

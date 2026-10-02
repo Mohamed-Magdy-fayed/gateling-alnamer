@@ -14,11 +14,31 @@ const FIELD_NAME = "الاسم الكامل";
 const FIELD_CODE = "الرمز";
 const FIELD_NEW_PASSWORD = "كلمة المرور الجديدة";
 const SWITCH_TO_EN = "English";
+const FIELD_USERNAME = "اسم المستخدم (اختياري)";
+const FIELD_IDENTIFIER = "البريد الإلكتروني أو اسم المستخدم";
+const DOB_DAY = "اليوم";
+const DOB_MONTH = "الشهر";
+const DOB_YEAR = "السنة";
+const CONSENT = "أقرّ بأنني حصلت على موافقة ولي أمري على إنشاء هذا الحساب.";
+const LINK_PARENT = "اربط حساب ولي أمرك ليتابع تقدّمك.";
 
 const runId = Date.now().toString(36);
 const email = `smoke-${runId}@alnamer.local`;
 const password = "Smoke-pass-1";
 const newPassword = "Smoke-pass-2";
+const username = `smoke_${runId}`;
+const minorEmail = `smoke-minor-${runId}@alnamer.local`;
+
+/** Picks a date in the three DOB selects by option position, so it does not depend on month names. */
+async function pickDate(page: Page, yearsAgo: number, monthIndex: number, dayIndex: number) {
+  const year = String(new Date().getFullYear() - yearsAgo);
+  await page.getByRole("combobox", { name: DOB_YEAR }).click();
+  await page.getByRole("option", { name: year, exact: true }).click();
+  await page.getByRole("combobox", { name: DOB_MONTH }).click();
+  await page.getByRole("option").nth(monthIndex).click();
+  await page.getByRole("combobox", { name: DOB_DAY }).click();
+  await page.getByRole("option").nth(dayIndex).click();
+}
 
 async function signIn(page: Page, withPassword: string) {
   await page.goto("/sign-in");
@@ -57,18 +77,67 @@ test("the catalogue lists 4 courses and a card opens its page", async ({ page })
   await expect(page.locator("main ul li").first()).toBeVisible();
 });
 
-test("sign-up lands on the dashboard, then sign-out and sign-in work", async ({ page }) => {
+test("sign-up an adult student with a username, sign out, sign in with the username", async ({
+  page,
+}) => {
   await page.goto("/sign-up");
   await page.getByLabel(FIELD_NAME).fill("Smoke Student");
   await page.getByLabel(FIELD_EMAIL).fill(email);
+  await page.getByLabel(FIELD_USERNAME).fill(username);
   await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await pickDate(page, 25, 4, 14);
+  await expect(page.getByLabel(CONSENT)).toHaveCount(0);
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
   await page.waitForURL("**/dashboard");
+  await expect(page.getByText(LINK_PARENT)).toHaveCount(0);
 
   await page.getByRole("button", { name: SIGN_OUT }).click();
   await page.waitForURL((url) => url.pathname === "/");
 
+  await page.goto("/sign-in");
+  await page.getByLabel(FIELD_IDENTIFIER).fill(username.toUpperCase());
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await page.getByRole("button", { name: SIGN_IN, exact: true }).click();
+  await page.waitForURL("**/dashboard");
+  await page.getByRole("button", { name: SIGN_OUT }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+
   await signIn(page, password);
+});
+
+test("an under-18 student needs the consent tick, then the dashboard asks to link a parent", async ({
+  page,
+}) => {
+  await page.goto("/sign-up");
+  await page.getByLabel(FIELD_NAME).fill("Smoke Minor");
+  await page.getByLabel(FIELD_EMAIL).fill(minorEmail);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await pickDate(page, 12, 2, 9);
+  const consent = page.getByLabel(CONSENT);
+  await expect(consent).toBeVisible();
+
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  await expect(page).toHaveURL(/\/sign-up/);
+  await expect(consent).toHaveAttribute("aria-invalid", "true");
+
+  // A failed submit keeps the other fields but clears the password.
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await consent.check();
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  await page.waitForURL("**/dashboard");
+  await expect(page.getByText(LINK_PARENT)).toBeVisible();
+});
+
+test("a duplicate email gets one generic error and a forgot-password link", async ({ page }) => {
+  await page.goto("/sign-up");
+  await page.getByLabel(FIELD_NAME).fill("Someone Else");
+  await page.getByLabel(FIELD_EMAIL).fill(email);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await pickDate(page, 30, 1, 3);
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  const alert = page.locator('[data-slot="alert"]');
+  await expect(alert).toContainText("تحقق من بياناتك");
+  await expect(alert.getByRole("link", { name: "نسيت كلمة المرور؟" })).toBeVisible();
 });
 
 test("each dashboard view renders", async ({ page }) => {

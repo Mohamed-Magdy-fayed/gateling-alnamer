@@ -210,7 +210,14 @@ export const en: Dictionary = {
       submit: "Create account",
       haveAccount: "Already have an account?",
       roleLegend: "Account type",
-      roles: { student: "Student", parent: "Parent", teacher: "Teacher" },
+      roles: { student: "Student", parent: "Parent" },
+      dob: "Date of birth",
+      dobDay: "Day",
+      dobMonth: "Month",
+      dobYear: "Year",
+      consent: "I confirm my parent or guardian agrees to me creating this account.",
+      username: "Username (optional)",
+      usernameHint: "3 to 20 characters: lowercase English letters, numbers, _ and .",
     },
     forgot: {
       title: "Reset your password",
@@ -232,11 +239,30 @@ export const en: Dictionary = {
       email: "Email",
       password: "Password",
       passwordHint: "At least 8 characters.",
+      identifier: "Email or username",
+      showPassword: "Show password",
+      hidePassword: "Hide password",
+    },
+    states: {
+      under18Consent:
+        "Because you're under 18, a parent or guardian must agree before you create an account.",
+      linkParent: "Link a parent account so they can follow your progress.",
     },
     errors: {
       invalid: "Check the details you entered.",
-      credentials: "Incorrect email or password.",
-      duplicate: "This email is already registered.",
+      credentials: "Incorrect email, username or password.",
+      checkDetails:
+        "Check your details and try again. If you already have an account, you can reset your password.",
+      field: {
+        name: "Enter your name (at least 2 characters).",
+        email: "Enter a valid email address.",
+        username:
+          "This username is not valid. Use 3 to 20 lowercase English letters, numbers, _ or .",
+        password: "The password must be 8 to 128 characters.",
+        role: "Choose an account type.",
+        date_of_birth: "Choose a valid date of birth.",
+        guardian_consent: "Tick the box to confirm your parent or guardian agrees.",
+      },
       code: "The code is wrong or has expired.",
       email: "We couldn't send the email right now. Try again shortly.",
     },

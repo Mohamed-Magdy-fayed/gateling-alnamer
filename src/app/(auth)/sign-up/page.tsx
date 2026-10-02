@@ -10,11 +10,11 @@ export default async function SignUpPage({
   searchParams: Promise<{ role?: string }>;
 }) {
   if (await getCurrentUser()) redirect("/dashboard");
-  const { t } = await getDictionary();
+  const { t, locale } = await getDictionary();
   const { role } = await searchParams;
   return (
     <AuthShell title={t.auth.signUp.title} subtitle={t.auth.signUp.subtitle}>
-      <SignUpForm t={t.auth} defaultRole={role ?? "student"} />
+      <SignUpForm t={t.auth} defaultRole={role ?? "student"} locale={locale} />
     </AuthShell>
   );
 }
