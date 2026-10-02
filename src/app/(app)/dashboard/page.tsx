@@ -24,7 +24,9 @@ export default async function DashboardPage({
   const user = await requireUser();
   const { t, locale } = await getDictionary();
   const { view: requested } = await searchParams;
-  const view: View = isView(requested) ? requested : user.role;
+  // Reviewers have no demo view yet; they fall back to the admin one.
+  const ownView: View = user.role === "reviewer" ? "admin" : user.role;
+  const view: View = isView(requested) ? requested : ownView;
   const courses = await listCoursesForDashboard();
 
   return (
@@ -35,7 +37,7 @@ export default async function DashboardPage({
             {t.dashboard.hello} <bdi>{user.name}</bdi>
           </h1>
           <p className="text-sm text-fg-muted">
-            {format(t.dashboard.roleLabel, { role: t.dashboard.views[user.role] })}
+            {format(t.dashboard.roleLabel, { role: t.dashboard.views[ownView] })}
           </p>
         </div>
         <nav aria-label={t.dashboard.viewAs} className="flex flex-col gap-1.5">

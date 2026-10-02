@@ -4,6 +4,7 @@ import {
   bigint,
   boolean,
   check,
+  date,
   index,
   integer,
   jsonb,
@@ -18,7 +19,8 @@ import {
 } from "drizzle-orm/pg-core";
 import type { LocalizedText } from "@/lib/localized-text";
 
-export const userRole = pgEnum("user_role", ["student", "parent", "teacher", "admin"]);
+export const userRole = pgEnum("user_role", ["student", "parent", "teacher", "admin", "reviewer"]);
+export const userStatus = pgEnum("user_status", ["active", "suspended"]);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
@@ -28,6 +30,12 @@ export const users = pgTable("users", {
   email: text("email").unique(),
   role: userRole("role").notNull().default("student"),
   isSample: boolean("is_sample").notNull().default(false),
+  dateOfBirth: date("date_of_birth"),
+  guardianConsentAt: timestamp("guardian_consent_at", { withTimezone: true }),
+  locale: text("locale"),
+  status: userStatus("status").notNull().default("active"),
+  publicNumber: text("public_number").unique(),
+  isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   createdAt,
 });
 
@@ -40,15 +48,22 @@ export const credentials = pgTable("credentials", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const sessions = pgTable("sessions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  tokenHash: text("token_hash").notNull().unique(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  createdAt,
-});
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tokenHash: text("token_hash").notNull().unique(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id"), // FK added with the devices table (A5)
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    twoFactorVerified: boolean("two_factor_verified").notNull().default(false),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt,
+  },
+  (t) => [index("sessions_user_idx").on(t.userId)],
+);
 
 export const passwordResetCodes = pgTable("password_reset_codes", {
   id: uuid("id").primaryKey().defaultRandom(),
