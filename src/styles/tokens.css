@@ -1,0 +1,137 @@
+/* Al-Namer tokens (docs: DESIGN.md section 2). Components use the semantic names only. */
+:root {
+  --surface-canvas: #fbf8f3;
+  --surface-raised: #ffffff;
+  --surface-sunken: #f3eee5;
+  --surface-inverse: #10262b;
+  --text-primary: #14232a;
+  --text-secondary: #4a5a60;
+  --text-muted: #5e6b71;
+  --text-inverse: #f7f3ec;
+  --border-subtle: #e6ded1;
+  --border-strong: #8f8473;
+  --primary: #0f6b6b;
+  --primary-hover: #0b5858;
+  --primary-fg: #ffffff;
+  --primary-soft: #e2f1ef;
+  --primary-soft-fg: #0b5252;
+  --highlight: #c99a2e;
+  --highlight-fg: #1b1405;
+  --highlight-text: #87610f;
+  --success: #1e7a4c;
+  --success-soft: #e3f3ea;
+  --warning: #9a5800;
+  --warning-soft: #fff1d6;
+  --danger: #b42318;
+  --danger-soft: #fde8e6;
+  --info: #1f5fad;
+  --info-soft: #e5eefa;
+  --focus: #1a6fc4;
+  /* Media player stays dark in both themes. */
+  --media-surface: #0b1417;
+  --media-text: #c9d6d8;
+  --shadow-1: 0 1px 2px rgb(60 45 20 / 0.06), 0 1px 1px rgb(60 45 20 / 0.04);
+  --shadow-2: 0 4px 12px rgb(60 45 20 / 0.08), 0 2px 4px rgb(60 45 20 / 0.05);
+  --shadow-3: 0 16px 40px rgb(60 45 20 / 0.14), 0 4px 12px rgb(60 45 20 / 0.06);
+  --overlay: rgb(16 38 43 / 0.48);
+  color-scheme: light;
+
+  /* shadcn/ui variables, aliased to the tokens above (DESIGN.md 2.5). They resolve on :root, so the
+     dark overrides below carry through. `--primary` is shared by name. */
+  --background: var(--surface-canvas);
+  --foreground: var(--text-primary);
+  --card: var(--surface-raised);
+  --card-foreground: var(--text-primary);
+  --popover: var(--surface-raised);
+  --popover-foreground: var(--text-primary);
+  --primary-foreground: var(--primary-fg);
+  --secondary: var(--surface-sunken);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--surface-sunken);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--primary-soft);
+  --accent-foreground: var(--primary-soft-fg);
+  --destructive: var(--danger);
+  --border: var(--border-subtle);
+  --input: var(--border-strong);
+  --ring: var(--focus);
+  --sidebar: var(--surface-raised);
+  --sidebar-foreground: var(--text-primary);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-fg);
+  --sidebar-accent: var(--primary-soft);
+  --sidebar-accent-foreground: var(--primary-soft-fg);
+  --sidebar-border: var(--border-subtle);
+  --sidebar-ring: var(--focus);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface-canvas: #0d1a1e;
+    --surface-raised: #13242a;
+    --surface-sunken: #0a1417;
+    --surface-inverse: #f3eee5;
+    --text-primary: #eef2f0;
+    --text-secondary: #b3c1c2;
+    --text-muted: #8fa0a2;
+    --text-inverse: #10262b;
+    --border-subtle: #23373d;
+    --border-strong: #5e7479;
+    --primary: #4fc1b6;
+    --primary-hover: #6ed0c6;
+    --primary-fg: #06201e;
+    --primary-soft: #123b3a;
+    --primary-soft-fg: #9ee3da;
+    --highlight: #e6b84f;
+    --highlight-text: #f0cb75;
+    --success: #5bc68e;
+    --success-soft: #11301f;
+    --warning: #f2b451;
+    --warning-soft: #33250a;
+    --danger: #f2877c;
+    --danger-soft: #3a1714;
+    --info: #7fb1f0;
+    --info-soft: #132a45;
+    --focus: #7fb8ff;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 4px 12px rgb(0 0 0 / 0.45);
+    --shadow-3: 0 16px 40px rgb(0 0 0 / 0.55);
+    --overlay: rgb(0 0 0 / 0.6);
+    color-scheme: dark;
+  }
+}
+
+/* Explicit dark choice (theme cookie); same values as the media block above. */
+:root[data-theme="dark"] {
+  --surface-canvas: #0d1a1e;
+  --surface-raised: #13242a;
+  --surface-sunken: #0a1417;
+  --surface-inverse: #f3eee5;
+  --text-primary: #eef2f0;
+  --text-secondary: #b3c1c2;
+  --text-muted: #8fa0a2;
+  --text-inverse: #10262b;
+  --border-subtle: #23373d;
+  --border-strong: #5e7479;
+  --primary: #4fc1b6;
+  --primary-hover: #6ed0c6;
+  --primary-fg: #06201e;
+  --primary-soft: #123b3a;
+  --primary-soft-fg: #9ee3da;
+  --highlight: #e6b84f;
+  --highlight-text: #f0cb75;
+  --success: #5bc68e;
+  --success-soft: #11301f;
+  --warning: #f2b451;
+  --warning-soft: #33250a;
+  --danger: #f2877c;
+  --danger-soft: #3a1714;
+  --info: #7fb1f0;
+  --info-soft: #132a45;
+  --focus: #7fb8ff;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-2: 0 4px 12px rgb(0 0 0 / 0.45);
+  --shadow-3: 0 16px 40px rgb(0 0 0 / 0.55);
+  --overlay: rgb(0 0 0 / 0.6);
+  color-scheme: dark;
+}
