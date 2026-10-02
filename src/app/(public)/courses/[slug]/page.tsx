@@ -36,7 +36,7 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
       <div className="mt-6 grid gap-10 lg:grid-cols-[1.6fr_1fr]">
         <div className="flex flex-col gap-6">
           <div className="flex flex-wrap gap-1.5">
-            <Badge tone="accent">{t.common.sample}</Badge>
+            <Badge tone="highlight">{t.common.sample}</Badge>
             <Badge tone="primary">{course.subject[locale]}</Badge>
             <Badge>{course.grade[locale]}</Badge>
             <Badge>{course.curriculum[locale]}</Badge>

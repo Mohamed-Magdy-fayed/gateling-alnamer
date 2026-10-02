@@ -29,7 +29,7 @@ export default async function CoursesPage({
     <Container size="marketing" className="py-12 md:py-16">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-[clamp(1.875rem,1.5rem+1.6vw,2.5rem)] font-bold">{t.courses.title}</h1>
-        <Badge tone="accent">{t.common.sample}</Badge>
+        <Badge tone="highlight">{t.common.sample}</Badge>
       </div>
       <p className="mt-2 text-fg-2">{t.courses.lead}</p>
 

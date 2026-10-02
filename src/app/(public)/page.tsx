@@ -60,7 +60,7 @@ export default async function HomePage() {
             <Card className="relative rounded-[var(--radius-xl)] p-5 shadow-e3 sm:p-6">
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <Badge tone="accent">{t.common.sample}</Badge>
+                  <Badge tone="highlight">{t.common.sample}</Badge>
                   <h2 className="mt-3 text-xl font-semibold">
                     <bdi>{sample.title[locale]}</bdi>
                   </h2>
@@ -145,7 +145,7 @@ export default async function HomePage() {
             <h2 className="text-[clamp(1.5rem,1.3rem+0.9vw,1.875rem)] font-semibold">
               {t.home.browseTitle}
             </h2>
-            <Badge tone="accent">{t.common.sample}</Badge>
+            <Badge tone="highlight">{t.common.sample}</Badge>
           </div>
           <p className="mt-2 text-fg-2">{t.home.browseLead}</p>
           <div className="mt-8 flex flex-col gap-5">

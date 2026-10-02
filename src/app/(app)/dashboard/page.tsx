@@ -37,7 +37,7 @@ export default async function DashboardPage({
         <nav aria-label={t.dashboard.viewAs} className="flex flex-col gap-1.5">
           <span className="flex items-center gap-2 text-xs font-medium text-fg-muted">
             {t.dashboard.viewAs}
-            <Badge tone="accent">{t.common.sample}</Badge>
+            <Badge tone="highlight">{t.common.sample}</Badge>
           </span>
           <ul className="flex flex-wrap gap-1 rounded-[var(--radius-md)] bg-sunken p-1">
             {views.map((item) => (

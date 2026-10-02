@@ -35,7 +35,7 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
         {p.back}
       </Link>
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Badge tone="accent">{t.common.sample}</Badge>
+        <Badge tone="highlight">{t.common.sample}</Badge>
         <h1 className="text-xl font-bold">
           <bdi>{found.lesson.title[locale]}</bdi>
         </h1>

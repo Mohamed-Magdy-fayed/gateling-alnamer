@@ -36,6 +36,11 @@ export async function sendMail(mail: Mail): Promise<void> {
   }
 
   if (!env.SMTP_HOST || !env.SMTP_FROM_EMAIL) {
+    // Local demo without a configured sender: print so the flow can still be tested.
+    if (env.APP_MODE === "demo" && !isDeployed()) {
+      logToConsole(mail);
+      return;
+    }
     throw new Error("SMTP_HOST and SMTP_FROM_EMAIL are required when EMAIL_TRANSPORT=smtp.");
   }
   const port = env.SMTP_PORT ?? 587;
