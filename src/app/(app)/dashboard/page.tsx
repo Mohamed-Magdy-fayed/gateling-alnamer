@@ -10,6 +10,7 @@ import {
   dashboardViews,
   isDashboardView,
 } from "@/components/dashboard/views";
+import { SoftWarning } from "@/components/devices/soft-warning";
 import { format } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { shouldPromptParentLink } from "@/server/auth/profile";
@@ -69,7 +70,7 @@ export default async function DashboardPage({
 
       {notice === "device-over" && user.role === "student" ? (
         <div className="mt-6">
-          <Alert tone="warning">{t.devices.softWarning}</Alert>
+          <SoftWarning message={t.devices.softWarning} />
         </div>
       ) : null}
 

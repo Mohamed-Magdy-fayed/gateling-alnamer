@@ -187,6 +187,24 @@ h4 {
 .sheet-content[data-state="closed"] {
   animation: sheet-out var(--dur-slow) var(--ease-in) forwards;
 }
+@keyframes dialog-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+@keyframes dialog-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.dialog-pop[data-state="open"] {
+  animation: dialog-pop-in var(--dur-slow) var(--ease-out);
+}
+.dialog-pop[data-state="closed"] {
+  animation: dialog-pop-out var(--dur-fast) var(--ease-in) forwards;
+}
 .sheet-overlay[data-state="open"] {
   animation: sheet-fade-in var(--dur-slow) var(--ease-out);
 }
@@ -198,6 +216,12 @@ h4 {
     animation: sheet-fade-in var(--dur-fast) linear;
   }
   .sheet-content[data-state="closed"] {
+    animation: sheet-fade-out var(--dur-fast) linear forwards;
+  }
+  .dialog-pop[data-state="open"] {
+    animation: sheet-fade-in var(--dur-fast) linear;
+  }
+  .dialog-pop[data-state="closed"] {
     animation: sheet-fade-out var(--dur-fast) linear forwards;
   }
   .sheet-overlay[data-state] {

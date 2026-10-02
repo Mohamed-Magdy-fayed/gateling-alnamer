@@ -19,9 +19,25 @@ export function Container({
 }
 
 /** LTR island for prices, codes, emails and numbers inside RTL text (DESIGN.md section 7). */
-export function Ltr({ children, className }: { children: ReactNode; className?: string }) {
+export function Ltr({
+  children,
+  className,
+  wrap = false,
+}: {
+  children: ReactNode;
+  className?: string;
+  /** Let a long value (a device label) wrap instead of forcing one line. */
+  wrap?: boolean;
+}) {
   return (
-    <bdi dir="ltr" className={cn("tabular whitespace-nowrap", className)}>
+    <bdi
+      dir="ltr"
+      className={cn(
+        "tabular",
+        wrap ? "whitespace-normal break-words" : "whitespace-nowrap",
+        className,
+      )}
+    >
       {children}
     </bdi>
   );

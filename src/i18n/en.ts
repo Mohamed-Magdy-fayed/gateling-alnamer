@@ -393,7 +393,10 @@ export const en: Dictionary = {
       "A private window or cleared browser data makes this browser count as a new device.",
     accountTitle: "My account",
     signOutOthers: "Sign out of other devices",
+    accountHint: "Ends every other session of your account. This device stays signed in.",
     signOutOthersDone: "Signed out of other devices. Your devices stay registered.",
+    signOutOthersDoneBasic: "Signed out of other devices.",
+    removeDialogDevice: "Device:",
     softWarning:
       "You're over the device limit. Sign-in was allowed this time and the team was told.",
     unknownDevice: "Unknown device",

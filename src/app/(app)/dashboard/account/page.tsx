@@ -10,6 +10,7 @@ export default async function AccountPage() {
   return (
     <Container className="flex flex-col gap-6 py-8">
       <h1 className="text-2xl font-bold">{t.devices.accountTitle}</h1>
+      <p className="max-w-md text-sm text-fg-muted">{t.devices.accountHint}</p>
       <SignOutOthersForm label={t.devices.signOutOthers} authT={t.auth} />
     </Container>
   );

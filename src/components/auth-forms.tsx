@@ -135,6 +135,9 @@ export function SignUpForm({ t, defaultRole, locale, captcha, deviceNotice }: Si
             </RadioGroupItem>
           ))}
         </RadioGroup>
+        <div aria-live="polite">
+          {role === "student" ? <Alert tone="info">{deviceNotice}</Alert> : null}
+        </div>
       </fieldset>
       <Field
         name="name"
@@ -217,7 +220,6 @@ export function SignUpForm({ t, defaultRole, locale, captcha, deviceNotice }: Si
           </div>
         </div>
       ) : null}
-      {role === "student" ? <p className="text-sm text-fg-muted">{deviceNotice}</p> : null}
       <Captcha
         config={captcha}
         locale={locale}

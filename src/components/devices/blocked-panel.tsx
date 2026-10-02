@@ -1,7 +1,7 @@
 "use client";
 
 import { LoaderCircle, Monitor } from "lucide-react";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { contactSupportAction, removeDeviceAction } from "@/app/devices/blocked/actions";
 import { type AuthText, idle, Message } from "@/components/auth-parts";
 import {
@@ -39,8 +39,9 @@ type RowProps = {
   throttled: boolean;
   pending: boolean;
   locale: Locale;
-  formAction: (payload: FormData) => void;
 };
+
+const THROTTLE_ID = "device-throttle";
 
 /** Rendered only while the dialog is open, so its date is today's, never the page-load day's. */
 function ConfirmText({ t, locale }: { t: DeviceText; locale: Locale }) {
@@ -48,22 +49,20 @@ function ConfirmText({ t, locale }: { t: DeviceText; locale: Locale }) {
   return <>{format(t.removeConfirm, { date })}</>;
 }
 
-function DeviceRow({ device, t, throttled, pending, locale, formAction }: RowProps) {
-  const formId = `remove-${device.id}`;
+function DeviceRow({ device, t, throttled, pending, locale }: RowProps) {
+  const labelId = `device-label-${device.id}`;
+  const name = device.label ? <Ltr wrap>{device.label}</Ltr> : t.unknownDevice;
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 py-3">
       <div className="flex min-w-0 items-center gap-3">
         <Monitor aria-hidden className="size-5 shrink-0 text-fg-muted" strokeWidth={1.75} />
         <div className="min-w-0">
-          <p className="font-medium">
-            {device.label ? <Ltr>{device.label}</Ltr> : t.unknownDevice}
+          <p id={labelId} className="font-medium break-words">
+            {name}
           </p>
           <p className="text-sm text-fg-muted">{format(t.lastSeen, { time: device.lastSeen })}</p>
         </div>
       </div>
-      <form id={formId} action={formAction}>
-        <input type="hidden" name="deviceId" value={device.id} />
-      </form>
       <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button
@@ -72,6 +71,7 @@ function DeviceRow({ device, t, throttled, pending, locale, formAction }: RowPro
             className="min-h-11"
             disabled={throttled || pending}
             aria-busy={pending}
+            aria-describedby={throttled ? `${labelId} ${THROTTLE_ID}` : labelId}
           >
             {pending ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null}
             {t.remove}
@@ -82,13 +82,16 @@ function DeviceRow({ device, t, throttled, pending, locale, formAction }: RowPro
             <AlertDialogTitle>{t.remove}</AlertDialogTitle>
             <AlertDialogDescription>
               <ConfirmText t={t} locale={locale} />
+              <span className="mt-2 block break-words">
+                {t.removeDialogDevice} {name}
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-11">{t.cancel}</AlertDialogCancel>
             <AlertDialogAction
-              type="button"
-              onClick={() => document.forms.namedItem(formId)?.requestSubmit()}
+              type="submit"
+              form={`remove-${device.id}`}
               variant="destructive"
               className="min-h-11"
             >
@@ -104,10 +107,14 @@ function DeviceRow({ device, t, throttled, pending, locale, formAction }: RowPro
 export function BlockedPanel({ t, authT, devices, throttledText, locale }: Props) {
   const [removeState, removeAction, removing] = useActionState(removeDeviceAction, idle);
   const [supportState, supportAction] = useActionState(contactSupportAction, idle);
+  const [pendingId, setPendingId] = useState<string | null>(null);
   const throttled = throttledText !== null || removeState.tone === "warning";
+  const submitRemoval = (payload: FormData) => {
+    setPendingId(String(payload.get("deviceId") ?? ""));
+    removeAction(payload);
+  };
   return (
     <div className="flex flex-col gap-4">
-      <Alert tone="info">{t.privateNotice}</Alert>
       <Message state={removeState} t={authT} />
       <ul className="divide-y divide-line">
         {devices.map((device) => (
@@ -116,13 +123,22 @@ export function BlockedPanel({ t, authT, devices, throttledText, locale }: Props
             device={device}
             t={t}
             throttled={throttled}
-            pending={removing}
+            pending={removing && pendingId === device.id}
             locale={locale}
-            formAction={removeAction}
           />
         ))}
       </ul>
-      {throttledText ? <Alert tone="warning">{throttledText}</Alert> : null}
+      {devices.map((device) => (
+        <form key={device.id} id={`remove-${device.id}`} action={submitRemoval} hidden>
+          <input type="hidden" name="deviceId" value={device.id} />
+        </form>
+      ))}
+      {throttledText ? (
+        <Alert tone="warning" id={THROTTLE_ID}>
+          {throttledText}
+        </Alert>
+      ) : null}
+      <Alert tone="info">{t.privateNotice}</Alert>
       <form action={supportAction} className="flex flex-col gap-4">
         <Message state={supportState} t={authT} />
         <SubmitButton variant="secondary">{t.contactSupport}</SubmitButton>

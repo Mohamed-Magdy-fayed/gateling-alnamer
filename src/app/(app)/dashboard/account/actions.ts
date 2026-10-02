@@ -11,5 +11,9 @@ export async function signOutOthersAction(): Promise<FormState> {
   if (!session) redirect("/sign-in");
   await invalidateUserSessions(session.user.id, { exceptTokenHash: session.tokenHash });
   const { t } = await getDictionary();
-  return { status: "success", message: t.devices.signOutOthersDone };
+  const message =
+    session.user.role === "student"
+      ? t.devices.signOutOthersDone
+      : t.devices.signOutOthersDoneBasic;
+  return { status: "success", message };
 }

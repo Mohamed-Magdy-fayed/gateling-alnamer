@@ -12,6 +12,8 @@ type AlertProps = {
   /** Pass `ref` and `tabIndex={-1}` to move focus here after a submit; a focused alert is read once. */
   ref?: Ref<HTMLDivElement>;
   tabIndex?: number;
+  /** Lets a control point at this alert with `aria-describedby`. */
+  id?: string;
 };
 
 /** Danger interrupts (`alert`) unless the alert takes focus, where focus already announces it. */
@@ -20,11 +22,12 @@ function roleFor(tone: Tone, focusable: boolean): "alert" | "status" | undefined
   return focusable ? undefined : "alert";
 }
 
-export function Alert({ tone = "info", children, ref, tabIndex }: AlertProps) {
+export function Alert({ tone = "info", children, ref, tabIndex, id }: AlertProps) {
   const Icon = icons[tone];
   return (
     <BaseAlert
       ref={ref}
+      id={id}
       tabIndex={tabIndex}
       variant={tone}
       role={roleFor(tone, tabIndex !== undefined)}

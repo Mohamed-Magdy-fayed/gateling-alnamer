@@ -28,12 +28,17 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           <div className="ms-auto flex items-center gap-1">
             <LanguageSwitch />
             <ThemeSwitch />
-            <ButtonLink href="/dashboard/account" variant="ghost" size="sm">
+            <ButtonLink
+              href="/dashboard/account"
+              variant="ghost"
+              size="sm"
+              className="min-h-11 min-w-11 max-sm:hidden"
+            >
               <UserRound aria-hidden className="size-4" strokeWidth={1.75} />
-              <span className="max-sm:sr-only">{t.devices.accountTitle}</span>
+              <span>{t.devices.accountTitle}</span>
             </ButtonLink>
             <form action={signOutAction}>
-              <Button type="submit" variant="ghost" size="sm">
+              <Button type="submit" variant="ghost" size="sm" className="min-h-11 min-w-11">
                 <LogOut aria-hidden className="size-4 rtl:-scale-x-100" strokeWidth={1.75} />
                 <span className="max-sm:sr-only">{t.common.signOut}</span>
               </Button>
@@ -41,6 +46,19 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           </div>
         </Container>
       </header>
+      <nav aria-label={t.devices.accountTitle} className="sm:hidden">
+        <Container className="pt-3">
+          <ButtonLink
+            href="/dashboard/account"
+            variant="ghost"
+            size="sm"
+            className="min-h-11 min-w-11"
+          >
+            <UserRound aria-hidden className="size-4" strokeWidth={1.75} />
+            {t.devices.accountTitle}
+          </ButtonLink>
+        </Container>
+      </nav>
       <main id="main" className="pb-16">
         {showVerifyBanner && user.email ? <VerifyBanner t={t} email={user.email} /> : null}
         {children}

@@ -264,7 +264,7 @@ test("a duplicate email gets one generic error and a forgot-password link", asyn
   await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
   await pickDate(page, 30, 1, 3);
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
-  const alert = page.locator('[data-slot="alert"]');
+  const alert = page.locator('[data-slot="alert"]').first();
   await expect(alert).toContainText("تحقق من بياناتك");
   await expect(alert.getByRole("link", { name: "نسيت كلمة المرور؟" })).toBeVisible();
 });
@@ -454,7 +454,7 @@ test("a failed sign-up submit focuses the error summary, which links to the fail
 }) => {
   await page.goto("/sign-up");
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
-  const summary = page.locator('[data-slot="alert"]');
+  const summary = page.locator('[data-slot="alert"]').first();
   await expect(summary).toBeFocused();
   await summary.getByRole("link").first().click();
   await expect(page.getByLabel(FIELD_NAME)).toBeFocused();
@@ -474,7 +474,7 @@ test("a forced failing captcha token shows the captcha copy and creates no user"
     input.value = "fail";
   });
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
-  const alert = page.locator('[data-slot="alert"]');
+  const alert = page.locator('[data-slot="alert"]').first();
   await expect(alert).toBeFocused();
   await expect(alert).toContainText(CAPTCHA_FAILED);
   await expect(page).toHaveURL(/[/]sign-up/);
@@ -600,6 +600,16 @@ test.describe("device limit of 2", () => {
     await expect(third.page.getByText(PRIVATE_NOTICE)).toBeVisible();
     await expect(third.page.getByRole("list").getByRole("listitem")).toHaveCount(2);
 
+    // A5.8: every Remove trigger is described by its own device label.
+    const rows = third.page.getByRole("list").getByRole("listitem");
+    for (let i = 0; i < 2; i += 1) {
+      const row = rows.nth(i);
+      const label = (await row.locator("p").first().innerText()).trim();
+      await expect(row.getByRole("button", { name: REMOVE_DEVICE })).toHaveAccessibleDescription(
+        label,
+      );
+    }
+
     await third.page.getByRole("button", { name: REMOVE_DEVICE }).first().click();
     await third.page.getByRole("alertdialog").getByRole("button", { name: REMOVE_DEVICE }).click();
     await expect(third.page).toHaveURL(/[/]dashboard$/);
@@ -620,6 +630,47 @@ test.describe("device limit of 2", () => {
     await expect(third.page.getByText(SIGN_OUT_OTHERS_DONE)).toBeVisible();
     await third.page.goto("/dashboard");
     await expect(third.page.getByRole("button", { name: SIGN_OUT, exact: true })).toBeVisible();
+    // A5.8: header targets are 44px and the header never overflows at 320px, in ar and en.
+    await third.page.setViewportSize({ width: 320, height: 700 });
+    await third.page.goto("/dashboard");
+    for (const language of ["ar", "en"]) {
+      if (language === "en") {
+        await third.page.getByRole("button", { name: SWITCH_TO_EN }).click();
+        await expect(third.page.locator("html")).toHaveAttribute("lang", "en");
+      }
+      const header = third.page.locator("header").first();
+      const wide = await third.page.evaluate(() =>
+        [...document.querySelectorAll("body *")]
+          .filter((el) => !el.className.toString().includes("sr-only"))
+          .filter(
+            (el) => el.getBoundingClientRect().right > document.documentElement.clientWidth + 0.5,
+          )
+          .map((el) => `${el.tagName}.${el.className.toString().slice(0, 40)}`)
+          .slice(0, 6),
+      );
+      expect(wide, `${language} elements past the viewport`).toEqual([]);
+      const overflow = await third.page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow, `${language} page overflow`).toBeLessThanOrEqual(0);
+      const headerOverflow = await header.evaluate((el) => el.scrollWidth - el.clientWidth);
+      expect(headerOverflow, `${language} header overflow`).toBeLessThanOrEqual(0);
+      const targets = [
+        third.page.getByRole("link", { name: /^(حسابي|My account)$/ }),
+        header.getByRole("button", { name: /^(تسجيل الخروج|Sign out)$/ }),
+      ];
+      for (const target of targets) {
+        const box = await target.boundingBox();
+        expect(box?.width ?? 0, `${language} target width`).toBeGreaterThanOrEqual(44);
+        expect(box?.height ?? 0, `${language} target height`).toBeGreaterThanOrEqual(44);
+      }
+    }
+
+    // A5.8: the soft warning shows once, then the notice param leaves the URL.
+    await third.page.goto("/dashboard?notice=device-over");
+    await expect(third.page.getByText(/device limit|حد الأجهزة/)).toBeVisible();
+    await expect(third.page).toHaveURL(/[/]dashboard$/);
+
     await first.page.goto("/dashboard");
     await expect(first.page).toHaveURL(/[/]sign-in/);
     await second.page.goto("/dashboard");
