@@ -16,7 +16,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { Dictionary } from "@/i18n/ar";
-import { format } from "@/i18n/config";
+import { format, formatDate, type Locale } from "@/i18n/config";
+import { SELF_REMOVAL_INTERVAL_MS } from "@/server/devices/policy";
 import { Alert, Button, Ltr } from "@/ui";
 import { SubmitButton } from "@/ui/submit-button";
 
@@ -29,8 +30,7 @@ type Props = {
   devices: BlockedDevice[];
   /** "You can remove another device after <date>" when a removal happened within the week, else null. */
   throttledText: string | null;
-  /** The remove-confirm sentence with its date already filled in. */
-  confirmText: string;
+  locale: Locale;
 };
 
 type RowProps = {
@@ -38,11 +38,17 @@ type RowProps = {
   t: DeviceText;
   throttled: boolean;
   pending: boolean;
-  confirmText: string;
+  locale: Locale;
   formAction: (payload: FormData) => void;
 };
 
-function DeviceRow({ device, t, throttled, pending, confirmText, formAction }: RowProps) {
+/** Rendered only while the dialog is open, so its date is today's, never the page-load day's. */
+function ConfirmText({ t, locale }: { t: DeviceText; locale: Locale }) {
+  const date = formatDate(locale, new Date(Date.now() + SELF_REMOVAL_INTERVAL_MS));
+  return <>{format(t.removeConfirm, { date })}</>;
+}
+
+function DeviceRow({ device, t, throttled, pending, locale, formAction }: RowProps) {
   const formId = `remove-${device.id}`;
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -74,7 +80,9 @@ function DeviceRow({ device, t, throttled, pending, confirmText, formAction }: R
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t.remove}</AlertDialogTitle>
-            <AlertDialogDescription>{confirmText}</AlertDialogDescription>
+            <AlertDialogDescription>
+              <ConfirmText t={t} locale={locale} />
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-11">{t.cancel}</AlertDialogCancel>
@@ -93,7 +101,7 @@ function DeviceRow({ device, t, throttled, pending, confirmText, formAction }: R
   );
 }
 
-export function BlockedPanel({ t, authT, devices, throttledText, confirmText }: Props) {
+export function BlockedPanel({ t, authT, devices, throttledText, locale }: Props) {
   const [removeState, removeAction, removing] = useActionState(removeDeviceAction, idle);
   const [supportState, supportAction] = useActionState(contactSupportAction, idle);
   const throttled = throttledText !== null || removeState.tone === "warning";
@@ -109,7 +117,7 @@ export function BlockedPanel({ t, authT, devices, throttledText, confirmText }: 
             t={t}
             throttled={throttled}
             pending={removing}
-            confirmText={confirmText}
+            locale={locale}
             formAction={removeAction}
           />
         ))}

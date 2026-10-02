@@ -155,6 +155,20 @@ describe("touchDevice", () => {
   });
 });
 
+describe("touchDevice without a session", () => {
+  it("is one plain UPDATE: no transaction", async () => {
+    const userId = await makeUser("touch1");
+    const deviceId = await need(userId, key());
+    setClockForTests(new Date(NOW.getTime() + 6 * 60 * 1000));
+    const spy = vi.spyOn(db(), "transaction");
+    expect(await service.touchDevice(deviceId)).toBe(true);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+    const [device] = await db().select().from(devices).where(eq(devices.id, deviceId));
+    expect(device?.lastSeenAt.getTime()).toBe(NOW.getTime() + 6 * 60 * 1000);
+  });
+});
+
 describe("assertActiveDevice", () => {
   it("passes non-students, needs a device for students, rejects revoked devices", async () => {
     expect(await service.assertActiveDevice({ role: "teacher", deviceId: null })).toEqual({
@@ -224,6 +238,78 @@ describe("removeDevice", () => {
     expect(
       await service.removeDevice({ userId: other, deviceId: d, currentDeviceKey: key() }),
     ).toEqual({ ok: false, reason: "not_found" });
+  });
+});
+
+describe("removeAndRegister", () => {
+  it("revokes, records the removal and registers the current device in one go", async () => {
+    const userId = await makeUser("rar");
+    await setSettings(1, "strict");
+    const old = await need(userId, key());
+    const so = await addSession(userId, old);
+    const current = key();
+
+    const result = await service.removeAndRegister({
+      userId,
+      deviceId: old,
+      currentDeviceKey: current,
+      userAgent: UA,
+    });
+    expect(result).toMatchObject({ ok: true, deviceId: expect.any(String) });
+    const [revoked] = await db().select().from(devices).where(eq(devices.id, old));
+    expect(revoked).toMatchObject({ revokedReason: "self" });
+    expect(await sessionRows(so)).toHaveLength(0);
+    const active = (await deviceRows(userId)).filter((d) => d.revokedAt === null);
+    expect(active.map((d) => d.deviceKey)).toEqual([current]);
+    const rem = await db().select().from(deviceRemovals).where(eq(deviceRemovals.userId, userId));
+    expect(rem).toMatchObject([{ kind: "self", deviceId: old }]);
+  });
+
+  it("commits nothing, and spends no throttle, when the current device would still be blocked", async () => {
+    const userId = await makeUser("rarb");
+    await setSettings(2, "strict");
+    const a = await need(userId, key());
+    await need(userId, key());
+    await setSettings(1, "strict"); // lowered: one removal leaves one active, still at the limit
+    const sa = await addSession(userId, a);
+
+    const result = await service.removeAndRegister({
+      userId,
+      deviceId: a,
+      currentDeviceKey: key(),
+      userAgent: UA,
+    });
+    expect(result).toEqual({ ok: false, reason: "blocked" });
+    expect((await deviceRows(userId)).filter((d) => d.revokedAt === null)).toHaveLength(2);
+    expect(await sessionRows(sa)).toHaveLength(1);
+    expect(
+      await db().select().from(deviceRemovals).where(eq(deviceRemovals.userId, userId)),
+    ).toHaveLength(0);
+    expect(await service.nextSelfRemovalAt(userId)).toBeNull();
+  });
+
+  it("keeps the throttle, the current-device and the ownership rules", async () => {
+    const userId = await makeUser("rarr");
+    const other = await makeUser("rarro");
+    const kCurrent = key();
+    const a = await need(userId, key());
+    const b = await need(userId, kCurrent);
+    const mine = { userId, currentDeviceKey: kCurrent, userAgent: UA };
+    expect(await service.removeAndRegister({ ...mine, deviceId: b })).toEqual({
+      ok: false,
+      reason: "is_current",
+    });
+    expect(await service.removeAndRegister({ ...mine, userId: other, deviceId: a })).toEqual({
+      ok: false,
+      reason: "not_found",
+    });
+    expect((await service.removeAndRegister({ ...mine, deviceId: a })).ok).toBe(true);
+    const c = await need(userId, key());
+    expect(await service.removeAndRegister({ ...mine, deviceId: c })).toEqual({
+      ok: false,
+      reason: "throttled",
+      nextAt: new Date(NOW.getTime() + 7 * DAY),
+    });
   });
 });
 

@@ -18,12 +18,21 @@ const inlineHandlers: Handlers = {
 
 /**
  * `inline` runs the handler in-process and awaits it (errors propagate to the caller);
- * `inngest-dev` / `inngest` enqueue through Inngest and return without running it.
+ * `inngest-dev` / `inngest` enqueue through Inngest and return without running it; `options.id`
+ * is the Inngest event id, so a repeat of the same id inside Inngest's window is dropped.
  */
-export async function sendEvent<K extends EventName>(name: K, data: EventMap[K]): Promise<void> {
+export async function sendEvent<K extends EventName>(
+  name: K,
+  data: EventMap[K],
+  options: { id?: string } = {},
+): Promise<void> {
   if (serverEnv().providers.jobs === "inline") {
     await inlineHandlers[name](data);
     return;
   }
-  await inngest.send({ name, data: { encrypted: data } });
+  await inngest.send({
+    name,
+    data: { encrypted: data },
+    ...(options.id ? { id: options.id } : {}),
+  });
 }

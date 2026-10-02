@@ -67,6 +67,12 @@ describe("formatDate", () => {
   it("formats English as day month year", () => {
     expect(formatDate("en", date)).toBe("1 October 2026");
   });
+
+  it("uses the Cairo calendar day whatever the server's zone", () => {
+    const lateUtc = new Date("2030-03-01T22:30:00.000Z"); // 00:30 on 2 March in Cairo
+    expect(formatDate("en", lateUtc)).toBe("2 March 2030");
+    expect(formatDate("ar", lateUtc)).toContain("2");
+  });
 });
 
 describe("formatTime", () => {

@@ -71,11 +71,15 @@ async function signedIn(userId: string, deviceId: string | null = null) {
   return sha256(token);
 }
 
-async function call(next?: string): Promise<string> {
+/** A same-origin navigation by default; pass headers to model another kind of request. */
+async function call(
+  next?: string,
+  headers: Record<string, string> = { "sec-fetch-site": "same-origin" },
+): Promise<string> {
   const url = new URL("http://localhost/devices/check");
   if (next !== undefined) url.searchParams.set("next", next);
   try {
-    await GET({ nextUrl: url } as never);
+    await GET({ nextUrl: url, headers: new Headers(headers) } as never);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("redirect:")) {
       return error.message.slice("redirect:".length);
@@ -177,5 +181,30 @@ describe("GET /devices/check", () => {
   it("a pre-session cookie alone is signed out", async () => {
     h.store.jar.set("presession", "something");
     expect(await call("/dashboard")).toBe("/sign-in");
+  });
+
+  describe("cross-site requests", () => {
+    it.each([
+      ["a cross-site fetch", { "sec-fetch-site": "cross-site" }],
+      ["a same-site sibling", { "sec-fetch-site": "same-site" }],
+      ["no fetch metadata and a foreign referer", { referer: "https://evil.example/x" }],
+      ["neither header", {}],
+    ])("%s changes nothing and goes to /dashboard", async (_name, headers) => {
+      const userId = await makeUser("x1");
+      const token = await signedIn(userId);
+      expect(await call("/dashboard/learn/abc", headers)).toBe("/dashboard");
+      expect((await sessionRow(token))?.deviceId).toBeNull();
+      expect(await db().select().from(devices).where(eq(devices.userId, userId))).toHaveLength(0);
+    });
+
+    it.each([
+      ["a typed address (none)", { "sec-fetch-site": "none" }],
+      ["no fetch metadata and our own referer", { referer: "http://localhost/dashboard/x" }],
+    ])("proceeds for %s", async (_name, headers) => {
+      const userId = await makeUser("x2");
+      await signedIn(userId);
+      expect(await call("/dashboard/learn/abc", headers)).toBe("/dashboard/learn/abc");
+      expect(await db().select().from(devices).where(eq(devices.userId, userId))).toHaveLength(1);
+    });
   });
 });

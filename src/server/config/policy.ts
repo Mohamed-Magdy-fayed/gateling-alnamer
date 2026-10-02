@@ -25,8 +25,12 @@ export type AuthLimits = {
   readonly signIn: { readonly ip: LimitRule };
   readonly signUp: { readonly ip: LimitRule };
   readonly codeSend: { readonly id: LimitRule; readonly ip: LimitRule };
-  /** "Contact support" from the device block screen: per student. */
-  readonly supportRequest: { readonly user: LimitRule };
+  /** "Contact support" from the device block screen: per student, per IP and platform-wide. */
+  readonly supportRequest: {
+    readonly user: LimitRule;
+    readonly ip: LimitRule;
+    readonly global: LimitRule;
+  };
   /** Failed code verifies, the D32 pattern: a pair lock per (identifier, device) and a captcha-only account counter. */
   readonly codeVerify: { readonly pair: LimitRule; readonly account: LimitRule };
   readonly lockout: {
@@ -47,7 +51,11 @@ export const AUTH_LIMITS: AuthLimits = {
   signIn: { ip: { max: 20, windowSec: MINUTES_15 } },
   signUp: { ip: { max: 5, windowSec: HOUR } },
   codeSend: { id: { max: 3, windowSec: MINUTES_15 }, ip: { max: 10, windowSec: HOUR } },
-  supportRequest: { user: { max: 3, windowSec: DAY } },
+  supportRequest: {
+    user: { max: 3, windowSec: DAY },
+    ip: { max: 5, windowSec: DAY },
+    global: { max: 20, windowSec: DAY },
+  },
   codeVerify: {
     pair: { max: 10, windowSec: MINUTES_15 },
     account: { max: 30, windowSec: MINUTES_15 },
@@ -58,6 +66,9 @@ export const AUTH_LIMITS: AuthLimits = {
     account: { max: 30, windowSec: MINUTES_15 },
   },
 };
+
+/** D34: sessions kept per device; sharing the `did` cookie cannot multiply them. The oldest are revoked. */
+export const MAX_SESSIONS_PER_DEVICE = 3;
 
 /** The device cookie lives 400 days, the browser cap; it is refreshed on every auth action. */
 export const DEVICE_COOKIE_MAX_AGE_SEC = 400 * 24 * 60 * 60;

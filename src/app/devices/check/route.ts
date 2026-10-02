@@ -7,12 +7,29 @@ import { issuePreSession } from "@/server/devices/pre-session";
 import { assertActiveDevice, registerOrBlock } from "@/server/devices/service";
 
 /**
+ * The check changes state on a GET, so a cross-site request (an image, a link on another site)
+ * must not trigger it: it proceeds only for a same-origin or user-typed navigation.
+ */
+function isOwnNavigation(request: NextRequest): boolean {
+  const site = request.headers.get("sec-fetch-site");
+  if (site) return site === "same-origin" || site === "none";
+  const referer = request.headers.get("referer");
+  if (!referer) return false;
+  try {
+    return new URL(referer).origin === request.nextUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The device check for a signed-in student whose session has no active device (a session from
  * before the limit existed, or one whose device was revoked). It is an auth route, so it may set
  * the `did` cookie. It registers this browser and binds the current session to it; when the limit
  * blocks it, the session ends and a pre-session leads to device management.
  */
 export async function GET(request: NextRequest): Promise<never> {
+  if (!isOwnNavigation(request)) redirect("/dashboard");
   const next = safeNextPath(request.nextUrl.searchParams.get("next"));
   const session = await getCurrentSession();
   if (!session) redirect("/sign-in");

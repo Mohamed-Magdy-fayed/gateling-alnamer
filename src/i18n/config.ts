@@ -31,6 +31,7 @@ export function formatDate(locale: Locale, date: Date): string {
     day: "numeric",
     month: "long",
     year: "numeric",
+    timeZone: "Africa/Cairo",
   }).format(date);
 }
 

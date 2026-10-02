@@ -9,7 +9,7 @@ import {
   SESSION_TTL_MS,
 } from "@/server/config/policy";
 import type { User } from "@/server/db/schema";
-import { touchDevice } from "@/server/devices/service";
+import { capDeviceSessions, touchDevice } from "@/server/devices/service";
 import { randomToken, sha256 } from "./password";
 import { cacheDelete, cacheGet, cacheSet } from "./session-cache";
 import {
@@ -68,8 +68,10 @@ async function insertFor(
   return { token, tokenHash, expiresAt };
 }
 
+/** Creates a session; a device keeps at most MAX_SESSIONS_PER_DEVICE (D34), the oldest are revoked. */
 export async function createSession(userId: string, options: CreateOptions = {}): Promise<void> {
   await insertFor(userId, options);
+  if (options.deviceId) await capDeviceSessions(userId, options.deviceId);
 }
 
 /** Swaps the current session for a fresh token (same user, device and 2FA state). Call on privilege change. */

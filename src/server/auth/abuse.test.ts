@@ -353,17 +353,32 @@ describe("code verify (D32 pattern)", () => {
 });
 
 describe("support requests", () => {
+  const ask = (userId: string, ip = "203.0.113.5") => guardSupportRequest({ userId, ip }, deps());
+
   it("allows 3 a day per user and blocks the 4th with the window end", async () => {
-    for (let i = 0; i < 3; i++) {
-      expect(await guardSupportRequest({ userId: "u1" }, deps())).toEqual({ ok: true });
-    }
-    const blocked = await guardSupportRequest({ userId: "u1" }, deps());
+    for (let i = 0; i < 3; i++) expect(await ask("u1", `198.51.100.${i}`)).toEqual({ ok: true });
+    const blocked = await ask("u1", "198.51.100.9");
     expect(blocked).toMatchObject({ blocked: "rateLimited" });
-    expect(await guardSupportRequest({ userId: "u2" }, deps())).toEqual({ ok: true });
+    expect(await ask("u2")).toEqual({ ok: true });
   });
 
-  it("keys on a keyed hash, never the raw user id", async () => {
-    await guardSupportRequest({ userId: "user-id-123" }, deps());
-    expect([...limiter.keys].join("\n")).not.toContain("user-id-123");
+  it("caps one IP at 5 a day across different students", async () => {
+    for (let i = 0; i < 5; i++) expect(await ask(`user-${i}`)).toEqual({ ok: true });
+    expect(await ask("user-5")).toMatchObject({ blocked: "rateLimited" });
+    expect(await ask("user-5", "198.51.100.77")).toEqual({ ok: true });
+  });
+
+  it("caps all requests at 20 a day, whoever asks", async () => {
+    for (let i = 0; i < 20; i++) {
+      expect(await ask(`g-${i}`, `192.0.2.${i}`)).toEqual({ ok: true });
+    }
+    expect(await ask("g-20", "192.0.2.200")).toMatchObject({ blocked: "rateLimited" });
+  });
+
+  it("keys on keyed hashes, never the raw user id or IP", async () => {
+    await ask("user-id-123", "203.0.113.99");
+    const keys = [...limiter.keys].join(" ");
+    expect(keys).not.toContain("user-id-123");
+    expect(keys).not.toContain("203.0.113.99");
   });
 });

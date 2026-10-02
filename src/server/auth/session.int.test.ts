@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setClockForTests } from "@/server/clock";
 import { SESSION_TTL_MS } from "@/server/config/policy";
-import { sessions, users } from "@/server/db/schema";
+import { auditLog, devices, sessions, users } from "@/server/db/schema";
 import { FakeCookieStore } from "../../../test/fake-cookies";
 import { FakeRedis } from "../../../test/fake-redis";
 import { sha256 } from "./password";
@@ -76,6 +76,88 @@ afterEach(() => {
 
 afterAll(async () => {
   await dbModule.closeTestDb();
+});
+
+describe("sessions per device (D34)", () => {
+  async function makeDevice(userId: string) {
+    const [row] = await db()
+      .insert(devices)
+      .values({ userId, deviceKey: crypto.randomUUID() })
+      .returning({ id: devices.id });
+    if (!row) throw new Error("no device");
+    return row.id;
+  }
+  /** An older session on the device, created `agoMin` minutes before real time. */
+  async function seed(userId: string, deviceId: string, agoMin: number) {
+    const tokenHash = crypto.randomUUID();
+    await db()
+      .insert(sessions)
+      .values({
+        tokenHash,
+        userId,
+        deviceId,
+        expiresAt: new Date(NOW.getTime() + DAY),
+        createdAt: new Date(Date.now() - agoMin * 60_000),
+      });
+    return tokenHash;
+  }
+  const liveHashes = async (deviceId: string) =>
+    (await db().select().from(sessions).where(eq(sessions.deviceId, deviceId))).map(
+      (r) => r.tokenHash,
+    );
+  const capAudits = async (deviceId: string) =>
+    db()
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "device.session_cap"), eq(auditLog.subjectId, deviceId)));
+
+  it("keeps the newest 3 sessions of a device and revokes the oldest, with one audit row a day", async () => {
+    const userId = await makeUser("cap");
+    const deviceId = await makeDevice(userId);
+    const oldest = await seed(userId, deviceId, 30);
+    const mid = await seed(userId, deviceId, 20);
+    const newer = await seed(userId, deviceId, 10);
+
+    await createSession(userId, { deviceId });
+    const kept = await liveHashes(deviceId);
+    expect(kept).toHaveLength(3);
+    expect(kept).not.toContain(oldest);
+    expect(kept).toEqual(expect.arrayContaining([mid, newer, sha256(cookieToken())]));
+    expect(await capAudits(deviceId)).toHaveLength(1);
+
+    await createSession(userId, { deviceId }); // same day: capped again, no second audit row
+    expect(await liveHashes(deviceId)).toHaveLength(3);
+    expect(await capAudits(deviceId)).toHaveLength(1);
+
+    setClockForTests(new Date(NOW.getTime() + DAY)); // next Cairo day
+    await createSession(userId, { deviceId });
+    expect(await capAudits(deviceId)).toHaveLength(2);
+  });
+
+  it("purges the revoked sessions from the cache and leaves other devices and users alone", async () => {
+    const userId = await makeUser("cap2");
+    const deviceId = await makeDevice(userId);
+    const otherDevice = await makeDevice(userId);
+    const keepOther = await seed(userId, otherDevice, 5);
+    const oldest = await seed(userId, deviceId, 30);
+    await seed(userId, deviceId, 20);
+    await seed(userId, deviceId, 10);
+    redis().values.set(`sess:${oldest}`, "x");
+
+    await createSession(userId, { deviceId });
+    expect(await liveHashes(otherDevice)).toEqual([keepOther]);
+    expect(redis().values.has(`sess:${oldest}`)).toBe(false);
+  });
+
+  it("does nothing under the cap or for a session with no device", async () => {
+    const userId = await makeUser("cap3");
+    const deviceId = await makeDevice(userId);
+    await seed(userId, deviceId, 10);
+    await createSession(userId, { deviceId });
+    expect(await liveHashes(deviceId)).toHaveLength(2);
+    expect(await capAudits(deviceId)).toHaveLength(0);
+    await createSession(userId);
+  });
 });
 
 describe("create, rotate, revoke", () => {

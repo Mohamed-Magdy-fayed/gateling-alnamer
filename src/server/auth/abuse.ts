@@ -113,17 +113,19 @@ export async function guardSignUp(
   return within(limiterOf(deps), `rl:signup:ip:${hasherOf(deps).hash(input.ip)}`, limits.signUp.ip);
 }
 
-/** "Contact support" from the device block screen: 3 a day per student. */
+/** "Contact support" from the device block screen: 3 a day per student, 5 per IP, 20 platform-wide. */
 export async function guardSupportRequest(
-  input: { userId: string },
+  input: { userId: string; ip: string },
   deps: AbuseDeps = {},
 ): Promise<GuardResult> {
-  const limits = deps.limits ?? AUTH_LIMITS;
-  return within(
-    limiterOf(deps),
-    `rl:support:user:${hasherOf(deps).hash(input.userId)}`,
-    limits.supportRequest.user,
-  );
+  const limiter = limiterOf(deps);
+  const { supportRequest } = deps.limits ?? AUTH_LIMITS;
+  const h = hasherOf(deps);
+  return firstBlock([
+    () => within(limiter, `rl:support:user:${h.hash(input.userId)}`, supportRequest.user),
+    () => within(limiter, `rl:support:ip:${h.hash(input.ip)}`, supportRequest.ip),
+    () => within(limiter, "rl:support:global", supportRequest.global),
+  ]);
 }
 
 /** Code send (password reset, email verify): per account and per IP; the same for unknown accounts. */

@@ -11,11 +11,18 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
+const MAX_NAME_LENGTH = 80;
+
+/** A student-chosen name goes into a mail body: one line, at most 80 characters. */
+export function supportStudentName(name: string): string {
+  return name.replace(/\s+/g, " ").trim().slice(0, MAX_NAME_LENGTH);
+}
+
 /** The device-support request mail: the student's name and public number only, never their email. */
 export function renderSupportEmail(locale: Locale, input: SupportEmailInput): RenderedSupportMail {
   const t = dictionaries[locale];
   const copy = t.email.deviceSupport;
-  const body = format(copy.body, { name: input.name });
+  const body = format(copy.body, { name: supportStudentName(input.name) });
   const number = input.publicNumber ? `${copy.numberLabel} ${input.publicNumber}` : null;
 
   const text = [body, number, copy.footer]

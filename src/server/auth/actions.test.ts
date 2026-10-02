@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { formatTime } from "@/i18n/config";
 import { en } from "@/i18n/en";
+import { setClockForTests } from "@/server/clock";
 import type { FormState } from "./actions";
 import { hashPassword } from "./password";
 
@@ -152,6 +153,9 @@ vi.mock("./session", () => ({
 }));
 
 const OK = { captcha_token: "fake-ok" };
+/** Every time in this file comes from the pinned clock, so no assertion races a minute or ms boundary. */
+const NOW = new Date("2030-03-01T09:00:00.000Z");
+const now = () => NOW.getTime();
 
 /** Runs what the actions handed to `after()`, as Next does once the response is sent. */
 async function runAfter(): Promise<void> {
@@ -174,6 +178,7 @@ function form(values: Record<string, string>): FormData {
 }
 
 beforeEach(() => {
+  setClockForTests(NOW);
   h.calls.length = 0;
   h.after.length = 0;
   h.user = undefined;
@@ -191,6 +196,8 @@ beforeEach(() => {
   h.gateCalls.length = 0;
   vi.clearAllMocks();
 });
+
+afterAll(() => setClockForTests(null));
 
 describe("signInAction", () => {
   it("gives the same generic error for an unknown user and a wrong password", async () => {
@@ -369,7 +376,7 @@ describe("resetPasswordAction", () => {
   });
 
   it("takes the email from the pending cookie when the form has none", async () => {
-    h.pending = { email: "who@example.test", issuedAt: Date.now() };
+    h.pending = { email: "who@example.test", issuedAt: now() };
     h.user = { id: "u1", email: "who@example.test" };
     await resetPasswordAction(
       { status: "idle" },
@@ -397,7 +404,7 @@ describe("resetPasswordAction", () => {
       tone: "warning",
       message: en.auth.states.rateLimited,
     });
-    expect(locked.retryAt).toBeGreaterThan(Date.now());
+    expect(locked.retryAt).toBeGreaterThan(now());
     expect(h.verify.mock.calls.length).toBe(verifies);
     h.deviceId = "dev-victim";
     await reset();
@@ -540,7 +547,7 @@ describe("abuse guards in the actions", () => {
     // From the 4th attempt a token is required; without one the form is told to show the widget.
     expect(out.slice(3, 10).every((r) => r.message === en.auth.states.captchaFailed)).toBe(true);
     const locked = out[10];
-    expect(locked?.retryAt).toBeGreaterThan(Date.now());
+    expect(locked?.retryAt).toBeGreaterThan(now());
     expect(locked?.message).toBe(
       en.auth.states.lockout.replace("{time}", formatTime("en", new Date(locked?.retryAt ?? 0))),
     );
@@ -590,7 +597,7 @@ describe("abuse guards in the actions", () => {
       tone: "warning",
       message: en.auth.states.rateLimited,
     });
-    expect(blocked.retryAt).toBeGreaterThan(Date.now());
+    expect(blocked.retryAt).toBeGreaterThan(now());
   });
 
   it("rate-limits code requests per email and answers known and unknown emails alike", async () => {
@@ -684,7 +691,7 @@ describe("verifyEmailAction", () => {
     h.verify.mockClear();
     const blocked = await submit("123456");
     expect(blocked).toMatchObject({ status: "error", message: en.auth.states.rateLimited });
-    expect(blocked.retryAt).toBeGreaterThan(Date.now());
+    expect(blocked.retryAt).toBeGreaterThan(now());
     expect(h.verify).not.toHaveBeenCalled();
   });
 
@@ -711,17 +718,17 @@ describe("resendCodeAction", () => {
   it("refuses a resend inside the cooldown and tells the form when it opens", async () => {
     h.sessionUser = { id: "u1", email: "u@example.test" };
     h.user = known;
-    h.codeRow = { emailStatus: "sent", createdAt: new Date() };
+    h.codeRow = { emailStatus: "sent", createdAt: new Date(NOW) };
     const result = await resend("email_verify");
     expect(result).toMatchObject({ status: "error", message: en.auth.states.rateLimited });
-    expect(result.retryAt).toBeGreaterThan(Date.now());
+    expect(result.retryAt).toBeGreaterThan(now());
     expect(h.issue).not.toHaveBeenCalled();
   });
 
   it("issues a fresh verification code and answers codeSent after the cooldown", async () => {
     h.sessionUser = { id: "u1", email: "u@example.test" };
     h.user = known;
-    h.codeRow = { emailStatus: "failed", createdAt: new Date(Date.now() - 5 * 60_000) };
+    h.codeRow = { emailStatus: "failed", createdAt: new Date(now() - 5 * 60_000) };
     const result = await resend("email_verify");
     expect(result).toMatchObject({ status: "success", message: en.auth.states.codeSent });
     expect(h.issue).toHaveBeenCalledWith("u1", "email_verify");
@@ -748,7 +755,7 @@ describe("resendCodeAction", () => {
   });
 
   it("answers a pending reset for a known and an unknown email alike", async () => {
-    h.pending = { email: "who@example.test", issuedAt: Date.now() - 5 * 60_000 };
+    h.pending = { email: "who@example.test", issuedAt: now() - 5 * 60_000 };
     h.user = undefined;
     const unknown = await resend("password_reset");
     await runAfter();

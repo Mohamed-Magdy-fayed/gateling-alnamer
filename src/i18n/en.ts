@@ -388,6 +388,7 @@ export const en: Dictionary = {
     throttled: "You can remove another device after {date}.",
     contactSupport: "Contact support",
     supportSent: "We've sent your request to support and to your parent, if linked.",
+    supportFailed: "We couldn't send your request just now. Please try again in a moment.",
     privateNotice:
       "A private window or cleared browser data makes this browser count as a new device.",
     accountTitle: "My account",
