@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import type { Dictionary } from "@/i18n/ar";
 import { format, type Locale } from "@/i18n/config";
-import { Button, Card, Ltr, Progress } from "@/ui";
+import { Badge, Button, Card, Ltr, Progress } from "@/ui";
 
 const children = [
   { name: { ar: "ابن تجريبي 1", en: "Sample child 1" }, courses: 3, progress: 58, quiz: 86 },
@@ -12,15 +12,23 @@ export function ParentView({ t, locale }: { t: Dictionary; locale: Locale }) {
   const p = t.dashboard.parent;
   return (
     <section aria-labelledby="children">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 id="children" className="text-lg font-semibold">
-          {p.title}
-        </h2>
-        <Button variant="outline" size="sm" disabled>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 id="children" className="text-lg font-semibold">
+            {p.title}
+          </h2>
+          <Badge tone="highlight" data-testid="sample-children">
+            {t.common.sample}
+          </Badge>
+        </div>
+        <Button variant="outline" size="sm" disabled aria-describedby="parent-actions-note">
           <Plus aria-hidden className="size-4" strokeWidth={1.75} />
           {p.addChild}
         </Button>
       </div>
+      <p id="parent-actions-note" className="mb-4 text-xs text-fg-muted">
+        {t.common.comingInFullVersion}
+      </p>
       <ul className="grid gap-4 md:grid-cols-2">
         {children.map((child) => (
           <li key={child.name.en}>

@@ -9,6 +9,7 @@ export const en: Dictionary = {
   common: {
     brand: "Al-Namer",
     sample: "Sample content",
+    comingInFullVersion: "Available in the full test version.",
     demoBanner: "Early demo: screens and data are samples; sign-in and password reset are real.",
     signIn: "Sign in",
     signUp: "Create account",
@@ -77,7 +78,13 @@ export const en: Dictionary = {
       "American curriculum",
     ],
     grades: ["Grade 6", "Grade 9", "Grade 11", "Grade 12"],
-    subjects: ["Mathematics", "Physics", "Chemistry", "English", "Arabic"],
+    subjects: [
+      { slug: "mathematics", name: "Mathematics" },
+      { slug: "physics", name: "Physics" },
+      { slug: "chemistry", name: "Chemistry" },
+      { slug: "english", name: "English" },
+      { slug: null, name: "Arabic" },
+    ],
     buyingTitle: "How buying works",
     buying: [
       {
@@ -150,9 +157,25 @@ export const en: Dictionary = {
     filterGrade: "Grade",
     filterSubject: "Subject",
     all: "All",
-    lessonsCount: "{count} lessons",
-    hours: "{count} hours",
-    by: "with {name}",
+    lessonsCount: {
+      one: "1 lesson",
+      two: "{count} lessons",
+      few: "{count} lessons",
+      many: "{count} lessons",
+    },
+    hours: {
+      one: "1 hour",
+      two: "{count} hours",
+      few: "{count} hours",
+      many: "{count} hours",
+    },
+    minutes: {
+      one: "1 minute",
+      two: "{count} minutes",
+      few: "{count} minutes",
+      many: "{count} minutes",
+    },
+    by: "with",
     freePreview: "Free preview",
     locked: "Locked",
     outline: "Course content",
@@ -217,7 +240,9 @@ export const en: Dictionary = {
     },
   },
   dashboard: {
-    hello: "Hello, {name}",
+    hello: "Hello,",
+    noCourses: "No courses here yet.",
+    browseCourses: "Browse courses",
     viewAs: "View screens as",
     views: { student: "Student", parent: "Parent", teacher: "Teacher", admin: "Admin" },
     roleLabel: "Your account type: {role}",

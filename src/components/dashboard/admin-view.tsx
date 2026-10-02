@@ -30,9 +30,14 @@ export function AdminView({
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_2fr]">
       <section aria-labelledby="approvals" className="flex flex-col gap-4">
-        <h2 id="approvals" className="text-lg font-semibold">
-          {a.approvals}
-        </h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 id="approvals" className="text-lg font-semibold">
+            {a.approvals}
+          </h2>
+          <Badge tone="highlight" data-testid="sample-approvals">
+            {t.common.sample}
+          </Badge>
+        </div>
         {queues.map((queue) => (
           <Card key={queue.label} className="flex items-center justify-between gap-3 p-5">
             <span className="font-medium">{queue.label}</span>
@@ -42,18 +47,26 @@ export function AdminView({
           </Card>
         ))}
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" disabled>
+          <Button variant="outline" size="sm" disabled aria-describedby="admin-actions-note">
             {a.manualEnrollment}
           </Button>
-          <Button variant="outline" size="sm" disabled>
+          <Button variant="outline" size="sm" disabled aria-describedby="admin-actions-note">
             {a.reports}
           </Button>
         </div>
+        <p id="admin-actions-note" className="text-xs text-fg-muted">
+          {t.common.comingInFullVersion}
+        </p>
       </section>
       <section aria-labelledby="orders">
-        <h2 id="orders" className="mb-4 text-lg font-semibold">
-          {a.orders}
-        </h2>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <h2 id="orders" className="text-lg font-semibold">
+            {a.orders}
+          </h2>
+          <Badge tone="highlight" data-testid="sample-orders">
+            {t.common.sample}
+          </Badge>
+        </div>
         <Card className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-sunken text-fg-2">

@@ -26,6 +26,7 @@ export default async function HomePage() {
   const { t, locale } = await getDictionary();
   const [firstCourse] = await listPublishedCourses();
   const sample = firstCourse ? await getPublishedCourseBySlug(firstCourse.slug) : null;
+  const vignetteLessons = sample?.sections[0]?.lessons.slice(0, 3) ?? [];
 
   return (
     <>
@@ -77,7 +78,7 @@ export default async function HomePage() {
               </div>
               <p className="mb-2 text-sm font-medium text-fg-2">{t.home.vignetteLessons}</p>
               <ul className="flex flex-col divide-y divide-line rounded-[var(--radius-md)] border border-line">
-                {sample.sections[0]?.lessons.slice(0, 3).map((lesson) => (
+                {vignetteLessons.map((lesson) => (
                   <li key={lesson.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
                     {lesson.kind === "pdf" ? (
                       <FileText aria-hidden className="size-4 text-fg-muted" strokeWidth={1.75} />
@@ -157,23 +158,33 @@ export default async function HomePage() {
           <p className="mt-2 text-fg-2">{t.home.browseLead}</p>
           <div className="mt-8 flex flex-col gap-5">
             {[
-              { label: t.courses.filterCurriculum, items: t.home.curricula },
-              { label: t.courses.filterGrade, items: t.home.grades },
+              {
+                label: t.courses.filterCurriculum,
+                items: t.home.curricula.map((name) => ({ name, slug: null })),
+              },
+              {
+                label: t.courses.filterGrade,
+                items: t.home.grades.map((name) => ({ name, slug: null })),
+              },
               { label: t.courses.filterSubject, items: t.home.subjects },
             ].map((group) => (
               <div key={group.label} className="flex flex-wrap items-center gap-2">
-                <span className="w-full text-sm font-medium text-fg-muted sm:w-24">
+                <span className="w-full text-sm font-medium text-fg-muted sm:w-auto sm:min-w-24">
                   {group.label}
                 </span>
-                {group.items.map((item) => (
-                  <Link
-                    key={item}
-                    href="/courses"
-                    className="rounded-full border border-line-strong bg-raised px-4 py-2 text-sm text-fg transition-shadow hover:shadow-e2"
-                  >
-                    {item}
-                  </Link>
-                ))}
+                {group.items.map((item) =>
+                  item.slug ? (
+                    <Link
+                      key={item.name}
+                      href={{ pathname: "/courses", query: { subject: item.slug } }}
+                      className="inline-flex min-h-11 items-center rounded-full border border-line-strong bg-raised px-4 text-sm text-fg transition-shadow hover:shadow-e2"
+                    >
+                      {item.name}
+                    </Link>
+                  ) : (
+                    <Badge key={item.name}>{item.name}</Badge>
+                  ),
+                )}
               </div>
             ))}
           </div>

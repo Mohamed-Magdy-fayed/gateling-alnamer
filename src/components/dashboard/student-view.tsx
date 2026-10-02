@@ -4,7 +4,7 @@ import type { Dictionary } from "@/i18n/ar";
 import { format, formatDate, type Locale } from "@/i18n/config";
 import { pickText } from "@/lib/localized-text";
 import type { DashboardCourse } from "@/server/catalog/types";
-import { Card, Ltr, Progress } from "@/ui";
+import { Badge, Card, Ltr, Progress } from "@/ui";
 
 const progress = [62, 25, 88];
 const quizzes = [
@@ -27,9 +27,25 @@ export function StudentView({
   return (
     <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
       <section aria-labelledby="my-courses">
-        <h2 id="my-courses" className="mb-4 text-lg font-semibold">
-          {s.title}
-        </h2>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <h2 id="my-courses" className="text-lg font-semibold">
+            {s.title}
+          </h2>
+          <Badge tone="highlight" data-testid="sample-progress">
+            {t.common.sample}
+          </Badge>
+        </div>
+        {mine.length === 0 ? (
+          <p className="text-sm text-fg-muted">
+            {t.dashboard.noCourses}{" "}
+            <Link
+              href="/courses"
+              className="inline-flex min-h-11 items-center text-primary underline"
+            >
+              {t.dashboard.browseCourses}
+            </Link>
+          </p>
+        ) : null}
         <ul className="grid gap-4 sm:grid-cols-2">
           {mine.map((course, index) => (
             <li key={course.id}>
@@ -52,7 +68,7 @@ export function StudentView({
                 {course.firstLessonId ? (
                   <Link
                     href={`/dashboard/learn/${course.firstLessonId}`}
-                    className="mt-auto inline-flex items-center gap-1.5 self-start rounded-[var(--radius-sm)] text-sm font-medium text-primary hover:underline"
+                    className="mt-auto inline-flex min-h-11 items-center gap-1.5 self-start rounded-[var(--radius-sm)] text-sm font-medium text-primary hover:underline"
                   >
                     {s.continue}
                     <ArrowLeft aria-hidden className="size-4 ltr:rotate-180" strokeWidth={1.75} />
@@ -64,9 +80,14 @@ export function StudentView({
         </ul>
       </section>
       <section aria-labelledby="quizzes">
-        <h2 id="quizzes" className="mb-4 text-lg font-semibold">
-          {s.quizzes}
-        </h2>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <h2 id="quizzes" className="text-lg font-semibold">
+            {s.quizzes}
+          </h2>
+          <Badge tone="highlight" data-testid="sample-quizzes">
+            {t.common.sample}
+          </Badge>
+        </div>
         <Card className="divide-y divide-line">
           {quizzes.map((quiz) => {
             const quizCourse = courses[quiz.course];

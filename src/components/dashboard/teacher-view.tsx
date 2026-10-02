@@ -1,4 +1,5 @@
 import { Plus } from "lucide-react";
+import Link from "next/link";
 import type { Dictionary } from "@/i18n/ar";
 import type { Locale } from "@/i18n/config";
 import { pickText } from "@/lib/localized-text";
@@ -28,9 +29,14 @@ export function TeacherView({
   return (
     <div className="flex flex-col gap-8">
       <section aria-labelledby="earnings">
-        <h2 id="earnings" className="mb-4 text-lg font-semibold">
-          {d.earnings}
-        </h2>
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <h2 id="earnings" className="text-lg font-semibold">
+            {d.earnings}
+          </h2>
+          <Badge tone="highlight" data-testid="sample-earnings">
+            {t.common.sample}
+          </Badge>
+        </div>
         <div className="grid gap-4 sm:grid-cols-3">
           {stats.map((stat, index) => (
             <Card key={stat.label} className={index === 0 ? "bg-primary-soft p-5" : "p-5"}>
@@ -44,14 +50,33 @@ export function TeacherView({
       </section>
       <section aria-labelledby="teacher-courses">
         <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 id="teacher-courses" className="text-lg font-semibold">
-            {d.myCourses}
-          </h2>
-          <Button size="sm" disabled>
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 id="teacher-courses" className="text-lg font-semibold">
+              {d.myCourses}
+            </h2>
+            <Badge tone="highlight" data-testid="sample-teacher-courses">
+              {t.common.sample}
+            </Badge>
+          </div>
+          <Button size="sm" disabled aria-describedby="new-course-note">
             <Plus aria-hidden className="size-4" strokeWidth={1.75} />
             {d.newCourse}
           </Button>
         </div>
+        <p id="new-course-note" className="-mt-2 mb-4 text-xs text-fg-muted">
+          {t.common.comingInFullVersion}
+        </p>
+        {courses.length === 0 ? (
+          <p className="text-sm text-fg-muted">
+            {t.dashboard.noCourses}{" "}
+            <Link
+              href="/courses"
+              className="inline-flex min-h-11 items-center text-primary underline"
+            >
+              {t.dashboard.browseCourses}
+            </Link>
+          </p>
+        ) : null}
         <Card className="divide-y divide-line">
           {courses.slice(0, 3).map((course, index) => {
             const status = statuses[index] ?? "draft";

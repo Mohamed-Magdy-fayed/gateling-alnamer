@@ -1,6 +1,6 @@
 import { Clock, PlayCircle } from "lucide-react";
 import Link from "next/link";
-import { format } from "@/i18n/config";
+import { formatCount } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
 import { formatPrice } from "@/lib/money-format";
@@ -22,15 +22,24 @@ export default async function CoursesPage({
     return found ? pickText(found.name, locale) : "";
   };
   const subjects = [
-    ...new Set(all.map((course) => categoryName(course.categories, "subject")).filter(Boolean)),
-  ];
+    ...new Map(
+      all
+        .flatMap((course) => course.categories)
+        .filter((category) => category.type === "subject")
+        .map((category) => [category.slug, pickText(category.name, locale)] as const),
+    ),
+  ].map(([slug, name]) => ({ slug, name }));
   const courses = subject
-    ? all.filter((course) => categoryName(course.categories, "subject") === subject)
+    ? all.filter((course) =>
+        course.categories.some(
+          (category) => category.type === "subject" && category.slug === subject,
+        ),
+      )
     : all;
 
   const chip = (active: boolean) =>
     cn(
-      "rounded-full border px-4 py-2 text-sm transition-shadow hover:shadow-e2",
+      "inline-flex min-h-11 items-center rounded-full border px-4 text-sm transition-shadow hover:shadow-e2",
       active
         ? "border-primary bg-primary-soft text-primary-soft-fg"
         : "border-line-strong bg-raised text-fg",
@@ -52,12 +61,12 @@ export default async function CoursesPage({
         >
           {t.courses.all}
         </Link>
-        {subjects.map((name) => (
+        {subjects.map(({ slug, name }) => (
           <Link
-            key={name}
-            href={{ pathname: "/courses", query: { subject: name } }}
-            className={chip(subject === name)}
-            aria-current={subject === name ? "page" : undefined}
+            key={slug}
+            href={{ pathname: "/courses", query: { subject: slug } }}
+            className={chip(subject === slug)}
+            aria-current={subject === slug ? "page" : undefined}
           >
             {name}
           </Link>
@@ -88,18 +97,24 @@ export default async function CoursesPage({
                   {categoryName(course.categories, "curriculum")}
                 </p>
                 <p className="text-sm text-fg-2">
-                  {format(t.courses.by, { name: pickText(course.teacher.name, locale) })}
+                  {t.courses.by} <bdi>{pickText(course.teacher.name, locale)}</bdi>
                 </p>
                 <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-3 text-sm">
                   <span className="flex items-center gap-3 text-fg-muted">
                     <span className="flex items-center gap-1">
                       <PlayCircle aria-hidden className="size-4" strokeWidth={1.75} />
-                      {format(t.courses.lessonsCount, { count: lessonCounts.get(course.id) ?? 0 })}
+                      {formatCount(
+                        locale,
+                        t.courses.lessonsCount,
+                        lessonCounts.get(course.id) ?? 0,
+                      )}
                     </span>
-                    <span className="flex items-center gap-1">
-                      <Clock aria-hidden className="size-4" strokeWidth={1.75} />
-                      {format(t.courses.hours, { count: course.estimatedHours ?? 0 })}
-                    </span>
+                    {course.estimatedHours ? (
+                      <span className="flex items-center gap-1">
+                        <Clock aria-hidden className="size-4" strokeWidth={1.75} />
+                        {formatCount(locale, t.courses.hours, course.estimatedHours)}
+                      </span>
+                    ) : null}
                   </span>
                   <span className="font-semibold text-primary">
                     <Ltr>{formatPrice(locale, course.priceMinor, t.common.currency)}</Ltr>

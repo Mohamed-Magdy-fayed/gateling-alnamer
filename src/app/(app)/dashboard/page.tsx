@@ -31,7 +31,9 @@ export default async function DashboardPage({
     <Container className="py-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">{format(t.dashboard.hello, { name: user.name })}</h1>
+          <h1 className="text-2xl font-bold">
+            {t.dashboard.hello} <bdi>{user.name}</bdi>
+          </h1>
           <p className="text-sm text-fg-muted">
             {format(t.dashboard.roleLabel, { role: t.dashboard.views[user.role] })}
           </p>
@@ -48,7 +50,7 @@ export default async function DashboardPage({
                   href={{ pathname: "/dashboard", query: { view: item } }}
                   aria-current={item === view ? "page" : undefined}
                   className={cn(
-                    "flex min-h-9 items-center rounded-[var(--radius-sm)] px-3 text-sm font-medium",
+                    "flex min-h-11 items-center rounded-[var(--radius-sm)] px-3 text-sm font-medium",
                     item === view ? "bg-raised text-fg shadow-e1" : "text-fg-2 hover:text-fg",
                   )}
                 >

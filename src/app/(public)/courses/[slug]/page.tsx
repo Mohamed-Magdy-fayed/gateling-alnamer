@@ -1,7 +1,7 @@
 import { ArrowRight, CalendarClock, FileText, ListChecks, Lock, PlayCircle } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format, formatDate } from "@/i18n/config";
+import { format, formatCount, formatDate } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
 import { formatPrice } from "@/lib/money-format";
@@ -36,7 +36,7 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
     <Container size="marketing" className="py-10 md:py-14">
       <Link
         href="/courses"
-        className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] text-sm text-fg-2 hover:text-fg"
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-sm)] text-sm text-fg-2 hover:text-fg"
       >
         <ArrowRight aria-hidden className="size-4 ltr:rotate-180" strokeWidth={1.75} />
         {t.courses.back}
@@ -76,9 +76,11 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
                           <span className="flex-1">
                             <bdi>{pickText(lesson.title, locale)}</bdi>
                           </span>
-                          <span className="text-fg-muted">
-                            <Ltr>{lesson.durationMinutes ?? 0}:00</Ltr>
-                          </span>
+                          {lesson.durationMinutes ? (
+                            <span className="text-fg-muted">
+                              {formatCount(locale, t.courses.minutes, lesson.durationMinutes)}
+                            </span>
+                          ) : null}
                           {lesson.isFreePreview ? (
                             <Badge tone="success">{t.courses.freePreview}</Badge>
                           ) : (
@@ -106,7 +108,7 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
           </section>
         </div>
 
-        <aside className="lg:sticky lg:top-24 lg:self-start">
+        <aside className="order-first lg:order-none lg:sticky lg:top-24 lg:self-start">
           <Card className="flex flex-col gap-4 p-6 shadow-e2">
             <p className="text-3xl font-bold text-primary">
               <Ltr>{formatPrice(locale, course.priceMinor, t.common.currency)}</Ltr>

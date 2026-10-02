@@ -7,6 +7,7 @@ export const ar = {
   common: {
     brand: "النمر",
     sample: "محتوى تجريبي",
+    comingInFullVersion: "يتوفر في النسخة التجريبية الكاملة.",
     demoBanner:
       "نسخة عرض أولية: الشاشات والبيانات تجريبية، وتسجيل الدخول واستعادة كلمة المرور حقيقيان.",
     signIn: "تسجيل الدخول",
@@ -76,7 +77,13 @@ export const ar = {
       "المنهج الأمريكي",
     ],
     grades: ["الصف السادس", "الصف التاسع", "الصف الحادي عشر", "الصف الثاني عشر"],
-    subjects: ["الرياضيات", "الفيزياء", "الكيمياء", "اللغة الإنجليزية", "اللغة العربية"],
+    subjects: [
+      { slug: "mathematics", name: "الرياضيات" },
+      { slug: "physics", name: "الفيزياء" },
+      { slug: "chemistry", name: "الكيمياء" },
+      { slug: "english", name: "اللغة الإنجليزية" },
+      { slug: null, name: "اللغة العربية" },
+    ],
     buyingTitle: "كيف يتم الشراء",
     buying: [
       { title: "دفعة واحدة لكل دورة", body: "لا اشتراكات متجددة ولا رسوم مخفية." },
@@ -140,9 +147,25 @@ export const ar = {
     filterGrade: "الصف",
     filterSubject: "المادة",
     all: "الكل",
-    lessonsCount: "{count} درسًا",
-    hours: "{count} ساعات",
-    by: "مع {name}",
+    lessonsCount: {
+      one: "درس واحد",
+      two: "درسان",
+      few: "{count} دروس",
+      many: "{count} درسًا",
+    },
+    hours: {
+      one: "ساعة واحدة",
+      two: "ساعتان",
+      few: "{count} ساعات",
+      many: "{count} ساعة",
+    },
+    minutes: {
+      one: "دقيقة واحدة",
+      two: "دقيقتان",
+      few: "{count} دقائق",
+      many: "{count} دقيقة",
+    },
+    by: "مع",
     freePreview: "معاينة مجانية",
     locked: "مقفل",
     outline: "محتوى الدورة",
@@ -207,7 +230,9 @@ export const ar = {
     },
   },
   dashboard: {
-    hello: "مرحبًا، {name}",
+    hello: "مرحبًا،",
+    noCourses: "لا توجد دورات هنا بعد.",
+    browseCourses: "تصفّح الدورات",
     viewAs: "عرض الشاشات كـ",
     views: { student: "طالب", parent: "ولي أمر", teacher: "معلم", admin: "إدارة" },
     roleLabel: "نوع حسابك: {role}",

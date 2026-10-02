@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { defaultLocale, dirOf, format, formatDate, formatNumber, isLocale } from "./config";
+import {
+  defaultLocale,
+  dirOf,
+  format,
+  formatCount,
+  formatDate,
+  formatNumber,
+  isLocale,
+} from "./config";
 
 const ARABIC_INDIC_DIGITS = /[٠-٩]/;
 
@@ -55,5 +63,24 @@ describe("formatDate", () => {
 
   it("formats English as day month year", () => {
     expect(formatDate("en", date)).toBe("1 October 2026");
+  });
+});
+
+describe("formatCount", () => {
+  const forms = { one: "one", two: "two", few: "{count} few", many: "{count} many" };
+
+  it("picks the Arabic forms 1 / 2 / 3-10 / 11+", () => {
+    expect(formatCount("ar", forms, 1)).toBe("one");
+    expect(formatCount("ar", forms, 2)).toBe("two");
+    expect(formatCount("ar", forms, 3)).toBe("3 few");
+    expect(formatCount("ar", forms, 10)).toBe("10 few");
+    expect(formatCount("ar", forms, 11)).toBe("11 many");
+    expect(formatCount("ar", forms, 0)).toBe("0 many");
+  });
+
+  it("uses only one / other in English", () => {
+    expect(formatCount("en", forms, 1)).toBe("one");
+    expect(formatCount("en", forms, 2)).toBe("2 many");
+    expect(formatCount("en", forms, 5)).toBe("5 many");
   });
 });

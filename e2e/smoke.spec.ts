@@ -116,3 +116,39 @@ test("language switch flips dir to ltr and back", async ({ page }) => {
   await page.locator('button[lang="ar"]').click();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
 });
+
+for (const locale of ["ar", "en"] as const) {
+  test(`/courses?subject=<slug> filters to that subject (${locale})`, async ({
+    baseURL,
+    context,
+    page,
+  }) => {
+    await context.addCookies([{ name: "locale", value: locale, url: baseURL as string }]);
+    await page.goto("/courses?subject=mathematics");
+    await expect(page.locator("html")).toHaveAttribute("lang", locale);
+    await expect(page.locator('main a[href^="/courses/"]')).toHaveCount(1);
+    await expect(
+      page.locator('nav a[aria-current="page"][href*="subject=mathematics"]'),
+    ).toBeVisible();
+    await page.goto("/courses?subject=physics");
+    await expect(page.locator('main a[href^="/courses/"]')).toHaveCount(1);
+    await page.goto("/courses");
+    await expect(page.locator('main a[href^="/courses/"]')).toHaveCount(4);
+  });
+}
+
+test("each dashboard placeholder section carries a sample badge", async ({ page }) => {
+  await signIn(page, newPassword);
+  const expected: Record<string, string[]> = {
+    student: ["sample-progress", "sample-quizzes"],
+    parent: ["sample-children"],
+    teacher: ["sample-earnings", "sample-teacher-courses"],
+    admin: ["sample-approvals", "sample-orders"],
+  };
+  for (const [view, ids] of Object.entries(expected)) {
+    await page.goto(`/dashboard?view=${view}`);
+    for (const id of ids) {
+      await expect(page.getByTestId(id), `${view}:${id}`).toBeVisible();
+    }
+  }
+});

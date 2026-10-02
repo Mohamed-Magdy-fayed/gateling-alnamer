@@ -32,3 +32,18 @@ export function formatDate(locale: Locale, date: Date): string {
     year: "numeric",
   }).format(date);
 }
+
+/** Count phrases with one separate string per form; each holds a `{count}` placeholder where it reads naturally. */
+export type CountForms = { one: string; two: string; few: string; many: string };
+
+/**
+ * Picks the Arabic-aware form for `count` (ar: 1 / 2 / 3-10 / 11+; en: 1 / other) and fills it in.
+ * F2 replaces this with the shared plural helper.
+ */
+export function formatCount(locale: Locale, forms: CountForms, count: number): string {
+  let form: keyof CountForms = "many";
+  if (count === 1) form = "one";
+  else if (locale === "ar" && count === 2) form = "two";
+  else if (locale === "ar" && count >= 3 && count <= 10) form = "few";
+  return format(forms[form], { count });
+}
