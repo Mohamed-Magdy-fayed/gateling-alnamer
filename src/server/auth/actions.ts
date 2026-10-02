@@ -109,7 +109,7 @@ export async function requestPasswordResetAction(
     message: t.auth.forgot.sent,
     email: parsed.data.email,
   };
-  if (!user) return sent;
+  if (!user?.email) return sent;
 
   const code = randomCode();
   const codeHash = sha256(`${user.email}:${code}`);

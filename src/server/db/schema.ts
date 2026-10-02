@@ -1,5 +1,8 @@
 import { desc, relations, sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
+  bigint,
+  boolean,
   check,
   index,
   integer,
@@ -10,8 +13,10 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { LocalizedText } from "@/lib/localized-text";
 
 export const userRole = pgEnum("user_role", ["student", "parent", "teacher", "admin"]);
 
@@ -20,8 +25,9 @@ const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defa
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  email: text("email").unique(),
   role: userRole("role").notNull().default("student"),
+  isSample: boolean("is_sample").notNull().default(false),
   createdAt,
 });
 
@@ -106,6 +112,250 @@ export const rateLimitCounters = pgTable(
     count: integer("count").notNull(),
   },
   (t) => [primaryKey({ columns: [t.key, t.windowStart] })],
+);
+
+// ---- Catalogue (W1) ----------------------------------------------------------------------
+// Teacher-authored text is LocalizedText jsonb: an object with at least one of ar / en.
+
+export const teacherStatus = pgEnum("teacher_status", [
+  "applied",
+  "approved",
+  "rejected",
+  "suspended",
+]);
+export const categoryType = pgEnum("category_type", ["curriculum", "grade", "subject"]);
+export const courseStatus = pgEnum("course_status", [
+  "draft",
+  "in_review",
+  "published",
+  "hidden",
+  "archived",
+]);
+export const accessKind = pgEnum("access_kind", ["fixed_end", "duration_days"]);
+export const lessonKind = pgEnum("lesson_kind", ["video", "pdf", "image", "quiz"]);
+export const mediaKind = pgEnum("media_kind", ["video", "pdf", "image"]);
+export const mediaProvider = pgEnum("media_provider", [
+  "bunny",
+  "mock",
+  "sample",
+  "firebase",
+  "local",
+]);
+export const mediaStatus = pgEnum("media_status", ["pending", "processing", "ready", "failed"]);
+
+const isSample = boolean("is_sample").notNull().default(false);
+
+const isTextObject = (column: AnyPgColumn) => sql`jsonb_typeof(${column}) = 'object'`;
+
+export const teacherProfiles = pgTable(
+  "teacher_profiles",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "restrict" }),
+    publicName: jsonb("public_name").$type<LocalizedText>().notNull(),
+    bio: jsonb("bio").$type<LocalizedText>().notNull(),
+    status: teacherStatus("status").notNull().default("applied"),
+    commissionRateBp: integer("commission_rate_bp"),
+    termsVersionAccepted: text("terms_version_accepted"),
+    termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+    isSample,
+    createdAt,
+  },
+  (t) => [
+    check("teacher_profiles_public_name_object", isTextObject(t.publicName)),
+    check("teacher_profiles_bio_object", isTextObject(t.bio)),
+  ],
+);
+
+export const categories = pgTable(
+  "categories",
+  {
+    id: uuid("id").primaryKey(),
+    type: categoryType("type").notNull(),
+    parentId: uuid("parent_id").references((): AnyPgColumn => categories.id),
+    slug: text("slug").notNull(),
+    nameAr: text("name_ar").notNull(),
+    nameEn: text("name_en").notNull(),
+    sort: integer("sort").notNull().default(0),
+    isSample,
+    createdAt,
+  },
+  (t) => [unique("categories_type_slug_unique").on(t.type, t.slug)],
+);
+
+export const mediaAssets = pgTable("media_assets", {
+  id: uuid("id").primaryKey(),
+  kind: mediaKind("kind").notNull(),
+  provider: mediaProvider("provider").notNull(),
+  providerId: text("provider_id"),
+  storageKey: text("storage_key"),
+  status: mediaStatus("status").notNull().default("pending"),
+  durationS: integer("duration_s"),
+  bytes: bigint("bytes", { mode: "number" }),
+  isSample,
+  createdAt,
+});
+
+export const courses = pgTable(
+  "courses",
+  {
+    id: uuid("id").primaryKey(),
+    slug: text("slug").notNull().unique(),
+    teacherId: uuid("teacher_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    status: courseStatus("status").notNull().default("draft"),
+    publishedRevisionId: uuid("published_revision_id").references(
+      (): AnyPgColumn => courseRevisions.id,
+      { onDelete: "restrict" },
+    ),
+    pendingRevisionId: uuid("pending_revision_id").references(
+      (): AnyPgColumn => courseRevisions.id,
+      { onDelete: "restrict" },
+    ),
+    isSample,
+    createdAt,
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("courses_status_idx").on(t.status), index("courses_teacher_idx").on(t.teacherId)],
+);
+
+export const courseRevisions = pgTable(
+  "course_revisions",
+  {
+    id: uuid("id").primaryKey(),
+    courseId: uuid("course_id")
+      .notNull()
+      .references((): AnyPgColumn => courses.id, { onDelete: "cascade" }),
+    title: jsonb("title").$type<LocalizedText>().notNull(),
+    description: jsonb("description").$type<LocalizedText>().notNull(),
+    coverImageKey: text("cover_image_key"),
+    priceMinor: bigint("price_minor", { mode: "number" }).notNull(),
+    accessKind: accessKind("access_kind").notNull(),
+    accessEndAt: timestamp("access_end_at", { withTimezone: true }),
+    accessDays: integer("access_days"),
+    estimatedHours: integer("estimated_hours"),
+    createdBy: uuid("created_by").references(() => users.id),
+    isSample,
+    createdAt,
+  },
+  (t) => [
+    check("course_revisions_price_nonneg", sql`${t.priceMinor} >= 0`),
+    check("course_revisions_title_object", isTextObject(t.title)),
+    check("course_revisions_description_object", isTextObject(t.description)),
+    check(
+      "course_revisions_access_consistent",
+      sql`(${t.accessKind} = 'fixed_end' and ${t.accessEndAt} is not null and ${t.accessDays} is null)
+        or (${t.accessKind} = 'duration_days' and ${t.accessDays} > 0 and ${t.accessEndAt} is null)`,
+    ),
+    index("course_revisions_course_idx").on(t.courseId),
+  ],
+);
+
+export const courseCategories = pgTable(
+  "course_categories",
+  {
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "cascade" }),
+    categoryId: uuid("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "cascade" }),
+    isSample,
+  },
+  (t) => [
+    primaryKey({ columns: [t.courseId, t.categoryId] }),
+    index("course_categories_category_idx").on(t.categoryId),
+  ],
+);
+
+export const sections = pgTable(
+  "sections",
+  {
+    id: uuid("id").primaryKey(),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "cascade" }),
+    sort: integer("sort").notNull(),
+    publishedRevisionId: uuid("published_revision_id").references(
+      (): AnyPgColumn => sectionRevisions.id,
+      { onDelete: "restrict" },
+    ),
+    pendingRevisionId: uuid("pending_revision_id").references(
+      (): AnyPgColumn => sectionRevisions.id,
+      { onDelete: "restrict" },
+    ),
+    isSample,
+    createdAt,
+  },
+  (t) => [index("sections_course_sort_idx").on(t.courseId, t.sort)],
+);
+
+export const sectionRevisions = pgTable(
+  "section_revisions",
+  {
+    id: uuid("id").primaryKey(),
+    sectionId: uuid("section_id")
+      .notNull()
+      .references((): AnyPgColumn => sections.id, { onDelete: "cascade" }),
+    title: jsonb("title").$type<LocalizedText>().notNull(),
+    isSample,
+    createdAt,
+  },
+  (t) => [check("section_revisions_title_object", isTextObject(t.title))],
+);
+
+export const lessons = pgTable(
+  "lessons",
+  {
+    id: uuid("id").primaryKey(),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "cascade" }),
+    sectionId: uuid("section_id")
+      .notNull()
+      .references(() => sections.id, { onDelete: "cascade" }),
+    kind: lessonKind("kind").notNull(),
+    sort: integer("sort").notNull(),
+    publishedRevisionId: uuid("published_revision_id").references(
+      (): AnyPgColumn => lessonRevisions.id,
+      { onDelete: "restrict" },
+    ),
+    pendingRevisionId: uuid("pending_revision_id").references(
+      (): AnyPgColumn => lessonRevisions.id,
+      { onDelete: "restrict" },
+    ),
+    isSample,
+    createdAt,
+  },
+  (t) => [index("lessons_section_sort_idx").on(t.sectionId, t.sort)],
+);
+
+export const lessonRevisions = pgTable(
+  "lesson_revisions",
+  {
+    id: uuid("id").primaryKey(),
+    lessonId: uuid("lesson_id")
+      .notNull()
+      .references((): AnyPgColumn => lessons.id, { onDelete: "cascade" }),
+    title: jsonb("title").$type<LocalizedText>().notNull(),
+    body: jsonb("body").$type<LocalizedText>(),
+    isFreePreview: boolean("is_free_preview").notNull().default(false),
+    durationMinutes: integer("duration_minutes"),
+    videoAssetId: uuid("video_asset_id").references(() => mediaAssets.id),
+    fileAssetId: uuid("file_asset_id").references(() => mediaAssets.id),
+    quizId: uuid("quiz_id"), // FK added in T4
+    isSample,
+    createdAt,
+  },
+  (t) => [
+    check("lesson_revisions_title_object", isTextObject(t.title)),
+    check(
+      "lesson_revisions_body_object",
+      sql`${t.body} is null or jsonb_typeof(${t.body}) = 'object'`,
+    ),
+  ],
 );
 
 export const usersRelations = relations(users, ({ one }) => ({
