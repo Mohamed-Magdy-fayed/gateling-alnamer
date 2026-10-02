@@ -1,14 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ar } from "./ar";
-import {
-  defaultLocale,
-  dirOf,
-  format,
-  formatCount,
-  formatDate,
-  formatNumber,
-  isLocale,
-} from "./config";
+import { defaultLocale, dirOf, format, formatDate, formatNumber, isLocale, plural } from "./config";
 import { en } from "./en";
 
 const ARABIC_INDIC_DIGITS = /[٠-٩]/;
@@ -68,41 +60,54 @@ describe("formatDate", () => {
   });
 });
 
-describe("formatCount", () => {
-  const forms = { one: "one", two: "two", few: "{count} few", many: "{count} many" };
+describe("plural", () => {
+  const arForms = {
+    zero: "zero",
+    one: "one",
+    two: "two",
+    few: "{count} few",
+    many: "{count} many",
+    other: "{count} other",
+  };
+  const enForms = { one: "{count} item", other: "{count} items" };
 
-  it("picks the Arabic forms 1 / 2 / 3-10 / 11+", () => {
-    expect(formatCount("ar", forms, 1)).toBe("one");
-    expect(formatCount("ar", forms, 2)).toBe("two");
-    expect(formatCount("ar", forms, 3)).toBe("3 few");
-    expect(formatCount("ar", forms, 10)).toBe("10 few");
-    expect(formatCount("ar", forms, 11)).toBe("11 many");
-    expect(formatCount("ar", forms, 0)).toBe("0 many");
+  it("picks the Arabic category for 0, 1, 2, 3, 10, 11, 99, 100, 101", () => {
+    const expected: [number, string][] = [
+      [0, "zero"],
+      [1, "one"],
+      [2, "two"],
+      [3, "3 few"],
+      [10, "10 few"],
+      [11, "11 many"],
+      [99, "99 many"],
+      [100, "100 other"],
+      [101, "101 other"],
+    ];
+    for (const [n, out] of expected) expect(plural("ar", arForms, n)).toBe(out);
   });
 
-  it("uses only one / other in English", () => {
-    expect(formatCount("en", forms, 1)).toBe("one");
-    expect(formatCount("en", forms, 2)).toBe("2 many");
-    expect(formatCount("en", forms, 5)).toBe("5 many");
-  });
-});
-
-describe("formatCount with the student-count key", () => {
-  const forms = (locale: "ar" | "en") =>
-    (locale === "ar" ? ar : en).dashboard.teacher.studentsCount;
-
-  it("reads correctly in Arabic for 0, 1, 2, 3-10 and 11+", () => {
-    expect(formatCount("ar", forms("ar"), 0)).toBe("0 طالبًا");
-    expect(formatCount("ar", forms("ar"), 1)).toBe("طالب واحد");
-    expect(formatCount("ar", forms("ar"), 2)).toBe("طالبان");
-    expect(formatCount("ar", forms("ar"), 3)).toBe("3 طلاب");
-    expect(formatCount("ar", forms("ar"), 10)).toBe("10 طلاب");
-    expect(formatCount("ar", forms("ar"), 11)).toBe("11 طالبًا");
+  it("picks one / other in English", () => {
+    expect(plural("en", enForms, 1)).toBe("1 item");
+    expect(plural("en", enForms, 0)).toBe("0 items");
+    expect(plural("en", enForms, 2)).toBe("2 items");
+    expect(plural("en", enForms, 42)).toBe("42 items");
   });
 
-  it("reads correctly in English", () => {
-    expect(formatCount("en", forms("en"), 0)).toBe("0 students");
-    expect(formatCount("en", forms("en"), 1)).toBe("1 student");
-    expect(formatCount("en", forms("en"), 42)).toBe("42 students");
+  it("renders numbers with Latin digits", () => {
+    expect(plural("ar", arForms, 1000)).toBe("1,000 other");
+    expect(plural("ar", arForms, 5)).not.toMatch(ARABIC_INDIC_DIGITS);
+  });
+
+  it("reads correctly with the student-count key", () => {
+    const forms = (locale: "ar" | "en") =>
+      (locale === "ar" ? ar : en).dashboard.teacher.studentsCount;
+    expect(plural("ar", forms("ar"), 0)).toBe("لا طلاب");
+    expect(plural("ar", forms("ar"), 1)).toBe("طالب واحد");
+    expect(plural("ar", forms("ar"), 2)).toBe("طالبان");
+    expect(plural("ar", forms("ar"), 3)).toBe("3 طلاب");
+    expect(plural("ar", forms("ar"), 11)).toBe("11 طالبًا");
+    expect(plural("ar", forms("ar"), 100)).toBe("100 طالب");
+    expect(plural("en", forms("en"), 1)).toBe("1 student");
+    expect(plural("en", forms("en"), 42)).toBe("42 students");
   });
 });

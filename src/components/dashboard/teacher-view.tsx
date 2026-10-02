@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
 import type { Dictionary } from "@/i18n/ar";
-import { formatCount, type Locale } from "@/i18n/config";
+import { type Locale, plural } from "@/i18n/config";
 import { pickText } from "@/lib/localized-text";
 import { formatPrice } from "@/lib/money-format";
 import type { DashboardCourse } from "@/server/catalog/types";
@@ -9,7 +9,11 @@ import { Badge, Button, Card, Ltr } from "@/ui";
 
 const statuses = ["published", "review", "draft"] as const;
 const studentCounts = [42, 17, 0];
-const tones = { published: "success", review: "warning", draft: "neutral" } as const;
+const tones = {
+  published: "success",
+  review: "warning",
+  draft: "neutral",
+} as const;
 
 export function TeacherView({
   t,
@@ -92,7 +96,7 @@ export function TeacherView({
               <div key={course.id} className="flex flex-wrap items-center gap-3 p-4">
                 <bdi className="min-w-0 flex-1 font-medium">{pickText(course.title, locale)}</bdi>
                 <span className="text-sm text-fg-muted">
-                  {formatCount(locale, d.studentsCount, studentCounts[index] ?? 0)}
+                  {plural(locale, d.studentsCount, studentCounts[index] ?? 0)}
                 </span>
                 <Badge tone={tones[status]}>{d.statuses[status]}</Badge>
               </div>

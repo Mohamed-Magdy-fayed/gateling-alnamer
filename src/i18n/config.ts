@@ -33,17 +33,15 @@ export function formatDate(locale: Locale, date: Date): string {
   }).format(date);
 }
 
-/** Count phrases with one separate string per form; each holds a `{count}` placeholder where it reads naturally. */
-export type CountForms = { one: string; two: string; few: string; many: string };
+/** Arabic needs every CLDR category; each form holds a `{count}` placeholder where it reads naturally. */
+export type ArPlural = Record<"zero" | "one" | "two" | "few" | "many" | "other", string>;
+/** English only distinguishes one / other. */
+export type EnPlural = Record<"one" | "other", string>;
+export type PluralForms = ArPlural | EnPlural;
 
-/**
- * Picks the Arabic-aware form for `count` (ar: 1 / 2 / 3-10 / 11+; en: 1 / other) and fills it in.
- * F2 replaces this with the shared plural helper.
- */
-export function formatCount(locale: Locale, forms: CountForms, count: number): string {
-  let form: keyof CountForms = "many";
-  if (count === 1) form = "one";
-  else if (locale === "ar" && count === 2) form = "two";
-  else if (locale === "ar" && count >= 3 && count <= 10) form = "few";
-  return format(forms[form], { count });
+/** Picks the CLDR plural form for `count` via Intl.PluralRules and fills `{count}` with Latin digits. */
+export function plural(locale: Locale, forms: PluralForms, count: number): string {
+  const category = new Intl.PluralRules(locale === "ar" ? "ar" : "en").select(count);
+  const template = category in forms ? forms[category as keyof PluralForms] : forms.other;
+  return format(template, { count: formatNumber(locale, count) });
 }

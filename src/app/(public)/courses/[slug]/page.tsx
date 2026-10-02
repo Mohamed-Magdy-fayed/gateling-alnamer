@@ -1,7 +1,7 @@
 import { ArrowRight, CalendarClock, FileText, ListChecks, Lock, PlayCircle } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { format, formatCount, formatDate } from "@/i18n/config";
+import { format, formatDate, plural } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
 import { formatPrice } from "@/lib/money-format";
@@ -29,7 +29,9 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
 
   const access =
     course.access.kind === "fixed_end"
-      ? format(t.courses.accessUntil, { date: formatDate(locale, course.access.endAt) })
+      ? format(t.courses.accessUntil, {
+          date: formatDate(locale, course.access.endAt),
+        })
       : format(t.courses.accessDays, { days: course.access.days });
 
   return (
@@ -83,7 +85,7 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
                           </span>
                           {lesson.durationMinutes ? (
                             <span className="text-fg-muted">
-                              {formatCount(locale, t.courses.minutes, lesson.durationMinutes)}
+                              {plural(locale, t.courses.minutes, lesson.durationMinutes)}
                             </span>
                           ) : null}
                           {lesson.isFreePreview ? (

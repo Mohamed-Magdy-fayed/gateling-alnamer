@@ -1,6 +1,6 @@
 import { Clock, PlayCircle } from "lucide-react";
 import Link from "next/link";
-import { formatCount } from "@/i18n/config";
+import { plural } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
 import { formatPrice } from "@/lib/money-format";
@@ -111,13 +111,13 @@ export default async function CoursesPage({
                       {lessonCount ? (
                         <span className="flex items-center gap-1">
                           <PlayCircle aria-hidden className="size-4" strokeWidth={1.75} />
-                          {formatCount(locale, t.courses.lessonsCount, lessonCount)}
+                          {plural(locale, t.courses.lessonsCount, lessonCount)}
                         </span>
                       ) : null}
                       {course.estimatedHours ? (
                         <span className="flex items-center gap-1">
                           <Clock aria-hidden className="size-4" strokeWidth={1.75} />
-                          {formatCount(locale, t.courses.hours, course.estimatedHours)}
+                          {plural(locale, t.courses.hours, course.estimatedHours)}
                         </span>
                       ) : null}
                     </span>

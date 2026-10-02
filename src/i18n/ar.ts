@@ -1,3 +1,5 @@
+import type { ArPlural, PluralForms } from "./config";
+
 export const ar = {
   meta: {
     title: "النمر | منصة تعليمية لطلاب الخليج",
@@ -86,8 +88,14 @@ export const ar = {
     ],
     buyingTitle: "كيف يتم الشراء",
     buying: [
-      { title: "دفعة واحدة لكل دورة", body: "لا اشتراكات متجددة ولا رسوم مخفية." },
-      { title: "مدة وصول واضحة", body: "حتى تاريخ محدد مثل نهاية الفصل، أو عدد أيام من الشراء." },
+      {
+        title: "دفعة واحدة لكل دورة",
+        body: "لا اشتراكات متجددة ولا رسوم مخفية.",
+      },
+      {
+        title: "مدة وصول واضحة",
+        body: "حتى تاريخ محدد مثل نهاية الفصل، أو عدد أيام من الشراء.",
+      },
       {
         title: "دفع محلي آمن",
         body: "صفحة دفع آمنة لدى بوابة الدفع، ولا نحفظ بيانات البطاقة لدينا.",
@@ -148,23 +156,29 @@ export const ar = {
     filterSubject: "المادة",
     all: "الكل",
     lessonsCount: {
+      zero: "لا دروس",
       one: "درس واحد",
       two: "درسان",
       few: "{count} دروس",
       many: "{count} درسًا",
-    },
+      other: "{count} درس",
+    } satisfies ArPlural,
     hours: {
+      zero: "لا ساعات",
       one: "ساعة واحدة",
       two: "ساعتان",
       few: "{count} ساعات",
       many: "{count} ساعة",
-    },
+      other: "{count} ساعة",
+    } satisfies ArPlural,
     minutes: {
+      zero: "لا دقائق",
       one: "دقيقة واحدة",
       two: "دقيقتان",
       few: "{count} دقائق",
       many: "{count} دقيقة",
-    },
+      other: "{count} دقيقة",
+    } satisfies ArPlural,
     by: "مع",
     freePreview: "معاينة مجانية",
     locked: "مقفل",
@@ -234,7 +248,12 @@ export const ar = {
     noCourses: "لا توجد دورات هنا بعد.",
     browseCourses: "تصفّح الدورات",
     viewAs: "عرض الشاشات كـ",
-    views: { student: "طالب", parent: "ولي أمر", teacher: "معلم", admin: "إدارة" },
+    views: {
+      student: "طالب",
+      parent: "ولي أمر",
+      teacher: "معلم",
+      admin: "إدارة",
+    },
     roleLabel: "نوع حسابك: {role}",
     student: {
       title: "دوراتي",
@@ -258,11 +277,13 @@ export const ar = {
       myCourses: "دوراتي",
       newCourse: "دورة جديدة",
       studentsCount: {
+        zero: "لا طلاب",
         one: "طالب واحد",
         two: "طالبان",
         few: "{count} طلاب",
         many: "{count} طالبًا",
-      },
+        other: "{count} طالب",
+      } satisfies ArPlural,
       earnings: "الأرباح",
       pendingBalance: "الرصيد المستحق",
       paidOut: "المحوَّل",
@@ -280,7 +301,11 @@ export const ar = {
       order: "طلب",
       amount: "المبلغ",
       status: "الحالة",
-      orderStatuses: { paid: "مدفوع", pending: "بانتظار الدفع", refunded: "مسترد" },
+      orderStatuses: {
+        paid: "مدفوع",
+        pending: "بانتظار الدفع",
+        refunded: "مسترد",
+      },
       manualEnrollment: "تفعيل يدوي",
       reports: "التقارير",
     },
@@ -303,4 +328,10 @@ export const ar = {
   },
 };
 
-export type Dictionary = typeof ar;
+/** Arabic plural entries must be complete (`satisfies ArPlural`); English may supply just one + other. */
+type Loosen<T> = T extends ArPlural
+  ? PluralForms
+  : T extends string
+    ? string
+    : { [K in keyof T]: Loosen<T[K]> };
+export type Dictionary = Loosen<typeof ar>;
