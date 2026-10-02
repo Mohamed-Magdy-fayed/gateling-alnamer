@@ -369,6 +369,11 @@ export const en: Dictionary = {
       videoPlaceholder: "Protected video player area",
     },
   },
+  devices: {
+    blockedTitle: "You've reached your device limit",
+    softWarning:
+      "You're over the device limit. Sign-in was allowed this time and the team was told.",
+  },
   legal: {
     terms: "Terms and conditions",
     privacy: "Privacy policy",

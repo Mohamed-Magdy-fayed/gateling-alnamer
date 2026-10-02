@@ -59,6 +59,16 @@ export async function updateSession(
   return rows.length;
 }
 
+/** Binds a session to a device; returns how many rows changed (0: the session is gone). */
+export async function setSessionDevice(tokenHash: string, deviceId: string): Promise<number> {
+  const rows = await db()
+    .update(sessions)
+    .set({ deviceId })
+    .where(eq(sessions.tokenHash, tokenHash))
+    .returning({ tokenHash: sessions.tokenHash });
+  return rows.length;
+}
+
 export async function deleteSession(tokenHash: string): Promise<void> {
   await db().delete(sessions).where(eq(sessions.tokenHash, tokenHash));
 }

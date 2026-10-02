@@ -9,6 +9,7 @@ import type { SessionRecord } from "./session-repo";
 
 const h = vi.hoisted(() => ({
   store: null as unknown as FakeCookieStore,
+  touchDevice: vi.fn(),
   redis: null as unknown as FakeRedis | null,
   repo: {
     findSession: vi.fn(),
@@ -16,6 +17,7 @@ const h = vi.hoisted(() => ({
     updateSession: vi.fn(),
     deleteSession: vi.fn(),
     deleteUserSessions: vi.fn(),
+    setSessionDevice: vi.fn(),
   },
 }));
 
@@ -27,9 +29,16 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/server/redis", () => ({ getRedis: () => h.redis?.asRedis() ?? null }));
 vi.mock("./session-repo", () => h.repo);
+vi.mock("@/server/devices/service", () => ({ touchDevice: h.touchDevice }));
 
-const { createSession, destroySession, getCurrentUser, invalidateUserSessions, rotateSession } =
-  await import("./session");
+const {
+  attachDeviceToSession,
+  createSession,
+  destroySession,
+  getCurrentUser,
+  invalidateUserSessions,
+  rotateSession,
+} = await import("./session");
 const { proxy } = await import("@/proxy");
 
 const NOW = new Date("2026-10-02T12:00:00.000Z");
@@ -57,6 +66,8 @@ beforeEach(() => {
   h.store = new FakeCookieStore();
   h.redis = new FakeRedis();
   for (const fn of Object.values(h.repo)) fn.mockReset();
+  h.touchDevice.mockReset();
+  h.touchDevice.mockResolvedValue(false);
   h.repo.findSession.mockResolvedValue(record());
   h.repo.insertSession.mockResolvedValue(undefined);
   h.repo.updateSession.mockResolvedValue(1);
@@ -239,6 +250,43 @@ describe("sliding expiry and last_seen_at", () => {
     );
     await getCurrentUser();
     expect(h.repo.updateSession).toHaveBeenCalledWith(HASH, { lastSeenAt: NOW });
+  });
+
+  it("touches the session's device whenever the session's last_seen is refreshed", async () => {
+    h.repo.findSession.mockResolvedValue(
+      record({ deviceId: "dev-1", lastSeenAt: new Date(NOW.getTime() - 4 * 60_000) }),
+    );
+    await getCurrentUser();
+    expect(h.touchDevice).not.toHaveBeenCalled();
+
+    h.redis = new FakeRedis();
+    h.repo.findSession.mockResolvedValue(
+      record({ deviceId: "dev-1", lastSeenAt: new Date(NOW.getTime() - 6 * 60_000) }),
+    );
+    await getCurrentUser();
+    expect(h.touchDevice).toHaveBeenCalledWith("dev-1");
+  });
+
+  it("does not touch a device for a session without one", async () => {
+    h.repo.findSession.mockResolvedValue(record({ deviceId: null, lastSeenAt: null }));
+    await getCurrentUser();
+    expect(h.touchDevice).not.toHaveBeenCalled();
+  });
+
+  it("a failing device touch does not fail the read", async () => {
+    h.repo.findSession.mockResolvedValue(record({ deviceId: "dev-1", lastSeenAt: null }));
+    h.touchDevice.mockRejectedValue(new Error("db busy"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(getCurrentUser()).resolves.toMatchObject({ id: "user-1" });
+  });
+
+  it("attachDeviceToSession sets the device on the row and drops the cached copy", async () => {
+    h.store.jar.set("__Host-session", TOKEN);
+    await getCurrentUser(); // primes the cache
+    expect(redis().values.has(`sess:${HASH}`)).toBe(true);
+    await attachDeviceToSession("dev-7");
+    expect(h.repo.setSessionDevice).toHaveBeenCalledWith(HASH, "dev-7");
+    expect(redis().values.has(`sess:${HASH}`)).toBe(false);
   });
 
   it("writes last_seen_at when it has never been set", async () => {

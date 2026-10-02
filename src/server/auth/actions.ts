@@ -12,6 +12,7 @@ import { clock } from "@/server/clock";
 import { CODE_RESEND_COOLDOWN_MS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { credentials, users } from "@/server/db/schema";
+import { gateDevice } from "@/server/devices/sign-in";
 import {
   clearCodeVerifyFailures,
   clearSignInFailures,
@@ -218,8 +219,15 @@ export async function signInAction(_prev: FormState, formData: FormData): Promis
 
   // Never let a session from before sign-in survive it (fixation, switching accounts).
   await destroySession();
-  await createSession(userId);
-  redirect("/dashboard");
+  const gate = await gateDevice(userId, {
+    deviceKey: device.deviceKey,
+    userAgent: device.userAgent,
+    secure: device.secure,
+  });
+  // A student over the limit in strict mode gets a pre-session, never a session.
+  if (gate.kind === "blocked") redirect("/devices/blocked");
+  await createSession(userId, { deviceId: gate.deviceId });
+  redirect(gate.overLimit ? "/dashboard?notice=device-over" : "/dashboard");
 }
 
 export async function signOutAction(): Promise<void> {

@@ -72,6 +72,22 @@ async function resetTestDatabase() {
   console.log(`smoke: reset test database "${name}".`);
 }
 
+// The smoke signs in as one student from a fresh browser context per test (a new device each time),
+// so the real limit of 2 would block the third. The device-limit specs set their own limit.
+async function relaxDeviceLimit() {
+  const sql = postgres(process.env.TEST_DATABASE_URL || DEFAULT_TEST_DATABASE_URL, {
+    max: 1,
+    onnotice: () => {},
+  });
+  try {
+    await sql`update platform_settings set device_limit = 50 where id = 1`;
+  } catch (error) {
+    fail(`could not relax the device limit (${error instanceof Error ? error.message : error}).`);
+  } finally {
+    await sql.end();
+  }
+}
+
 function run(args, label) {
   const result = spawnSync(process.execPath, args, { stdio: "inherit", env: process.env });
   if (result.status !== 0) fail(`${label} failed (exit ${result.status ?? "signal"}).`);
@@ -102,6 +118,7 @@ try {
 await checkServices();
 await resetTestDatabase();
 run(["node_modules/tsx/dist/cli.mjs", "scripts/migrate.mts", "--test-db"], "db:migrate");
+await relaxDeviceLimit();
 if (!process.argv.includes("--no-build") && buildIsStale())
   run(["scripts/build-local.mjs", "--test-db"], "build:local");
 // Screenshot baselines are recorded on the Windows dev machine; font rendering differs on

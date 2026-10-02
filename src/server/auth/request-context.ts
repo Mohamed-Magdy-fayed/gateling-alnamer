@@ -10,6 +10,11 @@ export type RequestContext = {
   ip: string;
   /** The returning device's signed id; null when the request had no valid `did` cookie. */
   deviceId: string | null;
+  /** The signed device cookie's id, existing or just minted; only the device limit uses it. */
+  deviceKey: string;
+  userAgent: string | null;
+  /** Whether the request came over HTTPS, for cookies that are Secure only then. */
+  secure: boolean;
 };
 
 /**
@@ -30,5 +35,8 @@ export async function requestContext(): Promise<RequestContext> {
       TRUST_PROXY_HEADERS: process.env.TRUST_PROXY_HEADERS,
     }),
     deviceId: device.existing ? device.id : null,
+    deviceKey: device.id,
+    userAgent: requestHeaders.get("user-agent"),
+    secure,
   };
 }

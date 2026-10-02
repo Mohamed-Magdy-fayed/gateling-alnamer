@@ -1,11 +1,12 @@
 import { ArrowRight, PlayCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
-import { requireUser } from "@/server/auth/session";
+import { getCurrentSession } from "@/server/auth/session";
 import { getPublishedLesson } from "@/server/catalog/repository";
+import { assertActiveDevice } from "@/server/devices/service";
 import { Alert, Badge, Container, Ltr } from "@/ui";
 
 const lessonIdSchema = z.uuid();
@@ -17,7 +18,15 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
     ? await getPublishedLesson(lessonId)
     : null;
   if (!lesson) notFound();
-  const user = await requireUser();
+  const session = await getCurrentSession();
+  if (!session) redirect("/sign-in");
+  // Paid content needs an active device. A student with none (a session from before the limit, or a
+  // revoked device) goes through /devices/check, which registers this browser or blocks it.
+  const access = await assertActiveDevice({ role: session.user.role, deviceId: session.deviceId });
+  if (!access.ok) {
+    redirect(`/devices/check?next=${encodeURIComponent(`/dashboard/learn/${lessonId}`)}`);
+  }
+  const user = session.user;
   const { t, locale } = await getDictionary();
   const p = t.dashboard.player;
   const accountNumber = `AN-${user.id.slice(0, 6).toUpperCase()}`;

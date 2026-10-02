@@ -58,6 +58,9 @@ export const AUTH_LIMITS: AuthLimits = {
 /** The device cookie lives 400 days, the browser cap; it is refreshed on every auth action. */
 export const DEVICE_COOKIE_MAX_AGE_SEC = 400 * 24 * 60 * 60;
 
+/** A pre-session (a correct password on a blocked device) only reaches device management for this long. */
+export const PRE_SESSION_TTL_MS = 15 * 60 * 1000;
+
 /** A code can be re-sent this long after the last one; also when a still-queued email counts as delayed. */
 export const CODE_RESEND_COOLDOWN_MS = 60 * 1000;
 /** How long the signed `rp` cookie that remembers a reset request's email stays valid. */

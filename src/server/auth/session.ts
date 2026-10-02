@@ -9,6 +9,7 @@ import {
   SESSION_TTL_MS,
 } from "@/server/config/policy";
 import type { User } from "@/server/db/schema";
+import { touchDevice } from "@/server/devices/service";
 import { randomToken, sha256 } from "./password";
 import { cacheDelete, cacheGet, cacheSet } from "./session-cache";
 import {
@@ -25,6 +26,7 @@ import {
   findSession,
   insertSession,
   type SessionRecord,
+  setSessionDevice,
   updateSession,
 } from "./session-repo";
 
@@ -82,6 +84,15 @@ export async function rotateSession(): Promise<void> {
   });
   await deleteSession(sha256(token));
   await cacheDelete(sha256(token));
+}
+
+/** Binds the current session to a device (the legacy-session check) and drops its cached copy. */
+export async function attachDeviceToSession(deviceId: string): Promise<void> {
+  const token = readSessionToken(await cookies());
+  if (!token) return;
+  const tokenHash = sha256(token);
+  await setSessionDevice(tokenHash, deviceId);
+  await cacheDelete(tokenHash);
 }
 
 export async function destroySession(): Promise<void> {
@@ -142,6 +153,8 @@ async function resolveRecord(tokenHash: string, now: Date): Promise<SessionRecor
         return null;
       }
       next = { ...record, ...patch };
+      // The device's own throttle (5 minutes) keeps this from writing more than the session does.
+      if (patch.lastSeenAt && record.deviceId) await touchDevice(record.deviceId);
     } catch (error) {
       console.error("Session housekeeping failed", error instanceof Error ? error.message : error);
     }

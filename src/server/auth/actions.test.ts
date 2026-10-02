@@ -27,6 +27,10 @@ const h = vi.hoisted(() => ({
   signUp: null as null | Mock<typeof import("./sign-up").signUpUser>,
   ip: "203.0.113.5",
   deviceId: "dev-1" as string | null,
+  gate: { kind: "allowed", deviceId: null, overLimit: false } as
+    | { kind: "allowed"; deviceId: string | null; overLimit: boolean }
+    | { kind: "blocked" },
+  gateCalls: [] as unknown[],
   sessionUser: null as null | { id: string; email: string | null },
   pending: null as null | { email: string; issuedAt: number },
   pendingSet: [] as string[],
@@ -68,7 +72,19 @@ vi.mock("./sign-up", async (importOriginal) => {
   };
 });
 vi.mock("./request-context", () => ({
-  requestContext: async () => ({ ip: h.ip, deviceId: h.deviceId }),
+  requestContext: async () => ({
+    ip: h.ip,
+    deviceId: h.deviceId,
+    deviceKey: "key-1",
+    userAgent: "UA",
+    secure: false,
+  }),
+}));
+vi.mock("@/server/devices/sign-in", () => ({
+  gateDevice: async (...args: unknown[]) => {
+    h.gateCalls.push(args);
+    return h.gate;
+  },
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 vi.mock("./pending-reset", () => ({
@@ -126,8 +142,8 @@ vi.mock("./codes", () => ({
 }));
 vi.mock("./session", () => ({
   getCurrentUser: async () => h.sessionUser,
-  createSession: async (userId: string) => {
-    h.calls.push(`create:${userId}`);
+  createSession: async (userId: string, options?: { deviceId?: string | null }) => {
+    h.calls.push(options?.deviceId ? `create:${userId}:${options.deviceId}` : `create:${userId}`);
   },
   destroySession: async () => {
     h.calls.push("destroy");
@@ -171,6 +187,8 @@ beforeEach(() => {
   h.pendingSet.length = 0;
   h.pendingCleared = 0;
   h.codeRow = null;
+  h.gate = { kind: "allowed", deviceId: null, overLimit: false };
+  h.gateCalls.length = 0;
   vi.clearAllMocks();
 });
 
@@ -210,6 +228,40 @@ describe("signInAction", () => {
       ),
     ).rejects.toThrow("redirect:/dashboard");
     expect(h.calls).toEqual(["destroy", "create:u1"]);
+  });
+
+  describe("device limit", () => {
+    const signIn = () =>
+      signInAction(
+        { status: "idle" },
+        form({ identifier: "u@example.test", password: "right pass 1" }),
+      );
+    beforeEach(async () => {
+      h.user = {
+        id: "u1",
+        status: "active",
+        credentials: { passwordHash: await hashPassword("right pass 1"), passwordSalt: null },
+      };
+    });
+
+    it("hands the cookie device key and user agent to the gate and stores the device on the session", async () => {
+      h.gate = { kind: "allowed", deviceId: "dev-9", overLimit: false };
+      await expect(signIn()).rejects.toThrow("redirect:/dashboard");
+      expect(h.gateCalls).toEqual([["u1", { deviceKey: "key-1", userAgent: "UA", secure: false }]]);
+      expect(h.calls).toEqual(["destroy", "create:u1:dev-9"]);
+    });
+
+    it("over the limit in soft mode signs in and flags the dashboard", async () => {
+      h.gate = { kind: "allowed", deviceId: "dev-9", overLimit: true };
+      await expect(signIn()).rejects.toThrow("redirect:/dashboard?notice=device-over");
+      expect(h.calls).toEqual(["destroy", "create:u1:dev-9"]);
+    });
+
+    it("a blocked device gets no session and goes to /devices/blocked", async () => {
+      h.gate = { kind: "blocked" };
+      await expect(signIn()).rejects.toThrow("redirect:/devices/blocked");
+      expect(h.calls).toEqual(["destroy"]);
+    });
   });
 });
 

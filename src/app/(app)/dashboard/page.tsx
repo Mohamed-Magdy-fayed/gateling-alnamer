@@ -20,11 +20,11 @@ import { Alert, Badge, Container, cn } from "@/ui";
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; notice?: string }>;
 }) {
   const user = await requireUser();
   const { t, locale } = await getDictionary();
-  const { view: requested } = await searchParams;
+  const { view: requested, notice } = await searchParams;
   const ownView = dashboardViewForRole(user.role);
   const view: DashboardView = isDashboardView(requested) ? requested : ownView;
   const [courses, promptParentLink] = await Promise.all([
@@ -66,6 +66,12 @@ export default async function DashboardPage({
           </ul>
         </nav>
       </div>
+
+      {notice === "device-over" && user.role === "student" ? (
+        <div className="mt-6">
+          <Alert tone="warning">{t.devices.softWarning}</Alert>
+        </div>
+      ) : null}
 
       {promptParentLink ? (
         <div className="mt-6">
