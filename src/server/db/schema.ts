@@ -22,6 +22,11 @@ import { citext } from "./types";
 
 export const userRole = pgEnum("user_role", ["student", "parent", "teacher", "admin", "reviewer"]);
 export const userStatus = pgEnum("user_status", ["active", "suspended"]);
+export const verificationPurpose = pgEnum("verification_purpose", [
+  "email_verify",
+  "password_reset",
+]);
+export const emailStatus = pgEnum("email_status", ["queued", "sent", "failed"]);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
@@ -36,6 +41,7 @@ export const users = pgTable(
     isSample: boolean("is_sample").notNull().default(false),
     dateOfBirth: date("date_of_birth"),
     guardianConsentAt: timestamp("guardian_consent_at", { withTimezone: true }),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     locale: text("locale"),
     status: userStatus("status").notNull().default("active"),
     publicNumber: text("public_number").unique(),
@@ -87,6 +93,27 @@ export const passwordResetCodes = pgTable("password_reset_codes", {
   consumedAt: timestamp("consumed_at", { withTimezone: true }),
   createdAt,
 });
+
+export const verificationCodes = pgTable(
+  "verification_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    purpose: verificationPurpose("purpose").notNull(),
+    codeHash: text("code_hash").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    emailStatus: emailStatus("email_status").notNull().default("queued"),
+    emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
+    createdAt,
+  },
+  (t) => [
+    index("verification_codes_user_purpose_created_idx").on(t.userId, t.purpose, desc(t.createdAt)),
+  ],
+);
 
 export const deviceLimitMode = pgEnum("device_limit_mode", ["strict", "soft"]);
 

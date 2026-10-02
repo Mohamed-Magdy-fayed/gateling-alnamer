@@ -1,17 +1,24 @@
 "use server";
 
-import { and, desc, eq, gt, isNull, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { format } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { clock } from "@/server/clock";
-import { RESET_CODE_TTL_MS, RESET_MAX_ATTEMPTS } from "@/server/config/policy";
 import { db } from "@/server/db";
-import { credentials, passwordResetCodes, users } from "@/server/db/schema";
+import { credentials, users } from "@/server/db/schema";
 import { sendEvent } from "@/server/jobs/send";
+import {
+  deleteCode,
+  issueCode,
+  issueCodeDecoy,
+  markCodeEmailSent,
+  verifyCode,
+  verifyCodeDecoy,
+} from "./codes";
 import { authenticate } from "./credentials";
-import { hashPassword, randomCode, sha256 } from "./password";
+import { hashPassword } from "./password";
 import { createSession, destroySession, invalidateUserSessions } from "./session";
 import { type SignUpField, signUpUser } from "./sign-up";
 
@@ -122,21 +129,13 @@ export async function requestPasswordResetAction(
     message: t.auth.forgot.sent,
     email: parsed.data.email,
   };
-  if (!user?.email) return sent;
+  if (!user?.email) {
+    // Same hashing and DB work as the known-email path; only the send is skipped.
+    await issueCodeDecoy("password_reset");
+    return sent;
+  }
 
-  const code = randomCode();
-  const codeHash = sha256(`${user.email}:${code}`);
-  const [row] = await db().transaction(async (tx) => {
-    await tx.delete(passwordResetCodes).where(eq(passwordResetCodes.userId, user.id));
-    return tx
-      .insert(passwordResetCodes)
-      .values({
-        userId: user.id,
-        codeHash,
-        expiresAt: new Date(clock.now().getTime() + RESET_CODE_TTL_MS),
-      })
-      .returning({ id: passwordResetCodes.id });
-  });
+  const { codeId, code } = await issueCode(user.id, "password_reset");
 
   try {
     const body = format(t.auth.resetEmail.body, { name: user.name, code });
@@ -148,9 +147,10 @@ export async function requestPasswordResetAction(
     });
   } catch (error) {
     console.error("Password reset email failed", error instanceof Error ? error.message : error);
-    if (row) await db().delete(passwordResetCodes).where(eq(passwordResetCodes.id, row.id));
+    await deleteCode(codeId);
     return { status: "error", message: t.auth.errors.email };
   }
+  await markCodeEmailSent(codeId);
   return sent;
 }
 
@@ -167,30 +167,13 @@ export async function resetPasswordAction(
     columns: { id: true, email: true },
     where: eq(users.email, input.email),
   });
-  if (!user) return { status: "error", message: t.auth.errors.code };
+  if (!user) {
+    await verifyCodeDecoy("password_reset", input.code);
+    return { status: "error", message: t.auth.errors.code };
+  }
 
-  const [record] = await db()
-    .select()
-    .from(passwordResetCodes)
-    .where(
-      and(
-        eq(passwordResetCodes.userId, user.id),
-        isNull(passwordResetCodes.consumedAt),
-        gt(passwordResetCodes.expiresAt, clock.now()),
-      ),
-    )
-    .orderBy(desc(passwordResetCodes.createdAt))
-    .limit(1);
-  if (!record || record.attempts >= RESET_MAX_ATTEMPTS) {
-    return { status: "error", message: t.auth.errors.code };
-  }
-  if (record.codeHash !== sha256(`${user.email}:${input.code}`)) {
-    await db()
-      .update(passwordResetCodes)
-      .set({ attempts: sql`${passwordResetCodes.attempts} + 1` })
-      .where(eq(passwordResetCodes.id, record.id));
-    return { status: "error", message: t.auth.errors.code };
-  }
+  const verified = await verifyCode(user.id, "password_reset", input.code);
+  if (!verified.ok) return { status: "error", message: t.auth.errors.code };
 
   const passwordHash = await hashPassword(input.password);
   const now = clock.now();
@@ -202,10 +185,6 @@ export async function resetPasswordAction(
         target: credentials.userId,
         set: { passwordHash, passwordSalt: null, updatedAt: now },
       });
-    await tx
-      .update(passwordResetCodes)
-      .set({ consumedAt: now })
-      .where(eq(passwordResetCodes.id, record.id));
   });
   // A password reset signs the account out everywhere.
   await invalidateUserSessions(user.id);
