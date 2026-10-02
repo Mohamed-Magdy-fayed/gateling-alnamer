@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { format } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
+import { clock } from "@/server/clock";
+import { RESET_CODE_TTL_MS, RESET_MAX_ATTEMPTS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { credentials, passwordResetCodes, users } from "@/server/db/schema";
 import { sendMail } from "@/server/email";
@@ -13,8 +15,6 @@ import { createSession, destroyAllSessions, destroySession } from "./session";
 
 export type FormState = { status: "idle" | "error" | "success"; message?: string; email?: string };
 
-const RESET_CODE_TTL_MS = 1000 * 60 * 10;
-const RESET_MAX_ATTEMPTS = 5;
 /** Compared against when the email is unknown, so timing does not reveal registered emails. */
 const DUMMY_SALT = "00000000000000000000000000000000";
 
@@ -117,7 +117,11 @@ export async function requestPasswordResetAction(
     await tx.delete(passwordResetCodes).where(eq(passwordResetCodes.userId, user.id));
     return tx
       .insert(passwordResetCodes)
-      .values({ userId: user.id, codeHash, expiresAt: new Date(Date.now() + RESET_CODE_TTL_MS) })
+      .values({
+        userId: user.id,
+        codeHash,
+        expiresAt: new Date(clock.now().getTime() + RESET_CODE_TTL_MS),
+      })
       .returning({ id: passwordResetCodes.id });
   });
 
@@ -159,7 +163,7 @@ export async function resetPasswordAction(
       and(
         eq(passwordResetCodes.userId, user.id),
         isNull(passwordResetCodes.consumedAt),
-        gt(passwordResetCodes.expiresAt, new Date()),
+        gt(passwordResetCodes.expiresAt, clock.now()),
       ),
     )
     .orderBy(desc(passwordResetCodes.createdAt))
@@ -177,7 +181,7 @@ export async function resetPasswordAction(
 
   const salt = generateSalt();
   const passwordHash = await hashPassword(input.password, salt);
-  const now = new Date();
+  const now = clock.now();
   await db().transaction(async (tx) => {
     await tx
       .insert(credentials)

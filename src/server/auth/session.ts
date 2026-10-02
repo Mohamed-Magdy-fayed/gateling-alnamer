@@ -3,18 +3,19 @@ import { and, eq, gt } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import { clock } from "@/server/clock";
+import { SESSION_TTL_MS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { sessions, type User, users } from "@/server/db/schema";
 import { randomToken, sha256 } from "./password";
 
 const SESSION_COOKIE = "alnamer_session";
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
 export type SessionUser = Pick<User, "id" | "name" | "email" | "role">;
 
 export async function createSession(userId: string): Promise<void> {
   const token = randomToken();
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const expiresAt = new Date(clock.now().getTime() + SESSION_TTL_MS);
   await db()
     .insert(sessions)
     .values({ tokenHash: sha256(token), userId, expiresAt });
@@ -50,7 +51,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
     .select({ id: users.id, name: users.name, email: users.email, role: users.role })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
-    .where(and(eq(sessions.tokenHash, sha256(token)), gt(sessions.expiresAt, new Date())))
+    .where(and(eq(sessions.tokenHash, sha256(token)), gt(sessions.expiresAt, clock.now())))
     .limit(1);
   return row ?? null;
 });
