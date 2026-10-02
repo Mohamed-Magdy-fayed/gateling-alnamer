@@ -48,6 +48,8 @@ const schema = z.object({
   DEMO_ACCOUNTS_PASSWORD: optionalText,
   DEMO_TOTP_SECRET: optionalText,
   INNGEST_DEV: optionalText,
+  UPSTASH_REDIS_REST_URL: optionalText,
+  UPSTASH_REDIS_REST_TOKEN: optionalText,
   MYFATOORAH_LIVE: optionalText,
   MYFATOORAH_API_KEY: optionalText,
   BUNNY_STREAM_API_KEY: optionalText,
@@ -193,6 +195,13 @@ function demoProblems(env: RawEnv): string[] {
   return problems;
 }
 
+function redisProblems(env: RawEnv): string[] {
+  if (env.APP_MODE !== "live") return [];
+  return (["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"] as const)
+    .filter((key) => !env[key])
+    .map((key) => `${key} is required when APP_MODE=live; ${FIX_HINT}.`);
+}
+
 function crossProblems(env: RawEnv, providers: ResolvedProviders): string[] {
   const problems: string[] = [];
   const deployed = env.VERCEL_ENV === "preview" || env.VERCEL_ENV === "production";
@@ -208,6 +217,7 @@ function crossProblems(env: RawEnv, providers: ResolvedProviders): string[] {
   if (env.APP_MODE === "live" && env.DEMO_ACCOUNTS_PASSWORD) {
     problems.push("DEMO_ACCOUNTS_PASSWORD is refused when APP_MODE=live; unset it.");
   }
+  problems.push(...redisProblems(env));
   problems.push(...selectorProblems(env, providers));
   return problems;
 }

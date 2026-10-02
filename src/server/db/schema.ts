@@ -6,6 +6,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   smallint,
   text,
   timestamp,
@@ -94,6 +95,17 @@ export const auditLog = pgTable(
     index("audit_log_subject_idx").on(t.subjectType, t.subjectId, desc(t.at)),
     index("audit_log_actor_idx").on(t.actorId, desc(t.at)),
   ],
+);
+
+// Fixed-window counters for the Postgres rate-limit fallback (src/server/rate-limit/postgres.ts).
+export const rateLimitCounters = pgTable(
+  "rate_limit_counters",
+  {
+    key: text("key").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+    count: integer("count").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.windowStart] })],
 );
 
 export const usersRelations = relations(users, ({ one }) => ({

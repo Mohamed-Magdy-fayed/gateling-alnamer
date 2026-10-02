@@ -36,6 +36,13 @@
       "when": 1790921345958,
       "tag": "0004_audit_trigger_strict",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790921538723,
+      "tag": "0005_mighty_madripoor",
+      "breakpoints": true
     }
   ]
 }

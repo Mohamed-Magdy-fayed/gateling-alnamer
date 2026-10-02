@@ -30,6 +30,7 @@
     "setup": "node scripts/setup.mjs"
   },
   "dependencies": {
+    "@upstash/redis": "^1.39.0",
     "class-variance-authority": "0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.3",

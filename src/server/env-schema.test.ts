@@ -125,6 +125,8 @@ describe("parseServerEnv", () => {
       JOBS_MODE: "inngest",
       INNGEST_EVENT_KEY: "event-key-value",
       INNGEST_SIGNING_KEY: "signing-key-value",
+      UPSTASH_REDIS_REST_URL: "https://redis.example",
+      UPSTASH_REDIS_REST_TOKEN: "redis-token-value",
     };
 
     it("resolves the minimal local demo to mock providers, mailpit and inline jobs", () => {
@@ -174,6 +176,19 @@ describe("parseServerEnv", () => {
 
     it("fails JOBS_MODE=inngest without Inngest keys", () => {
       expect(failure({ ...local, JOBS_MODE: "inngest" })).toContain("INNGEST_EVENT_KEY");
+    });
+
+    it.each(["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"])(
+      "fails live without %s, naming the key and not the other value",
+      (key) => {
+        const message = failure({ ...live, [key]: undefined });
+        expect(message).toContain(key);
+        expect(message).not.toContain("redis-token-value");
+      },
+    );
+
+    it("treats the Upstash keys as optional in demo", () => {
+      expect(() => parseServerEnv(local)).not.toThrow();
     });
 
     it("passes a complete live environment", () => {
