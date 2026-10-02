@@ -1,6 +1,6 @@
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "@/server/api/root";
-import { createTrpcContext } from "@/server/api/trpc";
+import { createTrpcContext, logTrpcError } from "@/server/api/trpc";
 
 const handler = (req: Request) =>
   fetchRequestHandler({
@@ -8,6 +8,7 @@ const handler = (req: Request) =>
     req,
     router: appRouter,
     createContext: createTrpcContext,
+    onError: ({ path, error }) => logTrpcError({ path, error }),
   });
 
 export { handler as GET, handler as POST };

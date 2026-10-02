@@ -9,10 +9,20 @@ export const dynamic = "force-dynamic";
 
 type CheckResult = "ok" | "down" | "skipped";
 
+const CHECK_TIMEOUT_MS = 1000;
+
+function withTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("timeout")), CHECK_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 async function check(run: (() => Promise<unknown>) | null): Promise<CheckResult> {
   if (!run) return "skipped";
   try {
-    await run();
+    await withTimeout(Promise.resolve().then(run));
     return "ok";
   } catch (error) {
     console.error("[health] check failed", error instanceof Error ? error.message : "unknown");
@@ -22,10 +32,11 @@ async function check(run: (() => Promise<unknown>) | null): Promise<CheckResult>
 
 export async function GET() {
   const redis = getRedis();
-  const checks = {
-    db: await check(() => db().execute(sql`select 1`)),
-    redis: await check(redis ? () => redis.ping() : null),
-  };
+  const [dbResult, redisResult] = await Promise.all([
+    check(() => db().execute(sql`select 1`)),
+    check(redis ? () => redis.ping() : null),
+  ]);
+  const checks = { db: dbResult, redis: redisResult };
   const status = checks.db === "down" || checks.redis === "down" ? "degraded" : "ok";
   const headers = { "Cache-Control": "no-store" };
   const httpStatus = status === "ok" ? 200 : 503;

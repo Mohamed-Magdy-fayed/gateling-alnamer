@@ -58,3 +58,14 @@ describe("GET /api/health", () => {
     expect(typeof body.jobsMode).toBe("string");
   });
 });
+
+describe("GET /api/health bounded checks", () => {
+  it("returns 503 degraded when the redis ping does not answer within 1s", async () => {
+    getRedis.mockReturnValue({ ping: () => new Promise(() => {}) });
+    const started = Date.now();
+    const { res, body } = await call();
+    expect(res.status).toBe(503);
+    expect(body).toEqual({ status: "degraded" });
+    expect(Date.now() - started).toBeLessThan(3000);
+  });
+});
