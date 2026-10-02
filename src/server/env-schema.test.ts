@@ -127,6 +127,9 @@ describe("parseServerEnv", () => {
       INNGEST_SIGNING_KEY: "signing-key-value",
       INNGEST_ENCRYPTION_KEY: "encryption-key-value",
       DEVICE_COOKIE_SECRET: "d".repeat(40),
+      CAPTCHA: "turnstile",
+      TURNSTILE_SITE_KEY: "site-key-value",
+      TURNSTILE_SECRET_KEY: "turnstile-secret-value",
       UPSTASH_REDIS_REST_URL: "https://redis.example",
       UPSTASH_REDIS_REST_TOKEN: "redis-token-value",
     };
@@ -139,7 +142,47 @@ describe("parseServerEnv", () => {
         email: "mailpit",
         emailIsDefault: true,
         jobs: "inline",
+        captcha: "fake",
       });
+    });
+
+    it("defaults demo CAPTCHA to fake and honours an explicit fake", () => {
+      expect(parseServerEnv(local).providers.captcha).toBe("fake");
+      expect(parseServerEnv({ ...local, CAPTCHA: "fake" }).providers.captcha).toBe("fake");
+    });
+
+    it("refuses CAPTCHA=fake in live, naming the key", () => {
+      expect(failure({ ...live, CAPTCHA: "fake" })).toContain("CAPTCHA");
+    });
+
+    it("requires CAPTCHA to be set explicitly in live", () => {
+      expect(failure({ ...live, CAPTCHA: undefined })).toContain("CAPTCHA");
+    });
+
+    it("requires both Turnstile keys when CAPTCHA=turnstile, without echoing the other key", () => {
+      const demo = { ...local, CAPTCHA: "turnstile" };
+      expect(failure(demo)).toContain("TURNSTILE_SITE_KEY");
+      expect(failure(demo)).toContain("TURNSTILE_SECRET_KEY");
+      const message = failure({ ...demo, TURNSTILE_SITE_KEY: "site-key-value" });
+      expect(message).toContain("TURNSTILE_SECRET_KEY");
+      expect(message).not.toContain("site-key-value");
+      expect(failure({ ...live, TURNSTILE_SECRET_KEY: undefined })).toContain(
+        "TURNSTILE_SECRET_KEY",
+      );
+    });
+
+    it("passes CAPTCHA=turnstile with both keys", () => {
+      const env = parseServerEnv({
+        ...local,
+        CAPTCHA: "turnstile",
+        TURNSTILE_SITE_KEY: "site",
+        TURNSTILE_SECRET_KEY: "secret",
+      });
+      expect(env.providers.captcha).toBe("turnstile");
+    });
+
+    it("fails an unknown CAPTCHA value, naming the key", () => {
+      expect(failure({ ...local, CAPTCHA: "recaptcha" })).toContain("CAPTCHA");
     });
 
     it("defaults demo email to smtp when SMTP_HOST is set", () => {

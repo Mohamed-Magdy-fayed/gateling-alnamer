@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { formatTime } from "@/i18n/config";
 import { en } from "@/i18n/en";
 import { hashPassword } from "./password";
@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   })),
   verifyDecoy: vi.fn(async (_purpose: string, _code: string) => undefined),
   memory: null as null | { hits: Map<string, number[]> },
+  signUp: null as null | Mock<typeof import("./sign-up").signUpUser>,
   ip: "203.0.113.5",
   deviceId: "dev-1" as string | null,
 }));
@@ -31,6 +32,21 @@ vi.mock("@/server/rate-limit", async () => {
   const { MemoryLimiter } = await import("../../../test/fake-limiter");
   h.memory = new MemoryLimiter();
   return { createRateLimiter: () => h.memory };
+});
+vi.mock("./captcha", () => ({
+  // Same rule as the fake provider: any non-empty token passes except "fail".
+  verifyCaptcha: async (token: string | undefined) => Boolean(token?.trim()) && token !== "fail",
+}));
+vi.mock("./sign-up", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./sign-up")>();
+  h.signUp = vi.fn(actual.signUpUser);
+  return {
+    ...actual,
+    signUpUser: (...args: Parameters<typeof actual.signUpUser>) => {
+      if (!h.signUp) throw new Error("signUp spy missing");
+      return h.signUp(...args);
+    },
+  };
 });
 vi.mock("./request-context", () => ({
   requestContext: async () => ({ ip: h.ip, deviceId: h.deviceId }),
@@ -61,6 +77,7 @@ vi.mock("./session", () => ({
   invalidateUserSessions: async () => undefined,
 }));
 
+const OK = { captcha_token: "fake-ok" };
 const { requestPasswordResetAction, resetPasswordAction, signInAction, signUpAction } =
   await import("./actions");
 
@@ -121,7 +138,7 @@ describe("signInAction", () => {
 
 describe("requestPasswordResetAction", () => {
   const request = () =>
-    requestPasswordResetAction({ status: "idle" }, form({ email: "who@example.test" }));
+    requestPasswordResetAction({ status: "idle" }, form({ email: "who@example.test", ...OK }));
 
   it("does the same code work for an unknown email and skips only the send", async () => {
     h.user = undefined;
@@ -162,6 +179,78 @@ describe("resetPasswordAction", () => {
   });
 });
 
+describe("captcha in the actions", () => {
+  const signUpForm = (token?: string) =>
+    form({
+      name: "Sam Student",
+      email: "sam@example.test",
+      password: "a-long-password-1",
+      date_of_birth: "2000-01-01",
+      role: "student",
+      ...(token === undefined ? {} : { captcha_token: token }),
+    });
+
+  it("sign-up with a failed or missing captcha creates no user and keeps the form values", async () => {
+    for (const token of ["fail", "", undefined]) {
+      const result = await signUpAction({ status: "idle" }, signUpForm(token));
+      expect(result).toMatchObject({ status: "error", message: en.auth.states.captchaFailed });
+      expect(result.values?.email).toBe("sam@example.test");
+    }
+    expect(h.signUp).not.toHaveBeenCalled();
+    expect(h.calls).toEqual([]);
+  });
+
+  it("sign-up with a passing captcha goes on to create the user", async () => {
+    await signUpAction({ status: "idle" }, signUpForm("fake-ok")).catch(() => undefined);
+    expect(h.signUp).toHaveBeenCalledTimes(1);
+  });
+
+  it("a reset request with a failed captcha issues nothing and sends nothing", async () => {
+    h.user = { id: "u1", name: "U", email: "who@example.test" };
+    const result = await requestPasswordResetAction(
+      { status: "idle" },
+      form({ email: "who@example.test", captcha_token: "fail" }),
+    );
+    expect(result).toMatchObject({ status: "error", message: en.auth.states.captchaFailed });
+    expect(h.issue).not.toHaveBeenCalled();
+    expect(h.decoy).not.toHaveBeenCalled();
+    expect(h.sent).toHaveLength(0);
+  });
+
+  it("a reset request without a captcha is refused the same way", async () => {
+    const result = await requestPasswordResetAction(
+      { status: "idle" },
+      form({ email: "who@example.test" }),
+    );
+    expect(result).toMatchObject({ status: "error", message: en.auth.states.captchaFailed });
+  });
+
+  it("sign-in asks for the widget from the 4th attempt and accepts a passing token", async () => {
+    const attempt = (token?: string) =>
+      signInAction(
+        { status: "idle" },
+        form({
+          identifier: "nobody@example.test",
+          password: "wrong pass 1",
+          ...(token ? { captcha_token: token } : {}),
+        }),
+      );
+    for (let i = 0; i < 3; i++) {
+      expect((await attempt()).captchaRequired).toBeUndefined();
+    }
+    expect(await attempt()).toMatchObject({
+      message: en.auth.states.captchaFailed,
+      captchaRequired: true,
+    });
+    expect(await attempt("fail")).toMatchObject({
+      message: en.auth.states.captchaFailed,
+      captchaRequired: true,
+    });
+    const passed = await attempt("fake-ok");
+    expect(passed.message).toBe(en.auth.errors.credentials);
+  });
+});
+
 describe("abuse guards in the actions", () => {
   const wrongSignIn = (identifier: string) =>
     signInAction({ status: "idle" }, form({ identifier, password: "wrong pass 1" }));
@@ -178,7 +267,7 @@ describe("abuse guards in the actions", () => {
   it("locks the (identifier, device) pair after 10 attempts and shows when it ends", async () => {
     const out = await sequence("nobody@example.test");
     expect(out.slice(0, 3).every((r) => r.message === en.auth.errors.credentials)).toBe(true);
-    // Until the captcha widget lands (A2.3) a step-up is a block with the captchaFailed copy.
+    // From the 4th attempt a token is required; without one the form is told to show the widget.
     expect(out.slice(3, 10).every((r) => r.message === en.auth.states.captchaFailed)).toBe(true);
     const locked = out[10];
     expect(locked?.retryAt).toBeGreaterThan(Date.now());
@@ -220,7 +309,7 @@ describe("abuse guards in the actions", () => {
   });
 
   it("rate-limits sign-up after 5 submissions from one IP", async () => {
-    const submit = () => signUpAction({ status: "idle" }, form({}));
+    const submit = () => signUpAction({ status: "idle" }, form({ ...OK }));
     for (let i = 0; i < 5; i++) {
       expect((await submit()).message).toBe(en.auth.errors.invalid);
     }
@@ -231,7 +320,7 @@ describe("abuse guards in the actions", () => {
 
   it("rate-limits code requests per email and answers known and unknown emails alike", async () => {
     const request = () =>
-      requestPasswordResetAction({ status: "idle" }, form({ email: "who@example.test" }));
+      requestPasswordResetAction({ status: "idle" }, form({ email: "who@example.test", ...OK }));
     h.user = undefined;
     for (let i = 0; i < 3; i++) await request();
     const unknown = await request();

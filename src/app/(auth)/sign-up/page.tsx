@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { SignUpForm } from "@/components/auth-forms";
 import { AuthShell } from "@/components/auth-shell";
 import { getDictionary } from "@/i18n/server";
+import { currentCaptchaConfig } from "@/server/auth/captcha";
 import { getCurrentUser } from "@/server/auth/session";
 
 export default async function SignUpPage({
@@ -14,7 +15,12 @@ export default async function SignUpPage({
   const { role } = await searchParams;
   return (
     <AuthShell title={t.auth.signUp.title} subtitle={t.auth.signUp.subtitle}>
-      <SignUpForm t={t.auth} defaultRole={role ?? "student"} locale={locale} />
+      <SignUpForm
+        t={t.auth}
+        defaultRole={role ?? "student"}
+        locale={locale}
+        captcha={currentCaptchaConfig()}
+      />
     </AuthShell>
   );
 }

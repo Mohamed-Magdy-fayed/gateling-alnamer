@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
+import { Captcha, type CaptchaConfig } from "@/components/al/captcha";
 import { DateInput } from "@/components/al/date-input";
 import { PasswordInput } from "@/components/al/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { Dictionary } from "@/i18n/ar";
-import { dirOf, type Locale } from "@/i18n/config";
+import { dirOf, format, type Locale } from "@/i18n/config";
+import { formatCountdown } from "@/lib/countdown";
 import {
   type FormState,
   requestPasswordResetAction,
@@ -80,26 +82,44 @@ function Message({ state, t }: { state: FormState; t: AuthText }) {
   );
 }
 
-/** True from a lockout or rate-limit answer until the time it says the block ends. */
-function useRetryBlocked(retryAt: number | undefined): boolean {
-  const [blocked, setBlocked] = useState(false);
+const COUNTDOWN_TICK_MS = 1000;
+
+/**
+ * From a lockout or rate-limit answer until the time it says the block ends: whether the submit stays
+ * disabled, and the countdown text to show under it ("You can try again in 9:42").
+ */
+function useRetryBlock(
+  retryAt: number | undefined,
+  t: AuthText,
+): { blocked: boolean; reason?: string } {
+  const [remaining, setRemaining] = useState(0);
   useEffect(() => {
-    const remaining = retryAt === undefined ? 0 : retryAt - Date.now();
-    setBlocked(remaining > 0);
-    if (remaining <= 0) return;
-    const timer = setTimeout(() => setBlocked(false), remaining);
-    return () => clearTimeout(timer);
+    const update = () =>
+      setRemaining(retryAt === undefined ? 0 : Math.max(0, retryAt - Date.now()));
+    update();
+    if (retryAt === undefined) return;
+    const timer = setInterval(update, COUNTDOWN_TICK_MS);
+    return () => clearInterval(timer);
   }, [retryAt]);
-  return blocked;
+  if (remaining <= 0) return { blocked: false };
+  return {
+    blocked: true,
+    reason: format(t.states.retryCountdown, { time: formatCountdown(remaining) }),
+  };
 }
 
 function RequiredNote({ t }: { t: AuthText }) {
   return <p className="text-sm text-fg-muted">{t.fields.requiredNote}</p>;
 }
 
-export function SignInForm({ t }: { t: AuthText }) {
+type CaptchaProps = { captcha: CaptchaConfig; locale: Locale };
+
+export function SignInForm({ t, captcha, locale }: { t: AuthText } & CaptchaProps) {
   const [state, action] = useActionState(signInAction, idle);
-  const blocked = useRetryBlocked(state.retryAt);
+  const block = useRetryBlock(state.retryAt, t);
+  // Once the server asks for a captcha the widget stays for the rest of this visit.
+  const [needsCaptcha, setNeedsCaptcha] = useState(false);
+  if (state.captchaRequired && !needsCaptcha) setNeedsCaptcha(true);
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
       <Message state={state} t={t} />
@@ -126,7 +146,12 @@ export function SignInForm({ t }: { t: AuthText }) {
           {t.signIn.forgot}
         </Link>
       )}
-      <SubmitButton disabled={blocked}>{t.signIn.submit}</SubmitButton>
+      {needsCaptcha ? (
+        <Captcha config={captcha} locale={locale} label={t.states.captchaLabel} resetKey={state} />
+      ) : null}
+      <SubmitButton disabled={block.blocked} disabledReason={block.reason}>
+        {t.signIn.submit}
+      </SubmitButton>
       <p className="text-center text-sm text-fg-2">
         {t.signIn.noAccount}{" "}
         <Link href="/sign-up" className={linkClass}>
@@ -147,11 +172,11 @@ function toRole(value: string | undefined): Role {
   return roles.find((item) => item === value) ?? "student";
 }
 
-type SignUpFormProps = { t: AuthText; defaultRole: string; locale: Locale };
+type SignUpFormProps = { t: AuthText; defaultRole: string; locale: Locale; captcha: CaptchaConfig };
 
-export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
+export function SignUpForm({ t, defaultRole, locale, captcha }: SignUpFormProps) {
   const [state, action] = useActionState(signUpAction, idle);
-  const blocked = useRetryBlocked(state.retryAt);
+  const block = useRetryBlock(state.retryAt, t);
   const dir = dirOf(locale);
   const errors = state.fieldErrors ?? {};
   // The role follows the last action state until the user picks one: React resets the form after a
@@ -265,7 +290,10 @@ export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
           </div>
         </div>
       ) : null}
-      <SubmitButton disabled={blocked}>{t.signUp.submit}</SubmitButton>
+      <Captcha config={captcha} locale={locale} label={t.states.captchaLabel} resetKey={state} />
+      <SubmitButton disabled={block.blocked} disabledReason={block.reason}>
+        {t.signUp.submit}
+      </SubmitButton>
       <p className="text-center text-sm text-fg-2">
         {t.signUp.haveAccount}{" "}
         <Link href="/sign-in" className={linkClass}>
@@ -276,14 +304,17 @@ export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
   );
 }
 
-export function ForgotPasswordForm({ t }: { t: AuthText }) {
+export function ForgotPasswordForm({ t, captcha, locale }: { t: AuthText } & CaptchaProps) {
   const [state, action] = useActionState(requestPasswordResetAction, idle);
-  const blocked = useRetryBlocked(state.retryAt);
+  const block = useRetryBlock(state.retryAt, t);
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
       <Message state={state} t={t} />
       <Field name="email" type="email" label={t.fields.email} autoComplete="email" required ltr />
-      <SubmitButton disabled={blocked}>{t.forgot.submit}</SubmitButton>
+      <Captcha config={captcha} locale={locale} label={t.states.captchaLabel} resetKey={state} />
+      <SubmitButton disabled={block.blocked} disabledReason={block.reason}>
+        {t.forgot.submit}
+      </SubmitButton>
       <Link
         href={
           state.email
@@ -300,7 +331,7 @@ export function ForgotPasswordForm({ t }: { t: AuthText }) {
 
 export function ResetPasswordForm({ t, email }: { t: AuthText; email: string }) {
   const [state, action] = useActionState(resetPasswordAction, idle);
-  const blocked = useRetryBlocked(state.retryAt);
+  const block = useRetryBlock(state.retryAt, t);
   if (state.status === "success") {
     return (
       <div className="flex flex-col gap-4">
@@ -344,7 +375,9 @@ export function ResetPasswordForm({ t, email }: { t: AuthText; email: string }) 
         minLength={8}
         required
       />
-      <SubmitButton disabled={blocked}>{t.reset.submit}</SubmitButton>
+      <SubmitButton disabled={block.blocked} disabledReason={block.reason}>
+        {t.reset.submit}
+      </SubmitButton>
     </form>
   );
 }

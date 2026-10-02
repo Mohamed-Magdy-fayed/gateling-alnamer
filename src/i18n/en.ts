@@ -251,6 +251,8 @@ export const en: Dictionary = {
         "Sign-in from this device is paused after too many attempts. You can try again after {time}.",
       rateLimited: "Too many requests in a short time. Wait a moment and try again.",
       captchaFailed: "We couldn't confirm you're not a bot. Please try again.",
+      captchaLabel: "Security check",
+      retryCountdown: "You can try again in {time}.",
     },
     errors: {
       invalid: "Check the details you entered.",

@@ -10,12 +10,13 @@ import {
   guardSignIn,
   guardSignUp,
 } from "./abuse";
+import { createCaptchaVerifier } from "./captcha";
 
 const T0 = new Date("2030-01-01T10:00:00.000Z");
 const yes = async () => true;
 const OPEN = {
   ...AUTH_LIMITS,
-  signIn: { ip: { max: 999, windowSec: 900 }, id: { max: 999, windowSec: 900 } },
+  signIn: { ip: { max: 999, windowSec: 900 } },
 };
 
 let limiter: MemoryLimiter;
@@ -50,7 +51,7 @@ describe("keys", () => {
       expect(all).not.toContain(raw);
     }
     expect([...limiter.keys].some((key) => key.startsWith("rl:signin:ip:"))).toBe(true);
-    expect([...limiter.keys].some((key) => key.startsWith("rl:signin:id:"))).toBe(true);
+    expect([...limiter.keys].some((key) => key.startsWith("rl:signin:id:"))).toBe(false);
     expect([...limiter.keys].some((key) => key.startsWith("lock:"))).toBe(true);
   });
 
@@ -74,25 +75,42 @@ describe("sign-in limits", () => {
     expect(blocked).toHaveProperty("until", new Date(T0.getTime() + 15 * 60_000));
   });
 
-  it("blocks the 11th attempt on one identifier across devices and IPs", async () => {
-    for (let i = 0; i < AUTH_LIMITS.signIn.id.max; i++) {
+  it("has no per-identifier hard limit: 25 attempts on one identifier across IPs are never rateLimited", async () => {
+    for (let i = 0; i < 25; i++) {
       expect(await attempt({ ip: `198.51.100.${i}`, deviceId: `d${i}` })).toEqual({ ok: true });
     }
-    expect(await attempt({ ip: "198.51.100.99", deviceId: "d99" })).toMatchObject({
-      blocked: "rateLimited",
+  });
+
+  it("10 attacker attempts from another device leave the victim's device signing in without a captcha", async () => {
+    const neverAsked = {
+      limiter,
+      verifyCaptcha: async () => {
+        throw new Error("a captcha must not be required here");
+      },
+    };
+    for (let i = 0; i < 10; i++) {
+      expect(await attempt({ deviceId: "dev-attacker", ip: "203.0.113.5" })).toEqual({ ok: true });
+    }
+    expect(await attempt({ deviceId: "dev-victim", ip: "198.51.100.7" }, neverAsked)).toEqual({
+      ok: true,
     });
   });
 
   it("opens again once the window has passed", async () => {
-    for (let i = 0; i < 10; i++) await attempt({ deviceId: `d${i}`, ip: `198.51.100.${i}` });
+    for (let i = 0; i < AUTH_LIMITS.signIn.ip.max; i++) {
+      await attempt({ identifier: `u${i}@x.test`, deviceId: `d${i}` });
+    }
+    expect(await attempt({ identifier: "late@x.test", deviceId: "dl" })).toMatchObject({
+      blocked: "rateLimited",
+    });
     setClockForTests(new Date(T0.getTime() + 15 * 60_000 + 1000));
-    expect(await attempt({ deviceId: "fresh", ip: "198.51.100.200" })).toEqual({ ok: true });
+    expect(await attempt({ identifier: "late@x.test", deviceId: "dl" })).toEqual({ ok: true });
   });
 });
 
 describe("lockout per (identifier, device)", () => {
   it("locks that pair after 10 attempts and reports when it ends", async () => {
-    const d = { ...deps(), limits: OPEN };
+    const d = deps();
     for (let i = 0; i < 10; i++) expect(await attempt({}, d)).toEqual({ ok: true });
     const locked = await attempt({}, d);
     expect(locked).toMatchObject({ blocked: "locked" });
@@ -100,7 +118,7 @@ describe("lockout per (identifier, device)", () => {
   });
 
   it("locks the attacker's pair only, not the victim's device or another identifier", async () => {
-    const d = { ...deps(), limits: OPEN };
+    const d = deps();
     for (let i = 0; i < 10; i++) await attempt({ deviceId: "dev-attacker" }, d);
     expect(await attempt({ deviceId: "dev-attacker" }, d)).toMatchObject({ blocked: "locked" });
     expect(await attempt({ deviceId: "dev-victim", ip: "198.51.100.7" }, d)).toEqual({ ok: true });
@@ -110,29 +128,29 @@ describe("lockout per (identifier, device)", () => {
   });
 
   it("without a device cookie the pair falls back to the hashed IP", async () => {
-    const d = { ...deps(), limits: OPEN };
+    const d = deps();
     for (let i = 0; i < 10; i++) await attempt({ deviceId: null }, d);
     expect(await attempt({ deviceId: null }, d)).toMatchObject({ blocked: "locked" });
     expect(await attempt({ deviceId: null, ip: "198.51.100.8" }, d)).toEqual({ ok: true });
   });
 
   it("treats an unknown identifier exactly like a known one", async () => {
-    const d = { ...deps(), limits: OPEN };
-    const run = async (identifier: string) => {
+    const d = deps();
+    const run = async (identifier: string, ip: string) => {
       const out: string[] = [];
       for (let i = 0; i < 12; i++) {
-        const r = await attempt({ identifier, deviceId: `dev-${identifier}` }, d);
+        const r = await attempt({ identifier, ip, deviceId: `dev-${identifier}` }, d);
         out.push("ok" in r ? "ok" : r.blocked);
       }
       return out;
     };
-    const known = await run("known@x.test");
+    const known = await run("known@x.test", "198.51.100.1");
     expect(known.slice(-2)).toEqual(["locked", "locked"]);
-    expect(await run("nobody-here@x.test")).toEqual(known);
+    expect(await run("nobody-here@x.test", "198.51.100.2")).toEqual(known);
   });
 
   it("clears the pair on a successful sign-in", async () => {
-    const d = { ...deps(), limits: OPEN };
+    const d = deps();
     for (let i = 0; i < 9; i++) await attempt({}, d);
     await clearSignInFailures(
       { identifier: "Victim@Example.com", ip: "203.0.113.5", deviceId: "dev-attacker" },
@@ -144,11 +162,12 @@ describe("lockout per (identifier, device)", () => {
 });
 
 describe("captcha step-up", () => {
-  it("is required after 3 failures on the pair, and an absent verifier fails closed", async () => {
-    const d = { limiter, limits: OPEN };
+  it("is required after 3 failures on the pair; the fake provider rejects a missing or forced-fail token", async () => {
+    const d = { limiter, limits: OPEN, verifyCaptcha: createCaptchaVerifier({ provider: "fake" }) };
     for (let i = 0; i < 3; i++) expect(await attempt({}, d)).toEqual({ ok: true });
     expect(await attempt({}, d)).toEqual({ blocked: "captchaRequired" });
-    expect(await attempt({ captchaToken: "anything" }, d)).toEqual({ blocked: "captchaRequired" });
+    expect(await attempt({ captchaToken: "fail" }, d)).toEqual({ blocked: "captchaRequired" });
+    expect(await attempt({ captchaToken: "fake-ok" }, d)).toEqual({ ok: true });
   });
 
   it("passes with a verifier that accepts the token", async () => {
@@ -169,7 +188,7 @@ describe("captcha step-up", () => {
 
   it("is required on every device once the account-wide counter is exceeded, and never locks", async () => {
     const limits = { ...OPEN, lockout: { ...OPEN.lockout, account: { max: 5, windowSec: 900 } } };
-    const d = { limiter, limits };
+    const d = { limiter, limits, verifyCaptcha: createCaptchaVerifier({ provider: "fake" }) };
     for (let i = 0; i < 5; i++) {
       expect(await attempt({ deviceId: `d${i}`, ip: `198.51.100.${i}` }, d)).toEqual({ ok: true });
     }
@@ -226,10 +245,10 @@ describe("Redis down", () => {
     };
     const degraded = createRateLimiter({ redis: failing, postgres: new MemoryLimiter() });
     const d = { limiter: degraded, verifyCaptcha: yes };
-    for (let i = 0; i < 10; i++) {
-      await attempt({ deviceId: `d${i}`, ip: `198.51.100.${i}` }, d);
+    for (let i = 0; i < AUTH_LIMITS.signIn.ip.max; i++) {
+      await attempt({ deviceId: `d${i}`, ip: "198.51.100.1" }, d);
     }
-    expect(await attempt({ deviceId: "d99", ip: "198.51.100.99" }, d)).toMatchObject({
+    expect(await attempt({ deviceId: "d99", ip: "198.51.100.1" }, d)).toMatchObject({
       blocked: "rateLimited",
     });
     const alerts = error.mock.calls.filter((call) => call[0] === "[alert] rate_limiter_degraded");

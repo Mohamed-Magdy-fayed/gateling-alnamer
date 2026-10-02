@@ -23,6 +23,8 @@ const DOB_YEAR = "السنة";
 const CONSENT = "أقرّ بأنني حصلت على موافقة ولي أمري على إنشاء هذا الحساب.";
 const PARENT_ROLE = "ولي أمر";
 const PARENT_AGE_ERROR = "حساب ولي الأمر يتطلب تاريخ ميلاد يثبت أن عمرك 18 عامًا أو أكثر.";
+const CAPTCHA_FAILED = "لم نتمكن من التحقق من أنك لست برنامجًا آليًا";
+const CREDENTIALS_ERROR = "البريد أو اسم المستخدم أو كلمة المرور غير صحيحة";
 const LOCKOUT = "تم إيقاف تسجيل الدخول من هذا الجهاز مؤقتًا";
 const LINK_PARENT = "ربط حساب ولي الأمر قادم قريبًا ليتمكن من متابعة تقدّمك.";
 
@@ -339,6 +341,32 @@ test("a failed sign-up submit focuses the error summary, which links to the fail
   await expect(summary).toBeFocused();
   await summary.getByRole("link").first().click();
   await expect(page.getByLabel(FIELD_NAME)).toBeFocused();
+});
+
+test("a forced failing captcha token shows the captcha copy and creates no user", async ({
+  page,
+}) => {
+  const captchaEmail = `smoke-captcha-${runId}@alnamer.local`;
+  await page.goto("/sign-up");
+  await page.getByLabel(FIELD_NAME).fill("Smoke Captcha");
+  await page.getByLabel(FIELD_EMAIL).fill(captchaEmail);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await pickDate(page, 25, 4, 14);
+  // The fake provider's widget is a hidden field; the test hook is to make its value the fail token.
+  await page.locator('input[name="captcha_token"]').evaluate((input: HTMLInputElement) => {
+    input.value = "fail";
+  });
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  const alert = page.locator('[data-slot="alert"]');
+  await expect(alert).toBeFocused();
+  await expect(alert).toContainText(CAPTCHA_FAILED);
+  await expect(page).toHaveURL(/[/]sign-up/);
+
+  await page.goto("/sign-in");
+  await page.getByLabel(FIELD_IDENTIFIER).fill(captchaEmail);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await page.getByRole("button", { name: SIGN_IN, exact: true }).click();
+  await expect(page.locator('[data-slot="alert"]')).toContainText(CREDENTIALS_ERROR);
 });
 
 test("a failed sign-in focuses the error alert", async ({ page }) => {

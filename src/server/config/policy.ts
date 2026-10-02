@@ -21,7 +21,8 @@ export const MIN_STUDENT_SIGNUP_AGE = 8;
 
 export type LimitRule = { readonly max: number; readonly windowSec: number };
 export type AuthLimits = {
-  readonly signIn: { readonly ip: LimitRule; readonly id: LimitRule };
+  /** Per IP only: a per-identifier hard limit would let an attacker rate-limit the victim on every device. */
+  readonly signIn: { readonly ip: LimitRule };
   readonly signUp: { readonly ip: LimitRule };
   readonly codeSend: { readonly id: LimitRule; readonly ip: LimitRule };
   readonly codeVerify: { readonly id: LimitRule };
@@ -39,7 +40,7 @@ const MINUTES_15 = 15 * 60;
 const HOUR = 60 * 60;
 /** Sliding-window limits for the auth actions (A2.2). */
 export const AUTH_LIMITS: AuthLimits = {
-  signIn: { ip: { max: 20, windowSec: MINUTES_15 }, id: { max: 10, windowSec: MINUTES_15 } },
+  signIn: { ip: { max: 20, windowSec: MINUTES_15 } },
   signUp: { ip: { max: 5, windowSec: HOUR } },
   codeSend: { id: { max: 3, windowSec: MINUTES_15 }, ip: { max: 10, windowSec: HOUR } },
   codeVerify: { id: { max: 10, windowSec: MINUTES_15 } },

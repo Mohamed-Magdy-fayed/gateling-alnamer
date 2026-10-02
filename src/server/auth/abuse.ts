@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { AUTH_LIMITS, type AuthLimits, type LimitRule } from "@/server/config/policy";
 import { createRateLimiter, type RateLimiter } from "@/server/rate-limit";
+import { type CaptchaVerifier, verifyCaptcha } from "./captcha";
+
+export type { CaptchaVerifier };
 
 /**
  * Abuse guards for the auth actions. Every key is built from hashes (`rl:<action>:ip:<sha256(ip)>`,
@@ -12,12 +15,6 @@ import { createRateLimiter, type RateLimiter } from "@/server/rate-limit";
 export type GuardResult =
   | { ok: true }
   | { blocked: "rateLimited" | "locked" | "captchaRequired"; until?: Date };
-
-/** Resolves true when the challenge `token` proves a human. A2.3 supplies the real providers. */
-export type CaptchaVerifier = (token: string | undefined, ip: string) => Promise<boolean>;
-
-/** Default until A2.3: no provider is wired, so a step-up cannot be satisfied (an absent token fails). */
-export const failClosedCaptcha: CaptchaVerifier = async () => false;
 
 export type AbuseDeps = {
   readonly limiter?: RateLimiter;
@@ -81,12 +78,11 @@ export async function guardSignIn(ctx: SignInContext, deps: AbuseDeps = {}): Pro
 
   const limited = await firstBlock([
     () => within(limiter, `rl:signin:ip:${hash(ctx.ip)}`, limits.signIn.ip),
-    () => within(limiter, `rl:signin:id:${id}`, limits.signIn.id),
   ]);
   if (!("ok" in limited)) return limited;
 
   if (needsCaptcha) {
-    const verify = deps.verifyCaptcha ?? failClosedCaptcha;
+    const verify = deps.verifyCaptcha ?? verifyCaptcha;
     if (!(await verify(ctx.captchaToken, ctx.ip))) return { blocked: "captchaRequired" };
   }
   return OK;

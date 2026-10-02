@@ -23,6 +23,7 @@ const SELECTORS = {
   STORAGE_DRIVER: ["local", "firebase"],
   EMAIL_TRANSPORT: ["smtp", "mailpit"],
   JOBS_MODE: ["inline", "inngest-dev", "inngest"],
+  CAPTCHA: ["turnstile", "fake"],
 } as const;
 
 const selector = <const T extends readonly [string, ...string[]]>(values: T) =>
@@ -35,6 +36,9 @@ const schema = z.object({
   STORAGE_DRIVER: selector(SELECTORS.STORAGE_DRIVER),
   EMAIL_TRANSPORT: selector(SELECTORS.EMAIL_TRANSPORT),
   JOBS_MODE: selector(SELECTORS.JOBS_MODE),
+  CAPTCHA: selector(SELECTORS.CAPTCHA),
+  TURNSTILE_SITE_KEY: optionalText,
+  TURNSTILE_SECRET_KEY: optionalText,
   INNGEST_EVENT_KEY: optionalText,
   INNGEST_SIGNING_KEY: optionalText,
   INNGEST_ENCRYPTION_KEY: optionalText,
@@ -74,6 +78,7 @@ export type ResolvedProviders = {
   readonly email: NonNullable<RawEnv["EMAIL_TRANSPORT"]>;
   readonly emailIsDefault: boolean;
   readonly jobs: NonNullable<RawEnv["JOBS_MODE"]>;
+  readonly captcha: NonNullable<RawEnv["CAPTCHA"]>;
 };
 
 export type ServerEnv = RawEnv & { readonly providers: ResolvedProviders };
@@ -125,6 +130,7 @@ function resolveProviders(env: RawEnv): ResolvedProviders {
     email: env.EMAIL_TRANSPORT ?? (env.SMTP_HOST ? "smtp" : "mailpit"),
     emailIsDefault: env.EMAIL_TRANSPORT === undefined,
     jobs: env.JOBS_MODE ?? demoJobs,
+    captcha: env.CAPTCHA ?? "fake",
   };
 }
 
@@ -134,6 +140,7 @@ const LIVE_SELECTORS = [
   ["STORAGE_DRIVER", "firebase"],
   ["EMAIL_TRANSPORT", "smtp"],
   ["JOBS_MODE", "inngest"],
+  ["CAPTCHA", "turnstile"],
 ] as const;
 
 function liveSelectorProblems(env: RawEnv): string[] {
@@ -153,6 +160,11 @@ function selectorProblems(env: RawEnv, providers: ResolvedProviders): string[] {
   const problems = env.APP_MODE === "live" ? liveSelectorProblems(env) : [];
   if (providers.email === "smtp" && !env.SMTP_HOST) {
     problems.push(`SMTP_HOST is required when EMAIL_TRANSPORT=smtp; ${FIX_HINT}.`);
+  }
+  if (providers.captcha === "turnstile") {
+    for (const key of ["TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"] as const) {
+      if (!env[key]) problems.push(`${key} is required when CAPTCHA=turnstile; ${FIX_HINT}.`);
+    }
   }
   const needsInngestKeys = providers.jobs === "inngest" || env.APP_MODE === "live";
   if (needsInngestKeys) {

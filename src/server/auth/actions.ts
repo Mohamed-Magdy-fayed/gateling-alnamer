@@ -18,6 +18,7 @@ import {
   guardSignIn,
   guardSignUp,
 } from "./abuse";
+import { verifyCaptcha } from "./captcha";
 import {
   deleteCode,
   issueCode,
@@ -44,13 +45,16 @@ export type FormState = {
   values?: Record<string, string>;
   /** Epoch ms when a lockout or rate limit ends; the form keeps its submit button disabled until then. */
   retryAt?: number;
+  /** Set when sign-in needs a captcha: the form shows the widget and the next submit carries a token. */
+  captchaRequired?: boolean;
 };
 
 type Blocked = Exclude<GuardResult, { ok: true }>;
 
 /**
- * The one message for a guard block. A captcha step-up shows the captchaFailed copy until the widget
- * lands (A2.3); everything here depends only on counters, never on whether an account exists.
+ * The one message for a guard block. A captcha step-up shows the captchaFailed copy and tells the
+ * form to render the widget; everything here depends only on counters, never on whether an account
+ * exists.
  */
 function blockedState(blocked: Blocked, t: Dictionary, locale: Locale): FormState {
   const retryAt = blocked.until?.getTime();
@@ -66,7 +70,11 @@ function blockedState(blocked: Blocked, t: Dictionary, locale: Locale): FormStat
   if (blocked.blocked === "rateLimited") {
     return { status: "error", message: t.auth.states.rateLimited, retryAt };
   }
-  return { status: "error", message: t.auth.states.captchaFailed };
+  return { status: "error", message: t.auth.states.captchaFailed, captchaRequired: true };
+}
+
+function captchaToken(raw: Record<string, unknown>): string | undefined {
+  return typeof raw.captcha_token === "string" ? raw.captcha_token : undefined;
 }
 
 const email = z.string().trim().pipe(z.email()).pipe(z.string().max(254));
@@ -100,6 +108,9 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
   const { ip } = await requestContext();
   const guard = await guardSignUp({ ip });
   if (!("ok" in guard)) return { ...blockedState(guard, t, locale), values: echo(raw) };
+  if (!(await verifyCaptcha(captchaToken(raw), ip))) {
+    return { status: "error", message: t.auth.states.captchaFailed, values: echo(raw) };
+  }
   const result = await signUpUser(raw, { locale, now: clock.now() });
   if (!result.ok) {
     if (result.code === "duplicate") {
@@ -137,8 +148,7 @@ export async function signInAction(_prev: FormState, formData: FormData): Promis
   if (!parsed.success) return failed;
 
   const who = { identifier: parsed.data.identifier, ...device };
-  const captchaToken = typeof raw.captcha_token === "string" ? raw.captcha_token : undefined;
-  const guard = await guardSignIn({ ...who, captchaToken });
+  const guard = await guardSignIn({ ...who, captchaToken: captchaToken(raw) });
   if (!("ok" in guard)) return { ...blockedState(guard, t, locale), values: failed.values };
 
   const userId = await authenticate(parsed.data.identifier, parsed.data.password);
@@ -162,10 +172,14 @@ export async function requestPasswordResetAction(
 ): Promise<FormState> {
   const { t, locale } = await getDictionary();
   const { ip } = await requestContext();
-  const parsed = forgotSchema.safeParse(fields(formData));
+  const raw = fields(formData);
+  const parsed = forgotSchema.safeParse(raw);
   if (!parsed.success) return { status: "error", message: t.auth.errors.invalid };
   const guard = await guardCodeSend({ identifier: parsed.data.email, ip });
   if (!("ok" in guard)) return blockedState(guard, t, locale);
+  if (!(await verifyCaptcha(captchaToken(raw), ip))) {
+    return { status: "error", message: t.auth.states.captchaFailed };
+  }
 
   const user = await db().query.users.findFirst({
     columns: { id: true, name: true, email: true },
