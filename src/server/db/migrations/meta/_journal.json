@@ -120,6 +120,13 @@
       "when": 1790961723528,
       "tag": "0016_watery_leopardon",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790961881283,
+      "tag": "0017_clever_synch",
+      "breakpoints": true
     }
   ]
 }

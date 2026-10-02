@@ -15,6 +15,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import type { LocalizedText } from "@/lib/localized-text";
@@ -27,6 +28,8 @@ export const verificationPurpose = pgEnum("verification_purpose", [
   "password_reset",
 ]);
 export const emailStatus = pgEnum("email_status", ["queued", "sent", "failed"]);
+export const deviceRevokeReason = pgEnum("device_revoke_reason", ["self", "admin", "expired"]);
+export const deviceRemovalKind = pgEnum("device_removal_kind", ["self", "admin"]);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 
@@ -65,6 +68,57 @@ export const credentials = pgTable("credentials", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const devices = pgTable(
+  "devices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deviceKey: uuid("device_key").notNull(),
+    label: text("label"),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedReason: deviceRevokeReason("revoked_reason"),
+  },
+  (t) => [
+    uniqueIndex("devices_user_key_active_uq")
+      .on(t.userId, t.deviceKey)
+      .where(sql`${t.revokedAt} IS NULL`),
+    index("devices_last_seen_active_idx").on(t.lastSeenAt).where(sql`${t.revokedAt} IS NULL`),
+  ],
+);
+
+export const deviceRemovals = pgTable(
+  "device_removals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    kind: deviceRemovalKind("kind").notNull(),
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt,
+  },
+  (t) => [index("device_removals_user_created_idx").on(t.userId, desc(t.createdAt))],
+);
+
+export const preSessions = pgTable("pre_sessions", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  deviceKey: uuid("device_key").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt,
+});
+
 export const sessions = pgTable(
   "sessions",
   {
@@ -73,7 +127,7 @@ export const sessions = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    deviceId: uuid("device_id"), // FK added with the devices table (A5)
+    deviceId: uuid("device_id").references(() => devices.id, { onDelete: "set null" }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     twoFactorVerified: boolean("two_factor_verified").notNull().default(false),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -407,3 +461,4 @@ export type User = typeof users.$inferSelect;
 export type UserRole = (typeof userRole.enumValues)[number];
 export type PlatformSettings = typeof platformSettings.$inferSelect;
 export type AuditLogRow = typeof auditLog.$inferSelect;
+export type DeviceRow = typeof devices.$inferSelect;
