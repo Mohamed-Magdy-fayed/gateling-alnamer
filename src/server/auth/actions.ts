@@ -66,7 +66,10 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
       };
     }
     const fieldErrors: Partial<Record<SignUpField, string>> = {};
-    for (const field of result.fields) fieldErrors[field] = t.auth.errors.field[field];
+    for (const field of result.fields) {
+      const reason = result.reasons?.[field];
+      fieldErrors[field] = t.auth.errors.field[reason ?? field];
+    }
     return { status: "error", message: t.auth.errors.invalid, fieldErrors, values: echo(raw) };
   }
 
@@ -88,6 +91,8 @@ export async function signInAction(_prev: FormState, formData: FormData): Promis
   const userId = await authenticate(parsed.data.identifier, parsed.data.password);
   if (!userId) return failed;
 
+  // Never let a session from before sign-in survive it (fixation, switching accounts).
+  await destroySession();
   await createSession(userId);
   redirect("/dashboard");
 }

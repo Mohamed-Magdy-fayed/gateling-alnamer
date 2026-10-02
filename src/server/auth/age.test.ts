@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cairoToday, isUnder18, parseIsoDate } from "./age";
+import { ageOn, cairoToday, isUnder18, parseIsoDate } from "./age";
 
 describe("cairoToday", () => {
   it("uses the Africa/Cairo calendar date, not UTC", () => {
@@ -31,5 +31,15 @@ describe("isUnder18", () => {
   it("counts the Cairo date at the sign-up instant", () => {
     // Birthday 2008-10-03: at 22:30Z on 2 Oct it is already 3 Oct in Cairo, so 18.
     expect(isUnder18("2008-10-03", new Date("2026-10-02T22:30:00Z"))).toBe(false);
+  });
+});
+
+describe("ageOn", () => {
+  const now = new Date("2026-10-02T10:00:00Z");
+  it("counts whole years on the Cairo date", () => {
+    expect(ageOn("2018-10-02", now)).toBe(8);
+    expect(ageOn("2018-10-03", now)).toBe(7);
+    expect(ageOn("2008-10-02", now)).toBe(18);
+    expect(ageOn("2008-10-03", now)).toBe(17);
   });
 });

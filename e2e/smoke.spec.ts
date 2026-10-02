@@ -20,6 +20,8 @@ const DOB_DAY = "اليوم";
 const DOB_MONTH = "الشهر";
 const DOB_YEAR = "السنة";
 const CONSENT = "أقرّ بأنني حصلت على موافقة ولي أمري على إنشاء هذا الحساب.";
+const PARENT_ROLE = "ولي أمر";
+const PARENT_AGE_ERROR = "حساب ولي الأمر يتطلب تاريخ ميلاد يثبت أن عمرك 18 عامًا أو أكثر.";
 const LINK_PARENT = "اربط حساب ولي أمرك ليتابع تقدّمك.";
 
 const runId = Date.now().toString(36);
@@ -27,6 +29,7 @@ const email = `smoke-${runId}@alnamer.local`;
 const password = "Smoke-pass-1";
 const newPassword = "Smoke-pass-2";
 const username = `smoke_${runId}`;
+const parentEmail = `smoke-parent-${runId}@alnamer.local`;
 const minorEmail = `smoke-minor-${runId}@alnamer.local`;
 
 /** Picks a date in the three DOB selects by option position, so it does not depend on month names. */
@@ -138,6 +141,37 @@ test("a duplicate email gets one generic error and a forgot-password link", asyn
   const alert = page.locator('[data-slot="alert"]');
   await expect(alert).toContainText("تحقق من بياناتك");
   await expect(alert.getByRole("link", { name: "نسيت كلمة المرور؟" })).toBeVisible();
+});
+
+async function startParentSignUp(page: Page) {
+  await page.goto("/sign-up");
+  await page.getByRole("radio", { name: PARENT_ROLE }).click();
+  await expect(page.getByRole("radio", { name: PARENT_ROLE })).toBeChecked();
+  await page.getByLabel(FIELD_NAME).fill("Smoke Parent");
+  await page.getByLabel(FIELD_EMAIL).fill(parentEmail);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+}
+
+test("a parent under 18 is refused with the age message", async ({ page }) => {
+  await startParentSignUp(page);
+  await pickDate(page, 12, 2, 9);
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  await expect(page).toHaveURL(/[/]sign-up/);
+  await expect(page.getByText(PARENT_AGE_ERROR)).toBeVisible();
+});
+
+test("a parent needs a date of birth, then signs up as an adult", async ({ page }) => {
+  await startParentSignUp(page);
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  await expect(page).toHaveURL(/[/]sign-up/);
+  await expect(page.getByRole("combobox", { name: DOB_YEAR })).toHaveAttribute(
+    "aria-invalid",
+    "true",
+  );
+  await startParentSignUp(page);
+  await pickDate(page, 35, 2, 9);
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  await page.waitForURL("**/dashboard");
 });
 
 test("each dashboard view renders", async ({ page }) => {

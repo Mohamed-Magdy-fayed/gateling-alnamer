@@ -16,5 +16,5 @@ export const SESSION_COOKIE_REFRESH_MS = DAY_MS;
 export const SESSION_LAST_SEEN_INTERVAL_MS = 1000 * 60 * 5;
 /** Redis session cache lifetime; also the longest a revoked session could outlive a lost cache delete. */
 export const SESSION_CACHE_TTL_SEC = 60;
-/** The pre-`__Host-` cookie `alnamer_session` is still read until this instant (H1 removes it). */
-export const LEGACY_COOKIE_UNTIL = new Date("2026-11-01T00:00:00.000Z");
+/** Youngest age that may sign up as a student; younger children are created by a parent (A6). */
+export const MIN_STUDENT_SIGNUP_AGE = 8;

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setClockForTests } from "@/server/clock";
-import { LEGACY_COOKIE_UNTIL, SESSION_CACHE_TTL_SEC, SESSION_TTL_MS } from "@/server/config/policy";
+import { SESSION_CACHE_TTL_SEC, SESSION_TTL_MS } from "@/server/config/policy";
 import { FakeCookieStore } from "../../../test/fake-cookies";
 import { FakeRedis } from "../../../test/fake-redis";
 import { sha256 } from "./password";
@@ -59,7 +59,7 @@ beforeEach(() => {
   for (const fn of Object.values(h.repo)) fn.mockReset();
   h.repo.findSession.mockResolvedValue(record());
   h.repo.insertSession.mockResolvedValue(undefined);
-  h.repo.updateSession.mockResolvedValue(undefined);
+  h.repo.updateSession.mockResolvedValue(1);
   h.repo.deleteSession.mockResolvedValue(undefined);
   h.repo.deleteUserSessions.mockResolvedValue([]);
 });
@@ -137,16 +137,8 @@ describe("session cookie", () => {
 });
 
 describe("legacy cookie", () => {
-  it("signs in with only alnamer_session and writes no cookie during a render", async () => {
+  it("is never read: a request with only alnamer_session is signed out", async () => {
     h.store.jar.set("alnamer_session", TOKEN);
-    h.store.readOnly = true;
-    await expect(getCurrentUser()).resolves.toMatchObject({ id: "user-1", status: "active" });
-    expect(h.store.writes).toHaveLength(0);
-  });
-
-  it("is ignored once LEGACY_COOKIE_UNTIL has passed", async () => {
-    h.store.jar.set("alnamer_session", TOKEN);
-    setClockForTests(new Date(LEGACY_COOKIE_UNTIL.getTime() + 1000));
     await expect(getCurrentUser()).resolves.toBeNull();
     expect(h.repo.findSession).not.toHaveBeenCalled();
   });
@@ -158,19 +150,7 @@ describe("legacy cookie", () => {
     expect(h.repo.findSession).toHaveBeenCalledWith(HASH, expect.any(Date));
   });
 
-  it("the proxy re-issues the same token as __Host-session and deletes the old cookie", () => {
-    const response = proxy(
-      new NextRequest("http://localhost:3410/dashboard", {
-        headers: { cookie: `alnamer_session=${TOKEN}` },
-      }),
-    );
-    expect(response.cookies.get("__Host-session")?.value).toBe(TOKEN);
-    expect(response.cookies.get("alnamer_session")?.value).toBe("");
-    expect(response.headers.get("set-cookie")).toMatch(/__Host-session=tok-abc.*Secure/is);
-  });
-
-  it("the proxy only deletes the old cookie after LEGACY_COOKIE_UNTIL", () => {
-    setClockForTests(new Date(LEGACY_COOKIE_UNTIL.getTime() + 1000));
+  it("the proxy never promotes a legacy value, it only deletes the old cookie", () => {
     const response = proxy(
       new NextRequest("http://localhost:3410/dashboard", {
         headers: { cookie: `alnamer_session=${TOKEN}` },
@@ -178,6 +158,13 @@ describe("legacy cookie", () => {
     );
     expect(response.cookies.get("__Host-session")).toBeUndefined();
     expect(response.cookies.get("alnamer_session")?.value).toBe("");
+  });
+
+  it("the proxy touches no legacy cookie when none is present", () => {
+    const response = proxy(
+      new NextRequest("http://localhost:3410/", { headers: { cookie: `__Host-session=${TOKEN}` } }),
+    );
+    expect(response.cookies.get("alnamer_session")).toBeUndefined();
   });
 
   it("the proxy refreshes the cookie expiry at most once a day", () => {
@@ -357,5 +344,35 @@ describe("redis cache", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     await invalidateUserSessions("user-1");
     expect(h.repo.deleteUserSessions).toHaveBeenCalled();
+  });
+});
+
+describe("revoked session resurrection", () => {
+  beforeEach(() => h.store.jar.set("__Host-session", TOKEN));
+
+  it("a cache hit whose row was deleted is denied and not written back to the cache", async () => {
+    await getCurrentUser(); // primes the cache
+    redis().calls.length = 0;
+    h.repo.updateSession.mockResolvedValue(0); // the row is gone
+    setClockForTests(new Date(NOW.getTime() + 10 * 60_000)); // last_seen_at is due
+    await expect(getCurrentUser()).resolves.toBeNull();
+    expect(redis().calls).not.toContain("set");
+  });
+
+  it("a DB hit whose row vanished before the housekeeping write is denied and not cached", async () => {
+    h.repo.findSession.mockResolvedValue(record({ lastSeenAt: null }));
+    h.repo.updateSession.mockResolvedValue(0);
+    await expect(getCurrentUser()).resolves.toBeNull();
+    expect(redis().values.size).toBe(0);
+  });
+
+  it("invalidateUserSessions deletes the known hashes even when the index read fails", async () => {
+    await getCurrentUser();
+    expect(redis().values.has(`sess:${HASH}`)).toBe(true);
+    h.repo.deleteUserSessions.mockResolvedValue([HASH]);
+    vi.spyOn(redis(), "smembers").mockRejectedValue(new Error("redis blip"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await invalidateUserSessions("user-1");
+    expect(redis().values.has(`sess:${HASH}`)).toBe(false);
   });
 });

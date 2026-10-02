@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { hashPassword } from "../../src/server/auth/password";
 import { nextPublicNumber } from "../../src/server/auth/public-number";
+import { invalidateUserSessionsCore } from "../../src/server/auth/session-invalidate";
 import { credentials, teacherProfiles, users } from "../../src/server/db/schema";
 
 type Role = typeof users.$inferInsert.role;
@@ -32,7 +33,7 @@ export async function upsertAccount(
   options: SeedOptions,
 ): Promise<SeedResult> {
   const passwordHash = await hashPassword(options.password);
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const fields = {
       name: account.name,
       role: account.role,
@@ -91,4 +92,7 @@ export async function upsertAccount(
     }
     return { userId, created: !existing };
   });
+  // A refreshed account is signed out everywhere (its password just changed).
+  if (options.refresh) await invalidateUserSessionsCore(result.userId);
+  return result;
 }

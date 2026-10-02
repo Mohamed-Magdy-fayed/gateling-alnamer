@@ -10,7 +10,7 @@ import {
 } from "@/server/config/policy";
 import type { User } from "@/server/db/schema";
 import { randomToken, sha256 } from "./password";
-import { cacheDelete, cacheDeleteUser, cacheGet, cacheSet } from "./session-cache";
+import { cacheDelete, cacheGet, cacheSet } from "./session-cache";
 import {
   clearedCookieOptions,
   LEGACY_SESSION_COOKIE,
@@ -19,9 +19,9 @@ import {
   SESSION_REFRESHED_COOKIE,
   sessionCookieOptions,
 } from "./session-cookie";
+import { invalidateUserSessionsCore } from "./session-invalidate";
 import {
   deleteSession,
-  deleteUserSessions,
   findSession,
   insertSession,
   type SessionRecord,
@@ -41,8 +41,8 @@ type CreateOptions = { deviceId?: string | null; twoFactorVerified?: boolean };
 
 /**
  * Cookie writes live only in `createSession`, `rotateSession` and `destroySession`, which run in
- * server actions and route handlers (Next refuses `cookies().set` during a render). The legacy-cookie
- * migration and the daily cookie re-issue that sliding expiry needs happen in `src/proxy.ts`.
+ * server actions and route handlers (Next refuses `cookies().set` during a render). Deleting a
+ * leftover legacy cookie and the daily cookie re-issue that sliding expiry needs happen in `src/proxy.ts`.
  */
 async function writeSessionCookie(token: string, expiresAt: Date): Promise<void> {
   const store = await cookies();
@@ -73,7 +73,7 @@ export async function createSession(userId: string, options: CreateOptions = {})
 /** Swaps the current session for a fresh token (same user, device and 2FA state). Call on privilege change. */
 export async function rotateSession(): Promise<void> {
   const store = await cookies();
-  const token = readSessionToken(store, clock.now());
+  const token = readSessionToken(store);
   const current = token ? await findSession(sha256(token), clock.now()) : null;
   if (!token || !current) throw new Error("rotateSession called without an active session");
   await insertFor(current.userId, {
@@ -86,12 +86,8 @@ export async function rotateSession(): Promise<void> {
 
 export async function destroySession(): Promise<void> {
   const store = await cookies();
-  const tokens = new Set<string>();
-  for (const name of [SESSION_COOKIE, LEGACY_SESSION_COOKIE]) {
-    const value = store.get(name)?.value;
-    if (value) tokens.add(value);
-  }
-  for (const token of tokens) {
+  const token = readSessionToken(store);
+  if (token) {
     await deleteSession(sha256(token));
     await cacheDelete(sha256(token));
   }
@@ -109,8 +105,7 @@ export async function invalidateUserSessions(
   userId: string,
   options: { exceptTokenHash?: string } = {},
 ): Promise<void> {
-  const deleted = await deleteUserSessions(userId, options.exceptTokenHash);
-  await cacheDeleteUser(userId, deleted, options.exceptTokenHash);
+  await invalidateUserSessionsCore(userId, options);
 }
 
 function housekeepingPatch(
@@ -141,7 +136,11 @@ async function resolveRecord(tokenHash: string, now: Date): Promise<SessionRecor
   let next = record;
   if (patch.expiresAt || patch.lastSeenAt) {
     try {
-      await updateSession(tokenHash, patch);
+      // 0 rows: the session was revoked after we read it, so it must not be served or re-cached.
+      if ((await updateSession(tokenHash, patch)) === 0) {
+        if (fromCache) await cacheDelete(tokenHash);
+        return null;
+      }
       next = { ...record, ...patch };
     } catch (error) {
       console.error("Session housekeeping failed", error instanceof Error ? error.message : error);
@@ -154,7 +153,7 @@ async function resolveRecord(tokenHash: string, now: Date): Promise<SessionRecor
 /** The current session for this request, or null. Cached per request; suspended users are rejected. */
 export const getCurrentSession = cache(async (): Promise<CurrentSession | null> => {
   const now = clock.now();
-  const token = readSessionToken(await cookies(), now);
+  const token = readSessionToken(await cookies());
   if (!token) return null;
   const tokenHash = sha256(token);
   const record = await resolveRecord(tokenHash, now);

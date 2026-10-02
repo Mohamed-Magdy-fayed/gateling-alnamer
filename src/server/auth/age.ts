@@ -29,15 +29,17 @@ export function parseIsoDate(value: string): IsoDate | null {
   return real ? { year, month, day } : null;
 }
 
-/** True when the person has not yet had their 18th birthday on the Cairo calendar date of `now`. */
-export function isUnder18(dateOfBirth: string, now: Date): boolean {
+/** Whole years completed on the Cairo calendar date of `now`; 0 when either date does not parse. */
+export function ageOn(dateOfBirth: string, now: Date): number {
   const born = parseIsoDate(dateOfBirth);
   const today = parseIsoDate(cairoToday(now));
-  if (!born || !today) return false;
-  const eighteenth = born.year + ADULT_AGE;
-  const reached =
-    today.year > eighteenth ||
-    (today.year === eighteenth &&
-      (today.month > born.month || (today.month === born.month && today.day >= born.day)));
-  return !reached;
+  if (!born || !today) return 0;
+  const hadBirthday =
+    today.month > born.month || (today.month === born.month && today.day >= born.day);
+  return today.year - born.year - (hadBirthday ? 0 : 1);
+}
+
+/** True when the person has not yet had their 18th birthday on the Cairo calendar date of `now`. */
+export function isUnder18(dateOfBirth: string, now: Date): boolean {
+  return parseIsoDate(dateOfBirth) !== null && ageOn(dateOfBirth, now) < ADULT_AGE;
 }

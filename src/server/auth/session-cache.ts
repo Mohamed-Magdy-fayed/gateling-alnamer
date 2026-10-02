@@ -74,9 +74,10 @@ export async function cacheDelete(tokenHash: string): Promise<void> {
 }
 
 /**
- * Drops a user's cached sessions: every key in `usess:<userId>` plus `deletedHashes` (the rows the DB
- * delete just removed), sparing `exceptTokenHash`. A failure is logged, not thrown: the DB rows are
- * already gone, so a stale entry lives at most one TTL.
+ * Drops a user's cached sessions: first `deletedHashes` (the rows the DB delete just removed, their
+ * own try so an index failure cannot spare them), then every key in `usess:<userId>`, sparing
+ * `exceptTokenHash`. A failure is logged, not thrown: the DB rows are already gone, so a stale entry
+ * lives at most one TTL.
  */
 export async function cacheDeleteUser(
   userId: string,
@@ -86,9 +87,16 @@ export async function cacheDeleteUser(
   const redis = getRedis();
   if (!redis) return;
   const except = exceptTokenHash ? sessionKey(exceptTokenHash) : null;
+
   try {
-    const indexed = await redis.smembers(userKey(userId));
-    const keys = new Set([...indexed, ...deletedHashes.map(sessionKey)]);
+    const known = deletedHashes.map(sessionKey).filter((key) => key !== except);
+    if (known.length > 0) await redis.del(...known);
+  } catch (error) {
+    logRedisError("invalidate", error);
+  }
+
+  try {
+    const keys = new Set(await redis.smembers(userKey(userId)));
     if (except) keys.delete(except);
     if (keys.size > 0) await redis.del(...keys);
     if (except) {

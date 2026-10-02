@@ -46,11 +46,17 @@ export async function insertSession(values: {
   await db().insert(sessions).values(values);
 }
 
+/** Returns how many rows changed: 0 means the session row is gone (revoked or expired and swept). */
 export async function updateSession(
   tokenHash: string,
   patch: { expiresAt?: Date; lastSeenAt?: Date },
-): Promise<void> {
-  await db().update(sessions).set(patch).where(eq(sessions.tokenHash, tokenHash));
+): Promise<number> {
+  const rows = await db()
+    .update(sessions)
+    .set(patch)
+    .where(eq(sessions.tokenHash, tokenHash))
+    .returning({ tokenHash: sessions.tokenHash });
+  return rows.length;
 }
 
 export async function deleteSession(tokenHash: string): Promise<void> {

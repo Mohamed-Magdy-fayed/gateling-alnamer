@@ -33,21 +33,13 @@ const ACCOUNTS = [
 const { drizzle } = await import("drizzle-orm/postgres-js");
 const { default: postgres } = await import("postgres");
 const { upsertAccount } = await import("./lib/seed-accounts.mts");
-// session.ts pulls in next/navigation, which cannot load in a script; this is its invalidateUserSessions body.
-const { deleteUserSessions } = await import("../src/server/auth/session-repo");
-const { cacheDeleteUser } = await import("../src/server/auth/session-cache");
 
 const client = postgres(url, { max: 1, onnotice: () => {} });
 const db = drizzle(client);
 try {
   for (const account of ACCOUNTS) {
-    const { userId } = await upsertAccount(db, account, {
-      password,
-      isSample: true,
-      refresh: true,
-    });
-    const deleted = await deleteUserSessions(userId);
-    await cacheDeleteUser(userId, deleted);
+    // refresh: true also signs the account out everywhere (invalidateUserSessionsCore).
+    await upsertAccount(db, account, { password, isSample: true, refresh: true });
   }
   console.log(`db:seed:demo: ${ACCOUNTS.length} demo accounts ready, sessions reset.`);
 } catch (error) {

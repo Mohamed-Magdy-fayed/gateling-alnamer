@@ -24,6 +24,18 @@ async function createUser(email: string, credential: { hash: string; salt: strin
   return user.id;
 }
 
+async function createUserWithStatus(email: string, status: "active" | "suspended", hash: string) {
+  const [user] = await db()
+    .insert(users)
+    .values({ name: "T", email, status })
+    .returning({ id: users.id });
+  if (!user) throw new Error("no user");
+  await db()
+    .insert(credentials)
+    .values({ userId: user.id, passwordHash: hash, passwordSalt: null });
+  return user.id;
+}
+
 async function readCredential(userId: string) {
   const [row] = await db().select().from(credentials).where(eq(credentials.userId, userId));
   return row;
@@ -89,5 +101,60 @@ describe("authenticate by username", () => {
     expect(await authenticate("no.such.user", "user pass 123", conn)).toBeNull();
     // An identifier without @ is never matched against the email column.
     expect(await authenticate("byname", "user pass 123", conn)).toBeNull();
+  });
+});
+
+describe("authenticate account status", () => {
+  it("returns null for a suspended user even with the right password", async () => {
+    const hash = await hashPassword("suspended pass 1");
+    await createUserWithStatus("suspended@example.test", "suspended", hash);
+    expect(await authenticate("suspended@example.test", "suspended pass 1", conn)).toBeNull();
+    expect(await authenticate("suspended@example.test", "wrong pass 1", conn)).toBeNull();
+  });
+
+  it("does not rehash a suspended user's legacy credential", async () => {
+    const salt = generateSalt();
+    const hash = await hashLegacyScrypt("legacy susp 1", salt);
+    const [user] = await db()
+      .insert(users)
+      .values({ name: "T", email: "legacy-susp@example.test", status: "suspended" })
+      .returning({ id: users.id });
+    if (!user) throw new Error("no user");
+    await db()
+      .insert(credentials)
+      .values({ userId: user.id, passwordHash: hash, passwordSalt: salt });
+    expect(await authenticate("legacy-susp@example.test", "legacy susp 1", conn)).toBeNull();
+    expect((await readCredential(user.id))?.passwordHash).toBe(hash);
+  });
+});
+
+describe("authenticate rehash race", () => {
+  it("does not overwrite a password reset that lands between verify and rehash", async () => {
+    const salt = generateSalt();
+    const userId = await createUser("race@example.test", {
+      hash: await hashLegacyScrypt("race pass 1", salt),
+      salt,
+    });
+    const resetHash = await hashPassword("reset by owner 1");
+
+    // A reset commits right after authenticate has read the credential (before the rehash write).
+    const racing = {
+      query: {
+        users: {
+          findFirst: async (...args: Parameters<typeof conn.query.users.findFirst>) => {
+            const found = await conn.query.users.findFirst(...args);
+            await conn
+              .update(credentials)
+              .set({ passwordHash: resetHash, passwordSalt: null })
+              .where(eq(credentials.userId, userId));
+            return found;
+          },
+        },
+      },
+      update: conn.update.bind(conn),
+    } as unknown as Parameters<typeof authenticate>[2];
+
+    expect(await authenticate("race@example.test", "race pass 1", racing)).toBeNull();
+    expect((await readCredential(userId))?.passwordHash).toBe(resetHash);
   });
 });

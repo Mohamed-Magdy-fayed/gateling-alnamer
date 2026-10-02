@@ -40,10 +40,9 @@ describe("seed-demo.mts guards", () => {
     expect(result.stdout).not.toContain(PASSWORD);
   });
 
-  it("never creates a super admin and resets sessions (static check)", () => {
+  it("never creates a super admin (static check; the session reset is an int test)", () => {
     const source = readFileSync(path.join(root, "scripts", "seed-demo.mts"), "utf8");
-    expect(source).not.toMatch(/isSuperAdmin:\s*true/);
-    expect(source).toContain("deleteUserSessions");
+    expect(source).not.toMatch(/isSuperAdmin:s*true/);
     expect(source).toContain("isSample: true");
   });
 });

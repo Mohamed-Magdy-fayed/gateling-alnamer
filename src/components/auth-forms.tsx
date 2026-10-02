@@ -155,18 +155,17 @@ export function SignUpForm({ t, defaultRole, locale }: SignUpFormProps) {
         required
         minLength={8}
       />
-      {role === "student" ? (
-        <DateInput
-          name="date_of_birth"
-          legend={t.signUp.dob}
-          labels={{ day: t.signUp.dobDay, month: t.signUp.dobMonth, year: t.signUp.dobYear }}
-          locale={locale}
-          dir={dir}
-          defaultValue={dob}
-          error={errors.date_of_birth}
-          onValueChange={setDob}
-        />
-      ) : null}
+      <DateInput
+        name="date_of_birth"
+        legend={t.signUp.dob}
+        labels={{ day: t.signUp.dobDay, month: t.signUp.dobMonth, year: t.signUp.dobYear }}
+        locale={locale}
+        dir={dir}
+        defaultValue={dob}
+        error={errors.date_of_birth}
+        onValueChange={setDob}
+        required
+      />
       {needsConsent ? (
         <div className="flex flex-col gap-3">
           <Alert tone="info">{t.states.under18Consent}</Alert>

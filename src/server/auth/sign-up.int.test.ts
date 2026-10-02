@@ -1,11 +1,21 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as schema from "@/server/db/schema";
 import { credentials, users } from "@/server/db/schema";
 import { authenticate } from "./credentials";
+import { hashPassword, verifyDummy } from "./password";
 import { signUpUser } from "./sign-up";
+
+vi.mock("./password", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./password")>();
+  return {
+    ...original,
+    hashPassword: vi.fn(original.hashPassword),
+    verifyDummy: vi.fn(original.verifyDummy),
+  };
+});
 
 const client = postgres(process.env.DATABASE_URL ?? "", { max: 2, onnotice: () => {} });
 const conn = drizzle(client, { schema });
@@ -97,12 +107,70 @@ describe("signUpUser", () => {
     }
   });
 
-  it("creates a parent without a date of birth and stores none", async () => {
-    const input = base({ role: "parent", date_of_birth: undefined });
+  it("creates an adult parent and stores the date of birth", async () => {
+    const input = base({ role: "parent", date_of_birth: "1985-04-20" });
     expect((await signUpUser(input, ctx, conn)).ok).toBe(true);
     const user = await row(String(input.email));
     expect(user?.role).toBe("parent");
-    expect(user?.dateOfBirth).toBeNull();
+    expect(user?.dateOfBirth).toBe("1985-04-20");
+    expect(user?.guardianConsentAt).toBeNull();
+  });
+
+  it("requires a parent to give a date of birth", async () => {
+    for (const date_of_birth of [undefined, "", "2030-01-01", "2010-02-30"]) {
+      const result = await signUpUser(base({ role: "parent", date_of_birth }), ctx, conn);
+      expect(result.ok, String(date_of_birth)).toBe(false);
+      expect(result.ok === false && result.fields).toContain("date_of_birth");
+    }
+  });
+
+  it("rejects a parent under 18 with the parentAge reason, and allows one who turns 18 today", async () => {
+    const minor = await signUpUser(
+      base({ role: "parent", date_of_birth: "2008-10-03" }),
+      ctx,
+      conn,
+    );
+    expect(minor).toMatchObject({
+      ok: false,
+      code: "invalid",
+      fields: ["date_of_birth"],
+      reasons: { date_of_birth: "parentAge" },
+    });
+    const adult = await signUpUser(
+      base({ role: "parent", date_of_birth: "2008-10-02" }),
+      ctx,
+      conn,
+    );
+    expect(adult.ok).toBe(true);
+  });
+
+  it("rejects a parent who ticks guardian consent", async () => {
+    const result = await signUpUser(
+      base({ role: "parent", date_of_birth: "1985-04-20", guardian_consent: "on" }),
+      ctx,
+      conn,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a student under 8 with the studentMinAge reason, and accepts one who turns 8 today", async () => {
+    const tooYoung = await signUpUser(
+      base({ date_of_birth: "2018-10-03", guardian_consent: "on" }),
+      ctx,
+      conn,
+    );
+    expect(tooYoung).toMatchObject({
+      ok: false,
+      code: "invalid",
+      fields: ["date_of_birth"],
+      reasons: { date_of_birth: "studentMinAge" },
+    });
+    const eight = await signUpUser(
+      base({ date_of_birth: "2018-10-02", guardian_consent: "on" }),
+      ctx,
+      conn,
+    );
+    expect(eight.ok).toBe(true);
   });
 
   it("rejects teacher, admin and reviewer roles", async () => {
@@ -143,5 +211,33 @@ describe("signUpUser", () => {
     const id = result.ok ? result.userId : "";
     expect(await authenticate(String(input.email).toUpperCase(), "A-good-pass-1", conn)).toBe(id);
     expect(await authenticate("  Signin_User ", "A-good-pass-1", conn)).toBe(id);
+  });
+});
+
+describe("sign-up timing", () => {
+  beforeEach(() => {
+    vi.mocked(hashPassword).mockClear();
+    vi.mocked(verifyDummy).mockClear();
+  });
+
+  const hashCount = () =>
+    vi.mocked(hashPassword).mock.calls.length + vi.mocked(verifyDummy).mock.calls.length;
+
+  it("runs exactly one password hash whether the email is free or taken", async () => {
+    const first = base({ username: "timing.one" });
+    await signUpUser(first, ctx, conn);
+    expect(hashCount()).toBe(1); // free path
+
+    vi.mocked(hashPassword).mockClear();
+    vi.mocked(verifyDummy).mockClear();
+    const takenEmail = await signUpUser(base({ email: first.email }), ctx, conn);
+    expect(takenEmail).toMatchObject({ code: "duplicate" });
+    expect(hashCount()).toBe(1); // duplicate path costs the same
+
+    vi.mocked(hashPassword).mockClear();
+    vi.mocked(verifyDummy).mockClear();
+    const takenName = await signUpUser(base({ username: "TIMING.one" }), ctx, conn);
+    expect(takenName).toMatchObject({ code: "duplicate" });
+    expect(hashCount()).toBe(1);
   });
 });

@@ -4,8 +4,8 @@ import { planSessionCookies } from "@/server/auth/session-cookie";
 import { clock } from "@/server/clock";
 
 /**
- * Session cookie upkeep that a server component cannot do (it may not write cookies): migrate the
- * legacy `alnamer_session` to `__Host-session` and re-issue the cookie daily. No database access.
+ * Session cookie upkeep that a server component cannot do (it may not write cookies): delete a
+ * leftover legacy `alnamer_session` and re-issue the cookie daily. No database access.
  */
 function withSessionCookies(request: NextRequest, response: NextResponse): NextResponse {
   for (const { name, value, options } of planSessionCookies(request.cookies, clock.now())) {

@@ -262,6 +262,9 @@ export const en: Dictionary = {
         role: "Choose an account type.",
         date_of_birth: "Choose a valid date of birth.",
         guardian_consent: "Tick the box to confirm your parent or guardian agrees.",
+        parentAge: "A parent account needs a date of birth showing you are 18 or older.",
+        studentMinAge:
+          "Student accounts are for ages 8 and up. A parent can create an account for a younger child.",
       },
       code: "The code is wrong or has expired.",
       email: "We couldn't send the email right now. Try again shortly.",

@@ -25,6 +25,7 @@ type DateInputProps = {
   dir: "rtl" | "ltr";
   defaultValue?: string;
   error?: string;
+  required?: boolean;
   onValueChange?: (iso: string) => void;
 };
 
@@ -58,6 +59,7 @@ export function DateInput({
   dir,
   defaultValue,
   error,
+  required,
   onValueChange,
 }: DateInputProps) {
   const [parts, setParts] = useState<Parts>(() => split(defaultValue));
@@ -88,6 +90,7 @@ export function DateInput({
   }
 
   const invalid = error ? true : undefined;
+  const mandatory = required ? true : undefined;
   const describedby = describedBy(id, { error });
   return (
     <fieldset className="flex flex-col gap-1.5" aria-describedby={describedby}>
@@ -100,7 +103,12 @@ export function DateInput({
           value={parts.day}
           onValueChange={(day) => update({ ...parts, day })}
         >
-          <SelectTrigger id={id} aria-label={labels.day} aria-invalid={invalid}>
+          <SelectTrigger
+            id={id}
+            aria-label={labels.day}
+            aria-invalid={invalid}
+            aria-required={mandatory}
+          >
             <SelectValue placeholder={labels.day} />
           </SelectTrigger>
           <SelectContent>
@@ -117,7 +125,7 @@ export function DateInput({
           value={parts.month}
           onValueChange={(month) => update({ ...parts, month })}
         >
-          <SelectTrigger aria-label={labels.month} aria-invalid={invalid}>
+          <SelectTrigger aria-label={labels.month} aria-invalid={invalid} aria-required={mandatory}>
             <SelectValue placeholder={labels.month} />
           </SelectTrigger>
           <SelectContent>
@@ -134,7 +142,7 @@ export function DateInput({
           value={parts.year}
           onValueChange={(year) => update({ ...parts, year })}
         >
-          <SelectTrigger aria-label={labels.year} aria-invalid={invalid}>
+          <SelectTrigger aria-label={labels.year} aria-invalid={invalid} aria-required={mandatory}>
             <SelectValue placeholder={labels.year} />
           </SelectTrigger>
           <SelectContent>

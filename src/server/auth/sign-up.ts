@@ -1,9 +1,11 @@
 import { eq, or } from "drizzle-orm";
 import { z } from "zod";
 import type { Locale } from "@/i18n/config";
+import { MIN_STUDENT_SIGNUP_AGE } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { credentials, users } from "@/server/db/schema";
-import { cairoToday, isUnder18, MIN_BIRTH_YEAR, parseIsoDate } from "./age";
+import { AppError } from "@/server/errors";
+import { ADULT_AGE, ageOn, cairoToday, isUnder18, MIN_BIRTH_YEAR, parseIsoDate } from "./age";
 import { hashPassword } from "./password";
 import { nextPublicNumber } from "./public-number";
 import { usernameSchema } from "./username";
@@ -23,9 +25,17 @@ export type SignUpField =
   | "date_of_birth"
   | "guardian_consent";
 
+/** Why a field failed when the generic "invalid" message is not enough (age rules). */
+export type SignUpReason = "parentAge" | "studentMinAge";
+
 export type SignUpResult =
   | { ok: true; userId: string }
-  | { ok: false; code: "invalid" | "duplicate"; fields: SignUpField[] };
+  | {
+      ok: false;
+      code: "invalid" | "duplicate";
+      fields: SignUpField[];
+      reasons?: Partial<Record<SignUpField, SignUpReason>>;
+    };
 
 const emptyToUndefined = (value: unknown) => (value === "" || value === null ? undefined : value);
 
@@ -72,14 +82,27 @@ function isUniqueViolation(error: unknown): boolean {
   return isUniqueViolation((error as { cause?: unknown }).cause);
 }
 
-const invalid = (fields: SignUpField[]): SignUpResult => ({ ok: false, code: "invalid", fields });
+const invalid = (
+  fields: SignUpField[],
+  reasons?: Partial<Record<SignUpField, SignUpReason>>,
+): SignUpResult => ({ ok: false, code: "invalid", fields, ...(reasons ? { reasons } : {}) });
 const duplicate: SignUpResult = { ok: false, code: "duplicate", fields: [] };
+
+/** Postgres error code from a driver error (or its cause), never its message (that quotes the row). */
+function pgCode(error: unknown): string {
+  if (typeof error !== "object" || error === null) return "unknown";
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === "string") return code;
+  return pgCode((error as { cause?: unknown }).cause);
+}
 
 /**
  * Validates a public sign-up and creates the account (users + credentials + public number in one
- * transaction). Public roles are student and parent only. Students need a date of birth; under 18 on
- * the Cairo date of `ctx.now` they must give guardian consent, adults must not. A taken email or
- * username returns one generic `duplicate` result that never says which.
+ * transaction). Public roles are student and parent only. Both give a date of birth: parents must be
+ * 18 or older, students 8 or older (younger children are created by a parent); a student under 18 on
+ * the Cairo date of `ctx.now` must give guardian consent, everyone else must not. A taken email or
+ * username returns one generic `duplicate` result that never says which, after the same one password
+ * hash a free sign-up costs.
  */
 export async function signUpUser(
   raw: Record<string, unknown>,
@@ -97,17 +120,25 @@ export async function signUpUser(
   }
   const input = parsed.data;
 
-  let dateOfBirth: string | null = null;
+  const dateOfBirth = validDateOfBirth(input.date_of_birth, ctx.now);
+  if (!dateOfBirth) return invalid(["date_of_birth"]);
   let guardianConsentAt: Date | null = null;
   if (input.role === "student") {
-    dateOfBirth = validDateOfBirth(input.date_of_birth, ctx.now);
-    if (!dateOfBirth) return invalid(["date_of_birth"]);
+    if (ageOn(dateOfBirth, ctx.now) < MIN_STUDENT_SIGNUP_AGE) {
+      return invalid(["date_of_birth"], { date_of_birth: "studentMinAge" });
+    }
     const minor = isUnder18(dateOfBirth, ctx.now);
     if (minor !== input.guardian_consent) return invalid(["guardian_consent"]);
     if (minor) guardianConsentAt = ctx.now;
-  } else if (input.guardian_consent) {
-    return invalid(["guardian_consent"]);
+  } else {
+    if (ageOn(dateOfBirth, ctx.now) < ADULT_AGE) {
+      return invalid(["date_of_birth"], { date_of_birth: "parentAge" });
+    }
+    if (input.guardian_consent) return invalid(["guardian_consent"]);
   }
+
+  // One argon2 hash on every path, so a taken email or username costs the same as a free one.
+  const passwordHash = await hashPassword(input.password);
 
   const taken = await conn.query.users.findFirst({
     columns: { id: true },
@@ -117,7 +148,6 @@ export async function signUpUser(
   });
   if (taken) return duplicate;
 
-  const passwordHash = await hashPassword(input.password);
   try {
     const userId = await conn.transaction(async (tx) => {
       const [user] = await tx
@@ -141,6 +171,8 @@ export async function signUpUser(
   } catch (error) {
     // Lost a race with a concurrent sign-up for the same email or username.
     if (isUniqueViolation(error)) return duplicate;
-    throw error;
+    // The driver's message quotes the row (email included): log the PG code only, throw a bare error.
+    console.error(`[auth] sign-up failed (pg ${pgCode(error)})`);
+    throw new AppError("internal");
   }
 }

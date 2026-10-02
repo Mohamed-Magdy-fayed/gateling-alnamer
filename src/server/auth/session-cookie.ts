@@ -1,12 +1,8 @@
-import {
-  LEGACY_COOKIE_UNTIL,
-  SESSION_COOKIE_REFRESH_MS,
-  SESSION_TTL_MS,
-} from "@/server/config/policy";
+import { SESSION_COOKIE_REFRESH_MS, SESSION_TTL_MS } from "@/server/config/policy";
 
 /** Host-only: the `__Host-` prefix forces Secure, Path=/ and no Domain. */
 export const SESSION_COOKIE = "__Host-session";
-/** Pre-`__Host-` name, still read (never written) until LEGACY_COOKIE_UNTIL. */
+/** Pre-`__Host-` name: never read or written, only deleted when a browser still holds it. */
 export const LEGACY_SESSION_COOKIE = "alnamer_session";
 /** Not a secret: when the proxy last re-issued the session cookie (ms since epoch). */
 export const SESSION_REFRESHED_COOKIE = "__Host-session-refreshed";
@@ -39,12 +35,9 @@ export function clearedCookieOptions(): CookieOptions {
 
 export type CookieReader = { get(name: string): { value: string } | undefined };
 
-/** The token to look up: `__Host-session`, else the legacy cookie while it is still honoured. */
-export function readSessionToken(store: CookieReader, now: Date): string | null {
-  const current = store.get(SESSION_COOKIE)?.value;
-  if (current) return current;
-  if (now.getTime() >= LEGACY_COOKIE_UNTIL.getTime()) return null;
-  return store.get(LEGACY_SESSION_COOKIE)?.value || null;
+/** The token to look up: `__Host-session` only. */
+export function readSessionToken(store: CookieReader): string | null {
+  return store.get(SESSION_COOKIE)?.value || null;
 }
 
 export type CookieWrite = {
@@ -55,8 +48,8 @@ export type CookieWrite = {
 
 /**
  * Cookie writes the proxy makes for a page request. No DB access: the cookie only carries the token,
- * the database stays the authority on expiry. Re-issues `__Host-session` (same token) when migrating
- * from the legacy name, and at most once a day to keep the cookie lifetime sliding with the session.
+ * the database stays the authority on expiry. Deletes a leftover legacy cookie and re-issues
+ * `__Host-session` at most once a day to keep the cookie lifetime sliding with the session.
  */
 export function planSessionCookies(store: CookieReader, now: Date): CookieWrite[] {
   const writes: CookieWrite[] = [];
@@ -68,15 +61,12 @@ export function planSessionCookies(store: CookieReader, now: Date): CookieWrite[
     writes.push({ name: LEGACY_SESSION_COOKIE, value: "", options: clearedCookieOptions() });
   }
 
-  let token = current;
-  if (!token && legacy && now.getTime() < LEGACY_COOKIE_UNTIL.getTime()) token = legacy;
+  const token = current;
   if (!token) return writes;
 
   const refreshedAt = Number(store.get(SESSION_REFRESHED_COOKIE)?.value);
   const due =
-    !current ||
-    !Number.isFinite(refreshedAt) ||
-    now.getTime() - refreshedAt >= SESSION_COOKIE_REFRESH_MS;
+    !Number.isFinite(refreshedAt) || now.getTime() - refreshedAt >= SESSION_COOKIE_REFRESH_MS;
   if (due) {
     writes.push({ name: SESSION_COOKIE, value: token, options: sessionCookieOptions(expires) });
     writes.push({

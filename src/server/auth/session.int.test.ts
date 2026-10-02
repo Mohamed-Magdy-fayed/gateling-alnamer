@@ -134,8 +134,7 @@ describe("create, rotate, revoke", () => {
 });
 
 describe("legacy cookie", () => {
-  it("a session created under the old cookie name keeps working until LEGACY_COOKIE_UNTIL", async () => {
-    setClockForTests(new Date("2026-10-15T00:00:00.000Z"));
+  it("a session token presented only under the old cookie name is not honoured", async () => {
     const userId = await makeUser("legacy");
     await createSession(userId);
     const token = cookieToken();
@@ -143,9 +142,6 @@ describe("legacy cookie", () => {
     h.store.jar.set("alnamer_session", token);
     h.store.readOnly = true;
 
-    await expect(getCurrentUser()).resolves.toMatchObject({ id: userId });
-
-    setClockForTests(new Date("2026-11-02T00:00:00.000Z"));
     await expect(getCurrentUser()).resolves.toBeNull();
   });
 });
