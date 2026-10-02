@@ -27,6 +27,27 @@ describe("collectUsedPaths", () => {
   });
 });
 
+describe("collectUsedPaths comments and aliases", () => {
+  it("ignores keys that appear only in comments", () => {
+    const src = [
+      "// t.a.lineComment is not a use",
+      "/* t.a.blockComment t.a.other */",
+      "const x = t.a.real; // t.a.trailing",
+    ].join(String.fromCharCode(10));
+    expect(collectUsedPaths(src).paths).toEqual(["a.real"]);
+  });
+
+  it("keeps // inside string literals from eating the rest of the line", () => {
+    const src = 'const u = "https://x.test"; const y = t.a.afterUrl;';
+    expect(collectUsedPaths(src).paths).toContain("a.afterUrl");
+  });
+
+  it("supports a $-prefixed alias", () => {
+    const src = "const $t = t.dashboard; const z = $t.title;";
+    expect(collectUsedPaths(src).paths).toContain("dashboard.title");
+  });
+});
+
 describe("findIssues", () => {
   const base = { dynamicRoots: [], enLeaves: ["a.b", "a.c"], arLeaves: ["a.b", "a.c"] };
 

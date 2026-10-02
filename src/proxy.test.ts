@@ -39,4 +39,14 @@ describe("proxy ?lang=", () => {
     expect(re.test("/api/trpc/x")).toBe(false);
     expect(re.test("/favicon.ico")).toBe(false);
   });
+
+  it("matcher anchors its exclusions to whole segments", () => {
+    const re = new RegExp(`^${config.matcher[0]}$`);
+    expect(re.test("/courses/node.js")).toBe(true);
+    expect(re.test("/apiary")).toBe(true);
+    expect(re.test("/api")).toBe(false);
+    expect(re.test("/api/x")).toBe(false);
+    expect(re.test("/_nextjs-guide")).toBe(true);
+    expect(re.test("/robots.txt")).toBe(false);
+  });
 });

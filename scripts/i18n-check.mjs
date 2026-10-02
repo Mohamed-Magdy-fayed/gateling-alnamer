@@ -26,6 +26,49 @@ export function listLeaves(node, prefix = "") {
   return leaves;
 }
 
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const aliasNames = (bases) => [...bases.keys()].map(escapeRe).join("|");
+
+/**
+ * Drops comments and the contents of string literals so a key mentioned in either is not counted
+ * as a use. A string right after `[` is kept (`Dictionary["auth"]`). Template literals are kept as
+ * code (their `${}` holes can use keys) but are protected from comment detection. Quote strings
+ * end at a newline, so an apostrophe in JSX text cannot swallow the rest of the file.
+ */
+export function stripNonCode(source) {
+  let out = "";
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    const two = source.slice(i, i + 2);
+    if (two === "//") {
+      while (i < source.length && source[i] !== "\n") i += 1;
+    } else if (two === "/*") {
+      const end = source.indexOf("*/", i + 2);
+      const stop = end === -1 ? source.length : end + 2;
+      for (; i < stop; i += 1) if (source[i] === "\n") out += "\n";
+    } else if (ch === "`") {
+      const start = i;
+      i += 1;
+      while (i < source.length && source[i] !== "`") i += source[i] === "\\" ? 2 : 1;
+      i += 1;
+      out += source.slice(start, i);
+    } else if (ch === '"' || ch === "'") {
+      const start = i;
+      i += 1;
+      while (i < source.length && source[i] !== ch && source[i] !== "\n") {
+        i += source[i] === "\\" ? 2 : 1;
+      }
+      if (source[i] === ch) i += 1;
+      out += out.endsWith("[") ? source.slice(start, i) : `${ch}${ch}`;
+    } else {
+      out += ch;
+      i += 1;
+    }
+  }
+  return out;
+}
+
 function join(base, rest) {
   return base ? `${base}.${rest}` : rest;
 }
@@ -36,7 +79,8 @@ function join(base, rest) {
  *  - aliases: `const d = t.a.b;` and `const { x, y } = t.a.b;` (then `d.x`, `x`)
  *  - a prop typed from a sub-tree: `type T = Dictionary["auth"]` + `{ t: T }` makes `t` relative to `auth`
  */
-export function collectUsedPaths(source) {
+export function collectUsedPaths(rawSource) {
+  const source = stripNonCode(rawSource);
   const paths = new Set();
   const dynamic = new Set();
   const bases = new Map([
@@ -50,13 +94,13 @@ export function collectUsedPaths(source) {
   }
 
   const scan = () => {
-    const names = [...bases.keys()].join("|");
+    const names = aliasNames(bases);
     return new RegExp(String.raw`(?<![\w$.])(${names})\.(${DOTTED})(\[)?`, "g");
   };
 
   // aliases, repeated so an alias can build on an earlier alias
   for (let round = 0; round < 3; round += 1) {
-    const names = [...bases.keys()].join("|");
+    const names = aliasNames(bases);
     const simple = new RegExp(String.raw`const (${IDENT}) = (${names})\.(${DOTTED})\s*;`, "g");
     for (const m of source.matchAll(simple)) bases.set(m[1], join(bases.get(m[2]), m[3]));
     const destructured = new RegExp(

@@ -2,14 +2,15 @@
 import { spawnSync } from "node:child_process";
 import { loadLocalEnv, parseLocalArgs, sanitizedChildEnv } from "./lib/local-env.mjs";
 
+const args = parseLocalArgs(process.argv.slice(2));
 try {
-  loadLocalEnv(parseLocalArgs(process.argv.slice(2)));
+  loadLocalEnv(args);
 } catch (error) {
   console.error(`build:local: ${error instanceof Error ? error.message : error}`);
   process.exit(1);
 }
 const result = spawnSync(process.execPath, ["./node_modules/next/dist/bin/next", "build"], {
   stdio: "inherit",
-  env: sanitizedChildEnv(),
+  env: sanitizedChildEnv({ keep: args.useTestDatabase ? ["DATABASE_URL"] : [] }),
 });
 process.exit(result.status ?? 1);

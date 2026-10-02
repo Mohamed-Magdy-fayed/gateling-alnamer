@@ -1,7 +1,16 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme]), :root:not([data-theme]) *) {
+      @slot;
+    }
+  }
+}
 
 @theme inline {
   --color-canvas: var(--surface-canvas);
@@ -131,5 +140,66 @@ h4 {
   }
   * {
     scroll-behavior: auto;
+  }
+}
+
+/* Sheet: --dir is 1 in LTR and -1 in RTL, so an inline-end panel enters from the right/left. */
+:root {
+  --dir: 1;
+  --dur-fast: 120ms;
+  --dur-slow: 320ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+:root[dir="rtl"] {
+  --dir: -1;
+}
+@keyframes sheet-in {
+  from {
+    transform: translateX(calc(var(--dir) * 100%));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes sheet-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(var(--dir) * 100%));
+  }
+}
+@keyframes sheet-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheet-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+.sheet-content[data-state="open"] {
+  animation: sheet-in var(--dur-slow) var(--ease-out);
+}
+.sheet-content[data-state="closed"] {
+  animation: sheet-out var(--dur-slow) var(--ease-in) forwards;
+}
+.sheet-overlay[data-state="open"] {
+  animation: sheet-fade-in var(--dur-slow) var(--ease-out);
+}
+.sheet-overlay[data-state="closed"] {
+  animation: sheet-fade-out var(--dur-slow) var(--ease-in) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet-content[data-state="open"] {
+    animation: sheet-fade-in var(--dur-fast) linear;
+  }
+  .sheet-content[data-state="closed"] {
+    animation: sheet-fade-out var(--dur-fast) linear forwards;
+  }
+  .sheet-overlay[data-state] {
+    animation-duration: var(--dur-fast);
   }
 }

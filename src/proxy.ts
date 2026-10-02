@@ -17,5 +17,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next|api|.*\\..*).*)"],
+  // Skips `_next/`, `api` as a whole segment and root-level files like /favicon.ico; a dotted
+  // segment deeper in the path (/courses/node.js) is still a page.
+  matcher: ["/((?!_next/|api(?:/|$)|[^/]+\\.[A-Za-z0-9]+$).*)"],
 };

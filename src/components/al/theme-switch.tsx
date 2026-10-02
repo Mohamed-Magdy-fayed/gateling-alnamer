@@ -12,6 +12,12 @@ export async function ThemeSwitch() {
         toLight: t.common.theme.toLight,
         toDark: t.common.theme.toDark,
         toSystem: t.common.theme.toSystem,
+        current: t.common.theme.current,
+        names: {
+          light: t.common.theme.light,
+          dark: t.common.theme.dark,
+          system: t.common.theme.system,
+        },
       }}
     />
   );

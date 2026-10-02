@@ -170,6 +170,16 @@ describe("sanitizedChildEnv", () => {
     expect(child.PATH).toBe("p");
   });
 
+  it("keeps the keys named in `keep` even when .env lacks them", () => {
+    writeFileSync(path.join(dir, ".env"), "APP_MODE=demo\n");
+    const child = sanitizedChildEnv({
+      cwd: dir,
+      env: { DATABASE_URL: "postgres://t@localhost/x" },
+      keep: ["DATABASE_URL"],
+    });
+    expect(child.DATABASE_URL).toBe("postgres://t@localhost/x");
+  });
+
   it("keeps keys that .env defines and does not mutate the input", () => {
     writeFileSync(path.join(dir, ".env"), "SMTP_HOST=localhost\n");
     writeFileSync(path.join(dir, ".env.production.local"), "SMTP_HOST=prod\n");

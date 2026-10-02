@@ -25,6 +25,7 @@ const PAIRS: readonly Pair[] = [
   { fg: "info", bg: "info-soft", min: BODY },
   { fg: "focus", bg: "surface-canvas", min: BODY },
   { fg: "border-strong", bg: "surface-raised", min: UI },
+  { fg: "focus", bg: "surface-raised", min: UI },
   { fg: "text-inverse", bg: "surface-inverse", min: BODY },
 ];
 

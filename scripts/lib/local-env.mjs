@@ -84,11 +84,12 @@ function envFileKeys(cwd) {
 // Next fills any key missing from process.env out of `.env.production.local` / `.env.preview.local`
 // but never overrides a key that is already set (even to ""). Setting every key `.env` lacks to ""
 // keeps the child process off those files. Returns a copy; `env` is not mutated.
-export function sanitizedChildEnv({ cwd = process.cwd(), env = process.env } = {}) {
+// `keep` names keys that loadLocalEnv set on purpose (DATABASE_URL under --test-db) and `.env` lacks.
+export function sanitizedChildEnv({ cwd = process.cwd(), env = process.env, keep = [] } = {}) {
   const defined = new Set(Object.keys(parse(readFileSync(path.join(cwd, ".env"), "utf8"))));
   const child = { ...env };
   for (const key of new Set([...schemaKeys(), ...envFileKeys(cwd)])) {
-    if (!defined.has(key)) child[key] = "";
+    if (!defined.has(key) && !keep.includes(key)) child[key] = "";
   }
   return child;
 }

@@ -14,7 +14,7 @@ export async function AuthShell({
   subtitle: string;
   children: ReactNode;
 }) {
-  const { t, locale } = await getDictionary();
+  const { t } = await getDictionary();
   return (
     <>
       <DemoBanner />
@@ -24,7 +24,7 @@ export async function AuthShell({
           <Link href="/" className="rounded-[var(--radius-sm)]">
             <Wordmark label={t.common.brand} />
           </Link>
-          <LanguageSwitch locale={locale} label={t.common.switchLanguage} />
+          <LanguageSwitch />
         </header>
         <main id="main" className="relative flex flex-1 items-center justify-center px-4 py-10">
           <Card className="w-full max-w-md p-6 shadow-e3 sm:p-8">
