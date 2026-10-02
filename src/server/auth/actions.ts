@@ -9,7 +9,7 @@ import { clock } from "@/server/clock";
 import { RESET_CODE_TTL_MS, RESET_MAX_ATTEMPTS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { credentials, passwordResetCodes, users } from "@/server/db/schema";
-import { sendMail } from "@/server/email";
+import { sendEvent } from "@/server/jobs/send";
 import { generateSalt, hashPassword, randomCode, sha256, verifyPassword } from "./password";
 import { createSession, destroyAllSessions, destroySession } from "./session";
 
@@ -127,7 +127,7 @@ export async function requestPasswordResetAction(
 
   try {
     const body = format(t.auth.resetEmail.body, { name: user.name, code });
-    await sendMail({
+    await sendEvent("email/send", {
       to: user.email,
       subject: t.auth.resetEmail.subject,
       text: body,
