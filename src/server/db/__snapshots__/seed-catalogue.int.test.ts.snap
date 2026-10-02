@@ -1,0 +1,498 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`sample catalogue seed > repository output for chemistry-grade-10-foundations is stable 1`] = `
+{
+  "access": {
+    "endAt": 2027-06-15T19:59:59.000Z,
+    "kind": "fixed_end",
+  },
+  "categories": [
+    {
+      "id": "00000000-0000-7000-8000-000000000203",
+      "name": {
+        "ar": "المنهج البريطاني",
+        "en": "British curriculum",
+      },
+      "slug": "british",
+      "type": "curriculum",
+    },
+    {
+      "id": "00000000-0000-7000-8000-000000000206",
+      "name": {
+        "ar": "الصف العاشر",
+        "en": "Grade 10",
+      },
+      "slug": "grade-10",
+      "type": "grade",
+    },
+    {
+      "id": "00000000-0000-7000-8000-000000000211",
+      "name": {
+        "ar": "الكيمياء",
+        "en": "Chemistry",
+      },
+      "slug": "chemistry",
+      "type": "subject",
+    },
+  ],
+  "description": {
+    "ar": "الذرة والجدول الدوري والروابط الكيميائية بخطوات واضحة.",
+    "en": "Atoms, the periodic table and chemical bonding in clear steps.",
+  },
+  "estimatedHours": 10,
+  "id": "00000000-0000-7000-8000-000000000303",
+  "priceMinor": 32000,
+  "sections": [
+    {
+      "id": "00000000-0000-7000-8000-000000000504",
+      "lessons": [
+        {
+          "durationMinutes": 12,
+          "id": "00000000-0000-7000-8000-000000000713",
+          "isFreePreview": true,
+          "kind": "video",
+          "title": {
+            "ar": "مكونات الذرة",
+            "en": "Inside the atom",
+          },
+        },
+        {
+          "durationMinutes": 16,
+          "id": "00000000-0000-7000-8000-000000000714",
+          "isFreePreview": false,
+          "kind": "pdf",
+          "title": {
+            "ar": "ملخص الجدول الدوري",
+            "en": "Periodic table summary",
+          },
+        },
+        {
+          "durationMinutes": 20,
+          "id": "00000000-0000-7000-8000-000000000715",
+          "isFreePreview": false,
+          "kind": "video",
+          "title": {
+            "ar": "التوزيع الإلكتروني",
+            "en": "Electron configuration",
+          },
+        },
+        {
+          "durationMinutes": 24,
+          "id": "00000000-0000-7000-8000-000000000716",
+          "isFreePreview": false,
+          "kind": "quiz",
+          "title": {
+            "ar": "اختبار الوحدة",
+            "en": "Unit quiz",
+          },
+        },
+      ],
+      "title": {
+        "ar": "بنية الذرة",
+        "en": "Atomic structure",
+      },
+    },
+  ],
+  "slug": "chemistry-grade-10-foundations",
+  "teacher": {
+    "bio": {
+      "ar": "معلم كيمياء تجريبي لعرض صفحة المعلم.",
+      "en": "A sample chemistry teacher to show the teacher page.",
+    },
+    "id": "00000000-0000-7000-8000-000000000103",
+    "name": {
+      "ar": "أ. معلم تجريبي 3",
+      "en": "Sample Teacher 3",
+    },
+  },
+  "title": {
+    "ar": "أساسيات الكيمياء للصف العاشر",
+    "en": "Grade 10 Chemistry Foundations",
+  },
+}
+`;
+
+exports[`sample catalogue seed > repository output for english-grade-9-writing is stable 1`] = `
+{
+  "access": {
+    "days": 90,
+    "kind": "duration_days",
+  },
+  "categories": [
+    {
+      "id": "00000000-0000-7000-8000-000000000204",
+      "name": {
+        "ar": "المنهج الأمريكي",
+        "en": "American curriculum",
+      },
+      "slug": "american",
+      "type": "curriculum",
+    },
+    {
+      "id": "00000000-0000-7000-8000-000000000205",
+      "name": {
+        "ar": "الصف التاسع",
+        "en": "Grade 9",
+      },
+      "slug": "grade-9",
+      "type": "grade",
+    },
+    {
+      "id": "00000000-0000-7000-8000-000000000212",
+      "name": {
+        "ar": "اللغة الإنجليزية",
+        "en": "English",
+      },
+      "slug": "english",
+      "type": "subject",
+    },
+  ],
+  "description": {
+    "ar": "كتابة الفقرة والمقال خطوة بخطوة مع نماذج وتصحيح.",
+    "en": "Writing paragraphs and essays step by step, with models and feedback.",
+  },
+  "estimatedHours": 8,
+  "id": "00000000-0000-7000-8000-000000000304",
+  "priceMinor": 27500,
+  "sections": [
+    {
+      "id": "00000000-0000-7000-8000-000000000505",
+      "lessons": [
+        {
+          "durationMinutes": 12,
+          "id": "00000000-0000-7000-8000-000000000717",
+          "isFreePreview": true,
+          "kind": "video",
+          "title": {
+            "ar": "الجملة الافتتاحية",
+            "en": "The topic sentence",
+          },
+        },
+        {
+          "durationMinutes": 16,
+          "id": "00000000-0000-7000-8000-000000000718",
+          "isFreePreview": false,
+          "kind": "pdf",
+          "title": {
+            "ar": "نموذج فقرة",
+            "en": "Sample paragraph",
+          },
+        },
+        {
+          "durationMinutes": 20,
+          "id": "00000000-0000-7000-8000-000000000719",
+          "isFreePreview": false,
+          "kind": "video",
+          "title": {
+            "ar": "أدوات الربط",
+            "en": "Linking words",
+          },
+        },
+        {
+          "durationMinutes": 24,
+          "id": "00000000-0000-7000-8000-000000000720",
+          "isFreePreview": false,
+          "kind": "quiz",
+          "title": {
+            "ar": "اختبار قصير",
+            "en": "Short quiz",
+          },
+        },
+      ],
+      "title": {
+        "ar": "الفقرة المتماسكة",
+        "en": "The coherent paragraph",
+      },
+    },
+  ],
+  "slug": "english-grade-9-writing",
+  "teacher": {
+    "bio": {
+      "ar": "معلم لغة إنجليزية تجريبي لعرض صفحة المعلم.",
+      "en": "A sample English teacher to show the teacher page.",
+    },
+    "id": "00000000-0000-7000-8000-000000000104",
+    "name": {
+      "ar": "أ. معلم تجريبي 4",
+      "en": "Sample Teacher 4",
+    },
+  },
+  "title": {
+    "ar": "الكتابة باللغة الإنجليزية للصف التاسع",
+    "en": "Grade 9 English Writing",
+  },
+}
+`;
+
+exports[`sample catalogue seed > repository output for math-grade-12-calculus is stable 1`] = `
+{
+  "access": {
+    "endAt": 2027-06-30T19:59:59.000Z,
+    "kind": "fixed_end",
+  },
+  "categories": [
+    {
+      "id": "00000000-0000-7000-8000-000000000201",
+      "name": {
+        "ar": "منهج وزارة التربية الإماراتية",
+        "en": "UAE Ministry of Education",
+      },
+      "slug": "uae-moe",
+      "type": "curriculum",
+    },
+    {
+      "id": "00000000-0000-7000-8000-000000000208",
+      "name": {
+        "ar": "الصف الثاني عشر",
+        "en": "Grade 12",
+      },
+      "slug": "grade-12",
+      "type": "grade",
+    },
+    {
+      "id": "00000000-0000-7000-8000-000000000209",
+      "name": {
+        "ar": "الرياضيات",
+        "en": "Mathematics",
+      },
+      "slug": "mathematics",
+      "type": "subject",
+    },
+  ],
+  "description": {
+    "ar": "شرح منظم للنهايات والاشتقاق والتكامل مع أمثلة محلولة واختبار في نهاية كل وحدة.",
+    "en": "A structured walk through limits, derivatives and integrals with worked examples and a quiz after each unit.",
+  },
+  "estimatedHours": 18,
+  "id": "00000000-0000-7000-8000-000000000301",
+  "priceMinor": 45000,
+  "sections": [
+    {
+      "id": "00000000-0000-7000-8000-000000000501",
+      "lessons": [
+        {
+          "durationMinutes": 12,
+          "id": "00000000-0000-7000-8000-000000000701",
+          "isFreePreview": true,
+          "kind": "video",
+          "title": {
+            "ar": "مقدمة في النهايات",
+            "en": "Introduction to limits",
+          },
+        },
+        {
+          "durationMinutes": 16,
+          "id": "00000000-0000-7000-8000-000000000702",
+          "isFreePreview": false,
+          "kind": "pdf",
+          "title": {
+            "ar": "ملخص قوانين النهايات",
+            "en": "Limit laws summary",
+          },
+        },
+        {
+          "durationMinutes": 20,
+          "id": "00000000-0000-7000-8000-000000000703",
+          "isFreePreview": false,
+          "kind": "video",
+          "title": {
+            "ar": "النهايات عند اللانهاية",
+            "en": "Limits at infinity",
+          },
+        },
+        {
+          "durationMinutes": 24,
+          "id": "00000000-0000-7000-8000-000000000704",
+          "isFreePreview": false,
+          "kind": "quiz",
+          "title": {
+            "ar": "اختبار الوحدة الأولى",
+            "en": "Unit 1 quiz",
+          },
+        },
+      ],
+      "title": {
+        "ar": "الوحدة الأولى: النهايات",
+        "en": "Unit 1: Limits",
+      },
+    },
+    {
+      "id": "00000000-0000-7000-8000-000000000502",
+      "lessons": [
+        {
+          "durationMinutes": 12,
+          "id": "00000000-0000-7000-8000-000000000705",
+          "isFreePreview": false,
+          "kind": "video",
+          "title": {
+            "ar": "تعريف المشتقة",
+            "en": "Defining the derivative",
+          },
+        },
+        {
+          "durationMinutes": 16,
+          "id": "00000000-0000-7000-8000-000000000706",
+          "isFreePreview": false,
+          "kind": "pdf",
+          "title": {
+            "ar": "جدول قواعد الاشتقاق",
+            "en": "Derivative rules table",
+          },
+        },
+        {
+          "durationMinutes": 20,
+          "id": "00000000-0000-7000-8000-000000000707",
+          "isFreePreview": false,
+          "kind": "video",
+          "title": {
+            "ar": "قاعدة السلسلة",
+            "en": "The chain rule",
+          },
+        },
+        {
+          "durationMinutes": 24,
+          "id": "00000000-0000-7000-8000-000000000708",
+          "isFreePreview": false,
+          "kind": "quiz",
+          "title": {
+            "ar": "اختبار الوحدة الثانية",
+            "en": "Unit 2 quiz",
+          },
+        },
+      ],
+      "title": {
+        "ar": "الوحدة الثانية: الاشتقاق",
+        "en": "Unit 2: Derivatives",
+      },
+    },
+  ],
+  "slug": "math-grade-12-calculus",
+  "teacher": {
+    "bio": {
+      "ar": "معلم رياضيات تجريبي لعرض صفحة المعلم.",
+      "en": "A sample mathematics teacher to show the teacher page.",
+    },
+    "id": "00000000-0000-7000-8000-000000000101",
+    "name": {
+      "ar": "أ. معلم تجريبي 1",
+      "en": "Sample Teacher 1",
+    },
+  },
+  "title": {
+    "ar": "التفاضل والتكامل للصف الثاني عشر",
+    "en": "Grade 12 Calculus",
+  },
+}
+`;
+
+exports[`sample catalogue seed > repository output for physics-grade-11-mechanics is stable 1`] = `
+{
+  "access": {
+    "days": 120,
+    "kind": "duration_days",
+  },
+  "categories": [
+    {
+      "id": "00000000-0000-7000-8000-000000000202",
+      "name": {
+        "ar": "المنهج السعودي",
+        "en": "Saudi curriculum",
+      },
+      "slug": "saudi",
+      "type": "curriculum",
+    },
+    {
+      "id": "00000000-0000-7000-8000-000000000207",
+      "name": {
+        "ar": "الصف الحادي عشر",
+        "en": "Grade 11",
+      },
+      "slug": "grade-11",
+      "type": "grade",
+    },
+    {
+      "id": "00000000-0000-7000-8000-000000000210",
+      "name": {
+        "ar": "الفيزياء",
+        "en": "Physics",
+      },
+      "slug": "physics",
+      "type": "subject",
+    },
+  ],
+  "description": {
+    "ar": "الحركة والقوى والطاقة بأسلوب مبسط وتجارب مصورة.",
+    "en": "Motion, forces and energy explained simply, with filmed experiments.",
+  },
+  "estimatedHours": 14,
+  "id": "00000000-0000-7000-8000-000000000302",
+  "priceMinor": 38000,
+  "sections": [
+    {
+      "id": "00000000-0000-7000-8000-000000000503",
+      "lessons": [
+        {
+          "durationMinutes": 12,
+          "id": "00000000-0000-7000-8000-000000000709",
+          "isFreePreview": true,
+          "kind": "video",
+          "title": {
+            "ar": "الإزاحة والسرعة",
+            "en": "Displacement and velocity",
+          },
+        },
+        {
+          "durationMinutes": 16,
+          "id": "00000000-0000-7000-8000-000000000710",
+          "isFreePreview": false,
+          "kind": "pdf",
+          "title": {
+            "ar": "ورقة عمل التسارع",
+            "en": "Acceleration worksheet",
+          },
+        },
+        {
+          "durationMinutes": 20,
+          "id": "00000000-0000-7000-8000-000000000711",
+          "isFreePreview": false,
+          "kind": "video",
+          "title": {
+            "ar": "السقوط الحر",
+            "en": "Free fall",
+          },
+        },
+        {
+          "durationMinutes": 24,
+          "id": "00000000-0000-7000-8000-000000000712",
+          "isFreePreview": false,
+          "kind": "quiz",
+          "title": {
+            "ar": "اختبار قصير",
+            "en": "Short quiz",
+          },
+        },
+      ],
+      "title": {
+        "ar": "الحركة في بعد واحد",
+        "en": "Motion in one dimension",
+      },
+    },
+  ],
+  "slug": "physics-grade-11-mechanics",
+  "teacher": {
+    "bio": {
+      "ar": "معلم فيزياء تجريبي لعرض صفحة المعلم.",
+      "en": "A sample physics teacher to show the teacher page.",
+    },
+    "id": "00000000-0000-7000-8000-000000000102",
+    "name": {
+      "ar": "أ. معلم تجريبي 2",
+      "en": "Sample Teacher 2",
+    },
+  },
+  "title": {
+    "ar": "الميكانيكا للصف الحادي عشر",
+    "en": "Grade 11 Mechanics",
+  },
+}
+`;

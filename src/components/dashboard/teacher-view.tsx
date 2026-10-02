@@ -1,14 +1,24 @@
 import { Plus } from "lucide-react";
 import type { Dictionary } from "@/i18n/ar";
 import type { Locale } from "@/i18n/config";
-import { formatPrice, mockCourses } from "@/lib/mock-data";
+import { pickText } from "@/lib/localized-text";
+import { formatPrice } from "@/lib/money-format";
+import type { DashboardCourse } from "@/server/catalog/types";
 import { Badge, Button, Card, Ltr } from "@/ui";
 
 const statuses = ["published", "review", "draft"] as const;
 const studentCounts = [42, 17, 0];
 const tones = { published: "success", review: "warning", draft: "neutral" } as const;
 
-export function TeacherView({ t, locale }: { t: Dictionary; locale: Locale }) {
+export function TeacherView({
+  t,
+  locale,
+  courses,
+}: {
+  t: Dictionary;
+  locale: Locale;
+  courses: DashboardCourse[];
+}) {
   const d = t.dashboard.teacher;
   const stats = [
     { label: d.sales, value: 1260000 },
@@ -43,11 +53,11 @@ export function TeacherView({ t, locale }: { t: Dictionary; locale: Locale }) {
           </Button>
         </div>
         <Card className="divide-y divide-line">
-          {mockCourses.slice(0, 3).map((course, index) => {
+          {courses.slice(0, 3).map((course, index) => {
             const status = statuses[index] ?? "draft";
             return (
-              <div key={course.slug} className="flex flex-wrap items-center gap-3 p-4">
-                <bdi className="min-w-0 flex-1 font-medium">{course.title[locale]}</bdi>
+              <div key={course.id} className="flex flex-wrap items-center gap-3 p-4">
+                <bdi className="min-w-0 flex-1 font-medium">{pickText(course.title, locale)}</bdi>
                 <span className="text-sm text-fg-muted">
                   <Ltr>{studentCounts[index] ?? 0}</Ltr> {d.students}
                 </span>

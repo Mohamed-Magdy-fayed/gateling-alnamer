@@ -1,25 +1,22 @@
 import { ArrowRight, PlayCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { z } from "zod";
 import { getDictionary } from "@/i18n/server";
-import { mockCourses } from "@/lib/mock-data";
+import { pickText } from "@/lib/localized-text";
 import { requireUser } from "@/server/auth/session";
+import { getPublishedLesson } from "@/server/catalog/repository";
 import { Alert, Badge, Container, Ltr } from "@/ui";
 
-function findLesson(id: string) {
-  for (const course of mockCourses) {
-    for (const section of course.sections) {
-      const lesson = section.lessons.find((item) => item.id === id);
-      if (lesson) return { course, lesson };
-    }
-  }
-  return null;
-}
+const lessonIdSchema = z.uuid();
 
 export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
   const { lessonId } = await params;
-  const found = findLesson(lessonId);
-  if (!found) notFound();
+  // A malformed id would make Postgres throw (22P02); treat it as not found.
+  const lesson = lessonIdSchema.safeParse(lessonId).success
+    ? await getPublishedLesson(lessonId)
+    : null;
+  if (!lesson) notFound();
   const user = await requireUser();
   const { t, locale } = await getDictionary();
   const p = t.dashboard.player;
@@ -37,11 +34,11 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Badge tone="highlight">{t.common.sample}</Badge>
         <h1 className="text-xl font-bold">
-          <bdi>{found.lesson.title[locale]}</bdi>
+          <bdi>{pickText(lesson.title, locale)}</bdi>
         </h1>
       </div>
       <p className="text-sm text-fg-muted">
-        <bdi>{found.course.title[locale]}</bdi>
+        <bdi>{pickText(lesson.course.title, locale)}</bdi>
       </p>
 
       {/* Media stays LTR by convention (DESIGN.md section 7). */}

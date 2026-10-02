@@ -6,6 +6,7 @@ import { TeacherView } from "@/components/dashboard/teacher-view";
 import { format } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { requireUser } from "@/server/auth/session";
+import { listCoursesForDashboard } from "@/server/catalog/repository";
 import { Badge, Container, cn } from "@/ui";
 
 const views = ["student", "parent", "teacher", "admin"] as const;
@@ -24,6 +25,7 @@ export default async function DashboardPage({
   const { t, locale } = await getDictionary();
   const { view: requested } = await searchParams;
   const view: View = isView(requested) ? requested : user.role;
+  const courses = await listCoursesForDashboard();
 
   return (
     <Container className="py-8">
@@ -59,10 +61,10 @@ export default async function DashboardPage({
       </div>
 
       <div className="mt-8">
-        {view === "student" ? <StudentView t={t} locale={locale} /> : null}
+        {view === "student" ? <StudentView t={t} locale={locale} courses={courses} /> : null}
         {view === "parent" ? <ParentView t={t} locale={locale} /> : null}
-        {view === "teacher" ? <TeacherView t={t} locale={locale} /> : null}
-        {view === "admin" ? <AdminView t={t} locale={locale} /> : null}
+        {view === "teacher" ? <TeacherView t={t} locale={locale} courses={courses} /> : null}
+        {view === "admin" ? <AdminView t={t} locale={locale} courses={courses} /> : null}
       </div>
     </Container>
   );

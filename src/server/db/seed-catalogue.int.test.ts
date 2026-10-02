@@ -1,13 +1,20 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
-import { mockCourses } from "@/lib/mock-data";
+import { getPublishedCourseBySlug } from "@/server/catalog/repository";
+import * as schema from "@/server/db/schema";
 
 const client = postgres(process.env.DATABASE_URL ?? "", { max: 1, onnotice: () => {} });
 
+// Separate client: drizzle replaces the timestamp parsers of the client it wraps.
+const repoClient = postgres(process.env.DATABASE_URL ?? "", { max: 1, onnotice: () => {} });
+const conn = drizzle(repoClient, { schema });
+
 afterAll(async () => {
   await client.end();
+  await repoClient.end();
 });
 
 const MIGRATION = path.resolve(import.meta.dirname, "migrations/0008_sample_catalogue.sql");
@@ -45,12 +52,14 @@ async function fingerprint(): Promise<Record<string, Fingerprint>> {
   return result;
 }
 
-const lessonTotal = mockCourses.reduce(
-  (sum, course) =>
-    sum + course.sections.reduce((inner, section) => inner + section.lessons.length, 0),
-  0,
-);
-const sectionTotal = mockCourses.reduce((sum, course) => sum + course.sections.length, 0);
+const SAMPLE_SLUGS = [
+  "math-grade-12-calculus",
+  "physics-grade-11-mechanics",
+  "chemistry-grade-10-foundations",
+  "english-grade-9-writing",
+];
+const sectionTotal = 5;
+const lessonTotal = 20;
 
 describe("sample catalogue seed", () => {
   it("creates the expected number of rows", async () => {
@@ -107,87 +116,7 @@ describe("sample catalogue seed", () => {
     expect(await fingerprint()).toEqual(before);
   });
 
-  it("matches mock-data for every course", async () => {
-    for (const mock of mockCourses) {
-      const courseRows = await client`
-        select c.id, c.slug, c.status, c.teacher_id, r.title, r.description, r.price_minor,
-               r.access_kind, r.access_end_at, r.access_days, r.estimated_hours
-        from courses c join course_revisions r on r.id = c.published_revision_id
-        where c.slug = ${mock.slug}`;
-      expect(courseRows, mock.slug).toHaveLength(1);
-      const course = courseRows[0];
-      if (!course) throw new Error(`missing ${mock.slug}`);
-      expect(course.status).toBe("published");
-      expect(course.title).toEqual(mock.title);
-      expect(course.description).toEqual(mock.description);
-      expect(Number(course.price_minor)).toBe(mock.priceMinor);
-      expect(course.estimated_hours).toBe(mock.hours);
-      if (mock.access.kind === "until") {
-        expect(course.access_kind).toBe("fixed_end");
-        expect((course.access_end_at as Date).getTime()).toBe(
-          new Date(`${mock.access.date}T23:59:59+04:00`).getTime(),
-        );
-        expect(course.access_days).toBeNull();
-      } else {
-        expect(course.access_kind).toBe("duration_days");
-        expect(course.access_days).toBe(mock.access.days);
-        expect(course.access_end_at).toBeNull();
-      }
-
-      const teacher = await client`
-        select u.name, p.public_name, p.bio, p.status
-        from users u join teacher_profiles p on p.user_id = u.id where u.id = ${course.teacher_id as string}`;
-      expect(teacher[0]?.public_name).toEqual(mock.teacher);
-      expect(teacher[0]?.bio).toEqual(mock.teacherBio);
-      expect(teacher[0]?.name).toBe(mock.teacher.ar);
-      expect(teacher[0]?.status).toBe("approved");
-
-      const categories = await client`
-        select k.type, k.name_ar, k.name_en from course_categories cc
-        join categories k on k.id = cc.category_id where cc.course_id = ${course.id as string}`;
-      const byType = Object.fromEntries(categories.map((row) => [row.type as string, row]));
-      expect([byType.curriculum?.name_ar, byType.curriculum?.name_en]).toEqual([
-        mock.curriculum.ar,
-        mock.curriculum.en,
-      ]);
-      expect([byType.grade?.name_ar, byType.grade?.name_en]).toEqual([
-        mock.grade.ar,
-        mock.grade.en,
-      ]);
-      expect([byType.subject?.name_ar, byType.subject?.name_en]).toEqual([
-        mock.subject.ar,
-        mock.subject.en,
-      ]);
-
-      const sections = await client`
-        select s.id, s.sort, sr.title from sections s
-        join section_revisions sr on sr.id = s.published_revision_id
-        where s.course_id = ${course.id as string} order by s.sort`;
-      expect(sections.map((row) => row.title)).toEqual(
-        mock.sections.map((section) => section.title),
-      );
-      for (const [index, section] of sections.entries()) {
-        const lessons = await client`
-          select l.kind, l.sort, lr.title, lr.duration_minutes, lr.is_free_preview from lessons l
-          join lesson_revisions lr on lr.id = l.published_revision_id
-          where l.section_id = ${section.id as string} order by l.sort`;
-        const expected = mock.sections[index]?.lessons ?? [];
-        expect(
-          lessons.map((row) => ({
-            title: row.title,
-            kind: row.kind,
-            minutes: row.duration_minutes,
-            free: row.is_free_preview,
-          })),
-        ).toEqual(
-          expected.map((lesson) => ({
-            title: lesson.title,
-            kind: lesson.kind,
-            minutes: lesson.minutes,
-            free: lesson.free,
-          })),
-        );
-      }
-    }
+  it.each(SAMPLE_SLUGS)("repository output for %s is stable", async (slug) => {
+    expect(await getPublishedCourseBySlug(slug, conn)).toMatchSnapshot();
   });
 });

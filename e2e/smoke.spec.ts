@@ -81,6 +81,16 @@ test("each dashboard view renders", async ({ page }) => {
   }
 });
 
+test("a lesson link on the student dashboard opens its learn page", async ({ page }) => {
+  await signIn(page, password);
+  await page.goto("/dashboard?view=student");
+  const link = page.locator('main a[href^="/dashboard/learn/"]').first();
+  await expect(link).toBeVisible();
+  await link.click();
+  await page.waitForURL("**/dashboard/learn/**");
+  await expect(page.locator("h1")).not.toBeEmpty();
+});
+
 test("forgot password: code from Mailpit, reset, sign in with the new password", async ({
   page,
 }) => {

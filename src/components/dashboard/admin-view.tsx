@@ -1,17 +1,27 @@
 import type { Dictionary } from "@/i18n/ar";
 import type { Locale } from "@/i18n/config";
-import { formatPrice, mockCourses } from "@/lib/mock-data";
+import { pickText } from "@/lib/localized-text";
+import { formatPrice } from "@/lib/money-format";
+import type { DashboardCourse } from "@/server/catalog/types";
 import { Badge, Button, Card, Ltr } from "@/ui";
 
 const orders = [
-  { number: "AN-10241", course: 0, amount: 45000, status: "paid" },
-  { number: "AN-10240", course: 1, amount: 38000, status: "pending" },
-  { number: "AN-10239", course: 3, amount: 27500, status: "refunded" },
-  { number: "AN-10238", course: 2, amount: 32000, status: "paid" },
+  { number: "AN-10241", course: 0, status: "paid" },
+  { number: "AN-10240", course: 1, status: "pending" },
+  { number: "AN-10239", course: 3, status: "refunded" },
+  { number: "AN-10238", course: 2, status: "paid" },
 ] as const;
 const tones = { paid: "success", pending: "warning", refunded: "danger" } as const;
 
-export function AdminView({ t, locale }: { t: Dictionary; locale: Locale }) {
+export function AdminView({
+  t,
+  locale,
+  courses,
+}: {
+  t: Dictionary;
+  locale: Locale;
+  courses: DashboardCourse[];
+}) {
   const a = t.dashboard.admin;
   const queues = [
     { label: a.teacherApplications, count: 3 },
@@ -63,22 +73,25 @@ export function AdminView({ t, locale }: { t: Dictionary; locale: Locale }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
-              {orders.map((order) => (
-                <tr key={order.number}>
-                  <td className="px-4 py-3">
-                    <Ltr>{order.number}</Ltr>
-                  </td>
-                  <td className="px-4 py-3">
-                    <bdi>{mockCourses[order.course]?.title[locale]}</bdi>
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <Ltr>{formatPrice(locale, order.amount, t.common.currency)}</Ltr>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge tone={tones[order.status]}>{a.orderStatuses[order.status]}</Badge>
-                  </td>
-                </tr>
-              ))}
+              {orders.map((order) => {
+                const course = courses[order.course];
+                return (
+                  <tr key={order.number}>
+                    <td className="px-4 py-3">
+                      <Ltr>{order.number}</Ltr>
+                    </td>
+                    <td className="px-4 py-3">
+                      <bdi>{course ? pickText(course.title, locale) : ""}</bdi>
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <Ltr>{formatPrice(locale, course?.priceMinor ?? 0, t.common.currency)}</Ltr>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={tones[order.status]}>{a.orderStatuses[order.status]}</Badge>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </Card>

@@ -2,7 +2,8 @@ import { ArrowLeft, CalendarClock } from "lucide-react";
 import Link from "next/link";
 import type { Dictionary } from "@/i18n/ar";
 import { format, formatDate, type Locale } from "@/i18n/config";
-import { mockCourses } from "@/lib/mock-data";
+import { pickText } from "@/lib/localized-text";
+import type { DashboardCourse } from "@/server/catalog/types";
 import { Card, Ltr, Progress } from "@/ui";
 
 const progress = [62, 25, 88];
@@ -12,9 +13,17 @@ const quizzes = [
   { course: 2, score: 100 },
 ];
 
-export function StudentView({ t, locale }: { t: Dictionary; locale: Locale }) {
+export function StudentView({
+  t,
+  locale,
+  courses,
+}: {
+  t: Dictionary;
+  locale: Locale;
+  courses: DashboardCourse[];
+}) {
   const s = t.dashboard.student;
-  const mine = mockCourses.slice(0, 3);
+  const mine = courses.slice(0, 3);
   return (
     <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
       <section aria-labelledby="my-courses">
@@ -23,12 +32,14 @@ export function StudentView({ t, locale }: { t: Dictionary; locale: Locale }) {
         </h2>
         <ul className="grid gap-4 sm:grid-cols-2">
           {mine.map((course, index) => (
-            <li key={course.slug}>
+            <li key={course.id}>
               <Card className="flex h-full flex-col gap-3 p-5">
                 <h3 className="font-semibold">
-                  <bdi>{course.title[locale]}</bdi>
+                  <bdi>{pickText(course.title, locale)}</bdi>
                 </h3>
-                <p className="text-sm text-fg-muted">{course.teacher[locale]}</p>
+                <p className="text-sm text-fg-muted">
+                  <bdi>{pickText(course.teacher, locale)}</bdi>
+                </p>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-fg-2">{s.progress}</span>
                   <Ltr className="font-medium">{progress[index] ?? 0}%</Ltr>
@@ -38,13 +49,15 @@ export function StudentView({ t, locale }: { t: Dictionary; locale: Locale }) {
                   <CalendarClock aria-hidden className="size-3.5" strokeWidth={1.75} />
                   {format(s.expires, { date: formatDate(locale, new Date("2027-06-30")) })}
                 </p>
-                <Link
-                  href={`/dashboard/learn/${course.sections[0]?.lessons[0]?.id ?? ""}`}
-                  className="mt-auto inline-flex items-center gap-1.5 self-start rounded-[var(--radius-sm)] text-sm font-medium text-primary hover:underline"
-                >
-                  {s.continue}
-                  <ArrowLeft aria-hidden className="size-4 ltr:rotate-180" strokeWidth={1.75} />
-                </Link>
+                {course.firstLessonId ? (
+                  <Link
+                    href={`/dashboard/learn/${course.firstLessonId}`}
+                    className="mt-auto inline-flex items-center gap-1.5 self-start rounded-[var(--radius-sm)] text-sm font-medium text-primary hover:underline"
+                  >
+                    {s.continue}
+                    <ArrowLeft aria-hidden className="size-4 ltr:rotate-180" strokeWidth={1.75} />
+                  </Link>
+                ) : null}
               </Card>
             </li>
           ))}
@@ -55,14 +68,20 @@ export function StudentView({ t, locale }: { t: Dictionary; locale: Locale }) {
           {s.quizzes}
         </h2>
         <Card className="divide-y divide-line">
-          {quizzes.map((quiz) => (
-            <div key={quiz.course} className="flex items-center justify-between gap-3 p-4 text-sm">
-              <bdi className="flex-1">{mockCourses[quiz.course]?.title[locale]}</bdi>
-              <span className="font-semibold text-success">
-                <Ltr>{format(s.score, { score: quiz.score })}</Ltr>
-              </span>
-            </div>
-          ))}
+          {quizzes.map((quiz) => {
+            const quizCourse = courses[quiz.course];
+            return (
+              <div
+                key={quiz.course}
+                className="flex items-center justify-between gap-3 p-4 text-sm"
+              >
+                <bdi className="flex-1">{quizCourse ? pickText(quizCourse.title, locale) : ""}</bdi>
+                <span className="font-semibold text-success">
+                  <Ltr>{format(s.score, { score: quiz.score })}</Ltr>
+                </span>
+              </div>
+            );
+          })}
         </Card>
       </section>
     </div>
