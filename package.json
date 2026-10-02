@@ -18,6 +18,7 @@
     "check": "npm run typecheck && npm run lint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:int": "vitest run --config vitest.int.config.ts",
     "smoke": "node scripts/smoke.mjs",
     "verify": "npm run check && npm test && npm run build:local -- --test-db",
     "db:up": "docker compose up -d --wait",

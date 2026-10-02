@@ -21,13 +21,21 @@ if (!url) {
   process.exit(1);
 }
 
+// Serialises concurrent deploys/runs: the lock lives on the single connection below.
+const MIGRATION_LOCK_KEY = 7461201;
+
 const client = postgres(url, { max: 1, onnotice: () => {} });
 try {
+  await client`select pg_advisory_lock(${MIGRATION_LOCK_KEY})`;
   await migrate(drizzle(client), {
     migrationsFolder: "src/server/db/migrations",
     migrationsTable: "__alnamer_migrations",
   });
   console.log("Migrations applied.");
 } finally {
-  await client.end();
+  try {
+    await client`select pg_advisory_unlock(${MIGRATION_LOCK_KEY})`;
+  } finally {
+    await client.end();
+  }
 }
