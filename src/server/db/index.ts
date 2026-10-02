@@ -15,3 +15,6 @@ export function db(): Db {
   }
   return globalForDb.alnamerDb;
 }
+
+/** What a repository needs: the pool itself or a transaction handle from `db().transaction`. */
+export type DbExecutor = Pick<Db, "insert" | "select" | "update" | "delete">;
