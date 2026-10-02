@@ -154,6 +154,13 @@ export async function markCodeEmailSent(codeId: string): Promise<void> {
     .where(eq(verificationCodes.id, codeId));
 }
 
+export async function markCodeEmailFailed(codeId: string): Promise<void> {
+  await db()
+    .update(verificationCodes)
+    .set({ emailStatus: "failed" })
+    .where(eq(verificationCodes.id, codeId));
+}
+
 export async function deleteCode(codeId: string): Promise<void> {
   await db().delete(verificationCodes).where(eq(verificationCodes.id, codeId));
 }

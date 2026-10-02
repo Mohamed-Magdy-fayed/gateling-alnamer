@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { Dictionary } from "@/i18n/ar";
-import { format, formatTime, type Locale } from "@/i18n/config";
+import { format, formatTime, isLocale, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
@@ -19,14 +19,7 @@ import {
   guardSignUp,
 } from "./abuse";
 import { verifyCaptcha } from "./captcha";
-import {
-  deleteCode,
-  issueCode,
-  issueCodeDecoy,
-  markCodeEmailSent,
-  verifyCode,
-  verifyCodeDecoy,
-} from "./codes";
+import { issueCode, issueCodeDecoy, verifyCode, verifyCodeDecoy } from "./codes";
 import { authenticate } from "./credentials";
 import { hashPassword } from "./password";
 import { requestContext } from "./request-context";
@@ -166,6 +159,12 @@ export async function signOutAction(): Promise<void> {
   redirect("/");
 }
 
+/** The user's saved locale, else the locale of the request that issued the code. */
+function recipientLocale(saved: string | null, fallback: Locale): Locale {
+  const value = saved ?? undefined;
+  return isLocale(value) ? value : fallback;
+}
+
 export async function requestPasswordResetAction(
   _prev: FormState,
   formData: FormData,
@@ -182,7 +181,7 @@ export async function requestPasswordResetAction(
   }
 
   const user = await db().query.users.findFirst({
-    columns: { id: true, name: true, email: true },
+    columns: { id: true, name: true, email: true, locale: true },
     where: eq(users.email, parsed.data.email),
   });
   // Same answer whether or not the email exists (no account enumeration).
@@ -200,19 +199,18 @@ export async function requestPasswordResetAction(
   const { codeId, code } = await issueCode(user.id, "password_reset");
 
   try {
-    const body = format(t.auth.resetEmail.body, { name: user.name, code });
-    await sendEvent("email/send", {
+    await sendEvent("auth/code-email", {
+      codeId,
       to: user.email,
-      subject: t.auth.resetEmail.subject,
-      text: body,
-      html: `<div dir="${locale === "ar" ? "rtl" : "ltr"}" style="font-family:sans-serif;white-space:pre-line">${escapeHtml(body)}</div>`,
+      locale: recipientLocale(user.locale, locale),
+      purpose: "password_reset",
+      code,
+      name: user.name,
     });
-  } catch (error) {
-    console.error("Password reset email failed", error instanceof Error ? error.message : error);
-    await deleteCode(codeId);
-    return { status: "error", message: t.auth.errors.email };
+  } catch (error: unknown) {
+    // Same answer as for an unknown email; the status endpoint reports a failed send later.
+    console.error("Code email enqueue failed", error instanceof Error ? error.name : "unknown");
   }
-  await markCodeEmailSent(codeId);
   return sent;
 }
 
@@ -254,8 +252,4 @@ export async function resetPasswordAction(
   // A password reset signs the account out everywhere.
   await invalidateUserSessions(user.id);
   return { status: "success", message: t.auth.reset.done };
-}
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }

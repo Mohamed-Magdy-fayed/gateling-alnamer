@@ -1,8 +1,20 @@
+import type { Locale } from "@/i18n/config";
+
 export type EmailSendData = { to: string; subject: string; text: string; html: string };
+
+export type CodeEmailData = {
+  codeId: string;
+  to: string;
+  locale: Locale;
+  purpose: "email_verify" | "password_reset";
+  code: string;
+  name: string;
+};
 
 /** Event name -> payload type. Add new events here; `sendEvent` and the handlers follow. */
 export type EventMap = {
   "email/send": EmailSendData;
+  "auth/code-email": CodeEmailData;
   "system/ping": Record<string, never>;
 };
 

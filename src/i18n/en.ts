@@ -272,11 +272,17 @@ export const en: Dictionary = {
           "Student accounts are for ages 8 and up. A parent can create an account for a younger child.",
       },
       code: "The code is wrong or has expired.",
-      email: "We couldn't send the email right now. Try again shortly.",
     },
-    resetEmail: {
-      subject: "Your password reset code - Al-Namer",
-      body: "Hello {name},\n\nYour password reset code: {code}\nIt is valid for 10 minutes. If you didn't ask for this, ignore this email.",
+  },
+  email: {
+    code: {
+      subjectReset: "Your password reset code - Al-Namer",
+      subjectVerify: "Confirm your email - Al-Namer",
+      greeting: "Hello {name},",
+      bodyReset: "Your password reset code is:",
+      bodyVerify: "Your email confirmation code is:",
+      expiry: "It is valid for 10 minutes.",
+      footer: "If you did not ask for this, ignore this email.",
     },
   },
   dashboard: {

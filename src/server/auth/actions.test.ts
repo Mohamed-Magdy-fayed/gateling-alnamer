@@ -7,6 +7,7 @@ const h = vi.hoisted(() => ({
   user: undefined as unknown,
   calls: [] as string[],
   sent: [] as unknown[],
+  sendError: null as null | Error,
   issue: vi.fn(async (_userId: string, _purpose: string) => ({ codeId: "c1", code: "123456" })),
   decoy: vi.fn(async (_purpose: string) => undefined),
   verify: vi.fn(async (_userId: string, _purpose: string, _code: string) => ({
@@ -56,6 +57,7 @@ vi.mock("@/server/db", () => ({
 }));
 vi.mock("@/server/jobs/send", () => ({
   sendEvent: async (...args: unknown[]) => {
+    if (h.sendError) throw h.sendError;
     h.sent.push(args);
   },
 }));
@@ -91,6 +93,7 @@ beforeEach(() => {
   h.calls.length = 0;
   h.user = undefined;
   h.sent.length = 0;
+  h.sendError = null;
   h.memory?.hits.clear();
   h.ip = "203.0.113.5";
   h.deviceId = "dev-1";
@@ -151,8 +154,36 @@ describe("requestPasswordResetAction", () => {
     const known = await request();
     expect(h.issue).toHaveBeenCalledWith("u1", "password_reset");
     expect(h.decoy).toHaveBeenCalledTimes(1);
-    expect(h.sent).toHaveLength(1);
+    expect(h.sent).toEqual([
+      [
+        "auth/code-email",
+        {
+          codeId: "c1",
+          to: "who@example.test",
+          locale: "en",
+          purpose: "password_reset",
+          code: "123456",
+          name: "U",
+        },
+      ],
+    ]);
     expect(unknown).toEqual(known);
+  });
+
+  it("uses the user's saved locale over the request locale", async () => {
+    h.user = { id: "u1", name: "U", email: "who@example.test", locale: "ar" };
+    await request();
+    expect(h.sent[0]).toMatchObject(["auth/code-email", { locale: "ar" }]);
+  });
+
+  it("answers the same codeSent when the send throws", async () => {
+    h.user = undefined;
+    const unknown = await request();
+    h.user = { id: "u1", name: "U", email: "who@example.test" };
+    h.sendError = new Error("smtp down");
+    const known = await request();
+    expect(known).toEqual(unknown);
+    expect(known.status).toBe("success");
   });
 });
 
