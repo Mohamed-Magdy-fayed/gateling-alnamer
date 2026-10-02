@@ -32,8 +32,13 @@ import { sendCode } from "./send-code";
 import { createSession, destroySession, getCurrentUser, invalidateUserSessions } from "./session";
 import { type SignUpField, signUpUser } from "./sign-up";
 
+/** How the form-level message looks and sounds: danger is an error, warning a wait or a delay. */
+export type MessageTone = "info" | "success" | "warning" | "danger";
+
 export type FormState = {
   status: "idle" | "error" | "success";
+  /** Overrides the tone the status implies (error = danger, success = success). */
+  tone?: MessageTone;
   message?: string;
   /** Per-field messages (already translated) for the sign-up form. */
   fieldErrors?: Partial<Record<SignUpField, string>>;
@@ -60,15 +65,21 @@ function blockedState(blocked: Blocked, t: Dictionary, locale: Locale): FormStat
     const time = formatTime(locale, blocked.until ?? clock.now());
     return {
       status: "error",
+      tone: "danger",
       message: format(t.auth.states.lockout, { time }),
       offerReset: true,
       retryAt,
     };
   }
   if (blocked.blocked === "rateLimited") {
-    return { status: "error", message: t.auth.states.rateLimited, retryAt };
+    return { status: "error", tone: "warning", message: t.auth.states.rateLimited, retryAt };
   }
-  return { status: "error", message: t.auth.states.captchaFailed, captchaRequired: true };
+  return {
+    status: "error",
+    tone: "danger",
+    message: t.auth.states.captchaFailed,
+    captchaRequired: true,
+  };
 }
 
 /**
@@ -79,6 +90,7 @@ function verifyBlockedState(blocked: Blocked, t: Dictionary, locale: Locale): Fo
   if (blocked.blocked === "locked") {
     return {
       status: "error",
+      tone: "warning",
       message: t.auth.states.rateLimited,
       retryAt: blocked.until?.getTime(),
     };
@@ -328,6 +340,8 @@ export async function verifyEmailAction(_prev: FormState, formData: FormData): P
   if (!confirmed) return { status: "error", message: t.auth.states.codeInvalid };
   await clearCodeVerifyFailures(who);
   revalidatePath("/dashboard", "layout");
+  // The verify page re-renders with the confirmed heading while the form keeps its success state.
+  revalidatePath("/verify-email");
   return { status: "success", message: t.auth.states.verified };
 }
 
@@ -364,7 +378,12 @@ export async function resendCodeAction(_prev: FormState, formData: FormData): Pr
   if (target === "anonymous") redirect("/sign-in");
   if (!target) return { status: "error", message: t.auth.states.codeInvalid };
   if (target.nextAt > clock.now().getTime()) {
-    return { status: "error", message: t.auth.states.rateLimited, retryAt: target.nextAt };
+    return {
+      status: "error",
+      tone: "warning",
+      message: t.auth.states.rateLimited,
+      retryAt: target.nextAt,
+    };
   }
   const guard = await guardCodeSend({ identifier: target.email, ip });
   if (!("ok" in guard)) return blockedState(guard, t, locale);

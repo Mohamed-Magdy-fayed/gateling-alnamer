@@ -69,6 +69,9 @@ export function stripNonCode(source) {
   return out;
 }
 
+/** Dictionary sub-tree types that components import instead of redeclaring. */
+const SHARED_TEXT_TYPES = { AuthText: "auth" };
+
 function join(base, rest) {
   return base ? `${base}.${rest}` : rest;
 }
@@ -91,6 +94,11 @@ export function collectUsedPaths(rawSource) {
 
   for (const m of source.matchAll(/type (\w+) = Dictionary\["([\w.]+)"\]/g)) {
     if (new RegExp(String.raw`\bt:\s*${m[1]}\b`).test(source)) bases.set("t", m[2]);
+  }
+
+  // Sub-tree types exported once and imported elsewhere (auth-parts.tsx owns `AuthText`).
+  for (const [name, root] of Object.entries(SHARED_TEXT_TYPES)) {
+    if (new RegExp(String.raw`\bt:\s*${name}\b`).test(source)) bases.set("t", root);
   }
 
   const scan = () => {
@@ -184,7 +192,13 @@ async function main() {
     if (skip.has(path.relative(root, file))) continue;
     if (/\.test\.tsx?$/.test(file)) continue;
     const source = readFileSync(file, "utf8");
-    if (!/import[^;]*\b(getDictionary|Dictionary)\b[^;]*from "@\/i18n\//.test(source)) continue;
+    const usesDictionary = /import[^;]*\b(getDictionary|Dictionary)\b[^;]*from "@\/i18n\//.test(
+      source,
+    );
+    const usesSharedType = Object.keys(SHARED_TEXT_TYPES).some((name) =>
+      new RegExp(String.raw`\bt:\s*${name}\b`).test(source),
+    );
+    if (!usesDictionary && !usesSharedType) continue;
     const result = collectUsedPaths(source);
     for (const p of result.paths) usedPaths.add(p);
     for (const p of result.dynamic) dynamicUsed.add(p);

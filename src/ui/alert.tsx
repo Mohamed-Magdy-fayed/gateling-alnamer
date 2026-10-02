@@ -9,10 +9,16 @@ const icons = { info: Info, success: CircleCheck, warning: TriangleAlert, danger
 type AlertProps = {
   tone?: Tone;
   children: ReactNode;
-  /** Pass `ref` and `tabIndex={-1}` to move focus here after a failed submit. */
+  /** Pass `ref` and `tabIndex={-1}` to move focus here after a submit; a focused alert is read once. */
   ref?: Ref<HTMLDivElement>;
   tabIndex?: number;
 };
+
+/** Danger interrupts (`alert`) unless the alert takes focus, where focus already announces it. */
+function roleFor(tone: Tone, focusable: boolean): "alert" | "status" | undefined {
+  if (tone !== "danger") return "status";
+  return focusable ? undefined : "alert";
+}
 
 export function Alert({ tone = "info", children, ref, tabIndex }: AlertProps) {
   const Icon = icons[tone];
@@ -21,7 +27,7 @@ export function Alert({ tone = "info", children, ref, tabIndex }: AlertProps) {
       ref={ref}
       tabIndex={tabIndex}
       variant={tone}
-      role={tone === "danger" ? "alert" : "status"}
+      role={roleFor(tone, tabIndex !== undefined)}
       className="focus-visible:outline-2 focus-visible:outline-focus"
     >
       <Icon aria-hidden className="mt-1 size-4 shrink-0" strokeWidth={1.75} />

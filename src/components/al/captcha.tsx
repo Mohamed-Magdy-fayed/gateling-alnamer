@@ -1,8 +1,10 @@
 "use client";
 
+import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { Locale } from "@/i18n/config";
 import type { CaptchaConfig } from "@/server/auth/captcha";
+import { Alert } from "@/ui";
 
 export type { CaptchaConfig };
 
@@ -63,9 +65,11 @@ function currentTheme(): TurnstileTheme {
 
 /** Follows `<html data-theme>` (set by the theme toggle); no attribute means follow the system. */
 function useTheme(): TurnstileTheme {
-  const [theme, setTheme] = useState<TurnstileTheme>("auto");
+  // The theme only feeds the widget options (never the markup), so reading it lazily is safe.
+  const [theme, setTheme] = useState<TurnstileTheme>(() =>
+    typeof document === "undefined" ? "auto" : currentTheme(),
+  );
   useEffect(() => {
-    setTheme(currentTheme());
     const observer = new MutationObserver(() => setTheme(currentTheme()));
     observer.observe(document.documentElement, {
       attributes: true,
@@ -81,22 +85,50 @@ type CaptchaProps = {
   locale: Locale;
   /** Accessible name of the widget group, from the dictionary. */
   label: string;
+  /** Shown when Cloudflare's script cannot load (blocked, offline). */
+  failedMessage: string;
   /** Changes after every submit: the widget is rendered again because a token works only once. */
   resetKey?: unknown;
 };
 
-function TurnstileWidget({ siteKey, locale, label, resetKey }: CaptchaProps & { siteKey: string }) {
+type WidgetSize = TurnstileOptions["size"];
+
+/** Compact below 300px, flexible above; follows the container as the window or layout resizes. */
+function useWidgetSize(element: RefObject<HTMLElement | null>): WidgetSize | undefined {
+  const [size, setSize] = useState<WidgetSize>();
+  useEffect(() => {
+    const target = element.current;
+    if (!target) return;
+    const update = (width: number) => setSize(width < FLEXIBLE_MIN_WIDTH ? "compact" : "flexible");
+    update(target.clientWidth);
+    const observer = new ResizeObserver(([entry]) => entry && update(entry.contentRect.width));
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [element]);
+  return size;
+}
+
+function TurnstileWidget({
+  siteKey,
+  locale,
+  label,
+  failedMessage,
+  resetKey,
+}: CaptchaProps & { siteKey: string }) {
   const container = useRef<HTMLDivElement>(null);
   const theme = useTheme();
+  const size = useWidgetSize(container);
   const [token, setToken] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: resetKey only forces a fresh widget and token
   useEffect(() => {
     const element = container.current;
-    if (!element) return;
+    if (!element || !size) return;
     let widgetId: string | undefined;
     let cancelled = false;
     setToken("");
+    setLoadFailed(false);
     loadTurnstile()
       .then((api) => {
         if (cancelled) return;
@@ -104,23 +136,27 @@ function TurnstileWidget({ siteKey, locale, label, resetKey }: CaptchaProps & { 
           sitekey: siteKey,
           language: locale,
           theme,
-          size: element.clientWidth < FLEXIBLE_MIN_WIDTH ? "compact" : "flexible",
+          size,
           callback: setToken,
           "expired-callback": () => setToken(""),
           "error-callback": () => setToken(""),
         });
       })
-      .catch(() => setToken(""));
+      .catch(() => {
+        setToken("");
+        setLoadFailed(true);
+      });
     return () => {
       cancelled = true;
       if (widgetId !== undefined) window.turnstile?.remove(widgetId);
     };
-  }, [siteKey, locale, theme, resetKey]);
+  }, [siteKey, locale, theme, size, resetKey]);
 
   return (
-    <fieldset className="m-0 min-h-[65px] min-w-0 border-0 p-0">
+    <fieldset className="m-0 min-h-captcha min-w-0 border-0 p-0">
       <legend className="sr-only">{label}</legend>
       <div ref={container} />
+      {loadFailed ? <Alert tone="danger">{failedMessage}</Alert> : null}
       <input type="hidden" name={TOKEN_FIELD} value={token} readOnly />
     </fieldset>
   );
@@ -131,7 +167,7 @@ function TurnstileWidget({ siteKey, locale, label, resetKey }: CaptchaProps & { 
  * page locale, theme = `data-theme`, re-rendered when either changes and after every submit);
  * the fake provider (demo and tests) renders only a hidden field that always passes.
  */
-export function Captcha({ config, locale, label, resetKey }: CaptchaProps) {
+export function Captcha({ config, locale, label, failedMessage, resetKey }: CaptchaProps) {
   if (config.provider === "turnstile") {
     return (
       <TurnstileWidget
@@ -139,6 +175,7 @@ export function Captcha({ config, locale, label, resetKey }: CaptchaProps) {
         siteKey={config.siteKey}
         locale={locale}
         label={label}
+        failedMessage={failedMessage}
         resetKey={resetKey}
       />
     );

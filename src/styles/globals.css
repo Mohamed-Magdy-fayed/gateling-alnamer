@@ -71,6 +71,7 @@
   --shadow-e1: var(--shadow-1);
   --shadow-e2: var(--shadow-2);
   --shadow-e3: var(--shadow-3);
+  --spacing-captcha: 65px; /* the height Turnstile reserves, so the form does not jump */
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;

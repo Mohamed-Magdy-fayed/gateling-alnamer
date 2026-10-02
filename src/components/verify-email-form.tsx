@@ -1,24 +1,24 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { type Ref, useActionState, useEffect, useRef, useState } from "react";
 import { Captcha, type CaptchaConfig } from "@/components/al/captcha";
 import { CodeInput } from "@/components/al/code-input";
-import type { Dictionary } from "@/i18n/ar";
 import type { Locale } from "@/i18n/config";
-import { type FormState, verifyEmailAction } from "@/server/auth/actions";
+import { verifyEmailAction } from "@/server/auth/actions";
 import { Alert, ButtonLink } from "@/ui";
 import { SubmitButton } from "@/ui/submit-button";
-import { Message, useRetryBlock } from "./auth-parts";
+import { type AuthText, idle, Message, useRetryBlock } from "./auth-parts";
 import { CodeDelivery } from "./code-delivery";
 
-type AuthText = Dictionary["auth"];
-const idle: FormState = { status: "idle" };
+type EmailVerifiedProps = { t: AuthText; alertRef?: Ref<HTMLDivElement> };
 
-/** The confirmed state with the way on; also what /verify-email shows an already-verified user. */
-export function EmailVerified({ t }: { t: AuthText }) {
+/** The confirmed state with the way on. Given `alertRef`, the alert is a focus target (-1). */
+function EmailVerified({ t, alertRef }: EmailVerifiedProps) {
   return (
     <div className="flex flex-col gap-4">
-      <Alert tone="success">{t.states.verified}</Alert>
+      <Alert ref={alertRef} tabIndex={alertRef ? -1 : undefined} tone="success">
+        {t.states.verified}
+      </Alert>
       <ButtonLink href="/dashboard" size="lg" className="w-full">
         {t.verify.continue}
       </ButtonLink>
@@ -26,15 +26,32 @@ export function EmailVerified({ t }: { t: AuthText }) {
   );
 }
 
-type VerifyEmailFormProps = { t: AuthText; captcha: CaptchaConfig; locale: Locale };
+type VerifyEmailFormProps = {
+  t: AuthText;
+  captcha: CaptchaConfig;
+  locale: Locale;
+  /** The account's email is already confirmed (the server's view; true again after a success). */
+  verified: boolean;
+};
 
-export function VerifyEmailForm({ t, captcha, locale }: VerifyEmailFormProps) {
+/**
+ * The code form, which turns into the confirmed state in place. The form stays mounted through the
+ * server re-render that follows a success, so the verified alert can take focus and the page
+ * heading (rendered by the server from `verified`) changes around it.
+ */
+export function VerifyEmailForm({ t, captcha, locale, verified }: VerifyEmailFormProps) {
   const [state, action] = useActionState(verifyEmailAction, idle);
   const block = useRetryBlock(state.retryAt, t);
+  const verifiedAlert = useRef<HTMLDivElement>(null);
+  const succeeded = state.status === "success";
+  useEffect(() => {
+    if (succeeded) verifiedAlert.current?.focus();
+  }, [succeeded]);
   // After 30 failed verifies on the account the server wants a captcha; the widget then stays.
   const [needsCaptcha, setNeedsCaptcha] = useState(false);
   if (state.captchaRequired && !needsCaptcha) setNeedsCaptcha(true);
-  if (state.status === "success") return <EmailVerified t={t} />;
+  if (succeeded) return <EmailVerified t={t} alertRef={verifiedAlert} />;
+  if (verified) return <EmailVerified t={t} />;
   return (
     <div className="flex flex-col gap-6">
       <form action={action} className="flex flex-col gap-4" noValidate>
@@ -45,6 +62,7 @@ export function VerifyEmailForm({ t, captcha, locale }: VerifyEmailFormProps) {
             config={captcha}
             locale={locale}
             label={t.states.captchaLabel}
+            failedMessage={t.states.captchaFailed}
             resetKey={state}
           />
         ) : null}

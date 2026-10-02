@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { formatTime } from "@/i18n/config";
 import { en } from "@/i18n/en";
+import type { FormState } from "./actions";
 import { hashPassword } from "./password";
 
 const h = vi.hoisted(() => ({
@@ -339,7 +340,11 @@ describe("resetPasswordAction", () => {
     for (let i = 0; i < 10; i++) await reset();
     const verifies = h.verify.mock.calls.length;
     const locked = await reset();
-    expect(locked).toMatchObject({ status: "error", message: en.auth.states.rateLimited });
+    expect(locked).toMatchObject({
+      status: "error",
+      tone: "warning",
+      message: en.auth.states.rateLimited,
+    });
     expect(locked.retryAt).toBeGreaterThan(Date.now());
     expect(h.verify.mock.calls.length).toBe(verifies);
     h.deviceId = "dev-victim";
@@ -355,7 +360,11 @@ describe("resetPasswordAction", () => {
     }
     h.deviceId = "dev-victim";
     const asked = await reset();
-    expect(asked).toMatchObject({ captchaRequired: true, message: en.auth.states.captchaFailed });
+    expect(asked).toMatchObject({
+      captchaRequired: true,
+      tone: "danger",
+      message: en.auth.states.captchaFailed,
+    });
     const refused = await reset({ captcha_token: "fail" });
     expect(refused).toMatchObject({ captchaRequired: true });
     h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" });
@@ -465,10 +474,10 @@ describe("abuse guards in the actions", () => {
     signInAction({ status: "idle" }, form({ identifier, password: "wrong pass 1" }));
 
   async function sequence(identifier: string) {
-    const out: Array<{ message?: string; retryAt?: number; offerReset?: boolean }> = [];
+    const out: Array<Pick<FormState, "message" | "retryAt" | "offerReset" | "tone">> = [];
     for (let i = 0; i < 11; i++) {
-      const { message, retryAt, offerReset } = await wrongSignIn(identifier);
-      out.push({ message, retryAt, offerReset });
+      const { message, retryAt, offerReset, tone } = await wrongSignIn(identifier);
+      out.push({ message, retryAt, offerReset, tone });
     }
     return out;
   }
@@ -484,6 +493,7 @@ describe("abuse guards in the actions", () => {
       en.auth.states.lockout.replace("{time}", formatTime("en", new Date(locked?.retryAt ?? 0))),
     );
     expect(locked?.offerReset).toBe(true);
+    expect(locked?.tone).toBe("danger");
   });
 
   it("answers an unknown identifier exactly like a known one", async () => {
@@ -523,7 +533,11 @@ describe("abuse guards in the actions", () => {
       expect((await submit()).message).toBe(en.auth.errors.invalid);
     }
     const blocked = await submit();
-    expect(blocked).toMatchObject({ status: "error", message: en.auth.states.rateLimited });
+    expect(blocked).toMatchObject({
+      status: "error",
+      tone: "warning",
+      message: en.auth.states.rateLimited,
+    });
     expect(blocked.retryAt).toBeGreaterThan(Date.now());
   });
 

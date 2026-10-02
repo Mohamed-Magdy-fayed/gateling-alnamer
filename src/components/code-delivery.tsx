@@ -3,19 +3,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { useActionState, useEffect, useState } from "react";
 import { CODE_FIELD_ID } from "@/components/al/code-input";
-import type { Dictionary } from "@/i18n/ar";
 import { useTRPC } from "@/lib/trpc/client";
-import { type FormState, resendCodeAction } from "@/server/auth/actions";
+import { resendCodeAction } from "@/server/auth/actions";
 import { CODE_RESEND_COOLDOWN_MS } from "@/server/config/policy";
 import { Alert } from "@/ui";
 import { SubmitButton } from "@/ui/submit-button";
-import { useRetryBlock } from "./auth-parts";
-
-type AuthText = Dictionary["auth"];
+import { type AuthText, idle, useRetryBlock } from "./auth-parts";
 
 const POLL_INTERVAL_MS = 5_000;
 const POLL_WINDOW_MS = 2 * 60 * 1000;
-const idle: FormState = { status: "idle" };
 
 /**
  * Under a code field: polls the delivery state every 5 seconds for 2 minutes, shows the "email is
@@ -56,14 +52,20 @@ export function CodeDelivery({
     resentAt === undefined ? 0 : resentAt + CODE_RESEND_COOLDOWN_MS,
   );
   const block = useRetryBlock(reopensAt || undefined, t);
+  // A resend result reads as part of the cooldown: it clears when the button opens again. A result
+  // without a wait (a refusal, say) stays until the next submit.
+  const showResult =
+    Boolean(state.message) && (block.blocked || (state.status === "error" && !state.retryAt));
   const delayed =
     status.data?.status === "failed" || (status.data?.status === "queued" && !block.blocked);
 
   return (
     <div className="flex flex-col gap-3 border-t border-line pt-4">
       {delayed ? <Alert tone="warning">{t.states.emailDelayed}</Alert> : null}
-      {state.status !== "idle" && state.message ? (
-        <Alert tone={state.status === "error" ? "danger" : "info"}>{state.message}</Alert>
+      {showResult ? (
+        <Alert tone={state.tone ?? (state.status === "error" ? "danger" : "info")}>
+          {state.message}
+        </Alert>
       ) : null}
       <form action={action} className="flex flex-col gap-4">
         <input type="hidden" name="purpose" value={purpose} />

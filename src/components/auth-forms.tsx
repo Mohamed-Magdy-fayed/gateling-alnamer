@@ -9,10 +9,8 @@ import { PasswordInput } from "@/components/al/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import type { Dictionary } from "@/i18n/ar";
 import { dirOf, type Locale } from "@/i18n/config";
 import {
-  type FormState,
   requestPasswordResetAction,
   resetPasswordAction,
   signInAction,
@@ -21,11 +19,8 @@ import {
 import { isUnder18 } from "@/server/auth/age";
 import { Alert, cn, describedBy, Field } from "@/ui";
 import { SubmitButton } from "@/ui/submit-button";
-import { linkClass, Message, useRetryBlock } from "./auth-parts";
+import { type AuthText, idle, linkClass, Message, useRetryBlock } from "./auth-parts";
 import { CodeDelivery } from "./code-delivery";
-
-type AuthText = Dictionary["auth"];
-const idle: FormState = { status: "idle" };
 
 function RequiredNote({ t }: { t: AuthText }) {
   return <p className="text-sm text-fg-muted">{t.fields.requiredNote}</p>;
@@ -66,7 +61,13 @@ export function SignInForm({ t, captcha, locale }: { t: AuthText } & CaptchaProp
         </Link>
       )}
       {needsCaptcha ? (
-        <Captcha config={captcha} locale={locale} label={t.states.captchaLabel} resetKey={state} />
+        <Captcha
+          config={captcha}
+          locale={locale}
+          label={t.states.captchaLabel}
+          failedMessage={t.states.captchaFailed}
+          resetKey={state}
+        />
       ) : null}
       <SubmitButton disabled={block.blocked} disabledReason={block.reason}>
         {t.signIn.submit}
@@ -209,7 +210,13 @@ export function SignUpForm({ t, defaultRole, locale, captcha }: SignUpFormProps)
           </div>
         </div>
       ) : null}
-      <Captcha config={captcha} locale={locale} label={t.states.captchaLabel} resetKey={state} />
+      <Captcha
+        config={captcha}
+        locale={locale}
+        label={t.states.captchaLabel}
+        failedMessage={t.states.captchaFailed}
+        resetKey={state}
+      />
       <SubmitButton disabled={block.blocked} disabledReason={block.reason}>
         {t.signUp.submit}
       </SubmitButton>
@@ -230,11 +237,17 @@ export function ForgotPasswordForm({ t, captcha, locale }: { t: AuthText } & Cap
     <form action={action} className="flex flex-col gap-4" noValidate>
       <Message state={state} t={t} />
       <Field name="email" type="email" label={t.fields.email} autoComplete="email" required ltr />
-      <Captcha config={captcha} locale={locale} label={t.states.captchaLabel} resetKey={state} />
+      <Captcha
+        config={captcha}
+        locale={locale}
+        label={t.states.captchaLabel}
+        failedMessage={t.states.captchaFailed}
+        resetKey={state}
+      />
       <SubmitButton disabled={block.blocked} disabledReason={block.reason}>
         {t.forgot.submit}
       </SubmitButton>
-      <Link href="/reset-password" className={cn(linkClass, "text-center text-sm")}>
+      <Link href="/reset-password" className={cn(linkClass, "justify-center text-center text-sm")}>
         {t.forgot.haveCode}
       </Link>
     </form>
@@ -254,7 +267,7 @@ export function ResetPasswordForm({ t, pending, captcha, locale }: ResetPassword
     return (
       <div className="flex flex-col gap-4">
         <Message state={state} t={t} />
-        <Link href="/sign-in" className={cn(linkClass, "text-center")}>
+        <Link href="/sign-in" className={cn(linkClass, "justify-center text-center")}>
           {t.signIn.title}
         </Link>
       </div>
@@ -291,6 +304,7 @@ export function ResetPasswordForm({ t, pending, captcha, locale }: ResetPassword
             config={captcha}
             locale={locale}
             label={t.states.captchaLabel}
+            failedMessage={t.states.captchaFailed}
             resetKey={state}
           />
         ) : null}

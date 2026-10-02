@@ -34,6 +34,8 @@ const BANNER = "أكّد بريدك الإلكتروني قبل شراء أي د
 const VERIFIED = "تم تأكيد بريدك الإلكتروني.";
 const CODE_INVALID = "هذا الرمز غير صحيح أو انتهت صلاحيته. اطلب رمزًا جديدًا.";
 const CODE_SENT = "إذا كان هناك حساب بهذا البريد، فستصلك رسالة برمز من 6 أرقام خلال دقائق.";
+const VERIFY_TITLE = "تأكيد بريدك الإلكتروني";
+const VERIFIED_TITLE = "تم تأكيد البريد";
 const EMAIL_DELAYED = "تأخّر وصول الرسالة. تحقق من مجلد الرسائل غير المرغوب فيها أو أعد الإرسال.";
 const LINK_PARENT = "ربط حساب ولي الأمر قادم قريبًا ليتمكن من متابعة تقدّمك.";
 
@@ -192,8 +194,12 @@ test("sign-up -> Mailpit code -> /verify-email -> verified, and the banner goes 
   await page.waitForURL("**/verify-email");
 
   await page.getByLabel(FIELD_CODE, { exact: true }).fill(code);
+  await expect(page.getByRole("heading", { level: 1, name: VERIFY_TITLE })).toBeVisible();
   await page.getByRole("button", { name: VERIFY, exact: true }).click();
-  await expect(page.getByText(VERIFIED)).toBeVisible();
+  // The verified Alert takes focus and the page heading switches to the verified state.
+  const verifiedAlert = page.locator('[data-slot="alert"]', { hasText: VERIFIED });
+  await expect(verifiedAlert).toBeFocused();
+  await expect(page.getByRole("heading", { level: 1, name: VERIFIED_TITLE })).toBeVisible();
   await page.getByRole("link", { name: CONTINUE }).click();
   await page.waitForURL("**/dashboard");
   await expect(page.getByText(BANNER)).toHaveCount(0);
@@ -221,6 +227,9 @@ test("a failed or slow code email shows the delayed state with a resend button",
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
   await page.waitForURL("**/verify-email");
   await expect(page.getByText(EMAIL_DELAYED)).toBeVisible();
+  // A delay is a warning, announced politely (role=status), not an error (role=alert).
+  await expect(page.getByRole("status").filter({ hasText: EMAIL_DELAYED })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: EMAIL_DELAYED })).toHaveCount(0);
   await expect(page.getByRole("button", { name: RESEND })).toBeEnabled();
 });
 

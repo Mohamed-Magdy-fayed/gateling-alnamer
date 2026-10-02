@@ -248,6 +248,8 @@ export const en: Dictionary = {
       submit: "Confirm",
       resend: "Send a new code",
       continue: "Continue to my dashboard",
+      doneTitle: "Email confirmed",
+      doneSubtitle: "You can now buy courses.",
       bannerAction: "Confirm email",
     },
     states: {

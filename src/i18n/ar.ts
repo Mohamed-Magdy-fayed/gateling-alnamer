@@ -255,6 +255,8 @@ export const ar = {
       submit: "تأكيد",
       resend: "إرسال رمز جديد",
       continue: "المتابعة إلى لوحتي",
+      doneTitle: "تم تأكيد البريد",
+      doneSubtitle: "يمكنك الآن شراء الدورات.",
       bannerAction: "تأكيد البريد",
     },
     states: {

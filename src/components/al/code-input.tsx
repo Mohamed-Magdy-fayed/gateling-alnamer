@@ -2,6 +2,7 @@
 
 import { type ComponentProps, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
+import { onlyLatinDigits } from "@/lib/digits";
 import { cn } from "@/lib/utils";
 import { describedBy, FieldFrame } from "@/ui";
 
@@ -23,7 +24,8 @@ type CodeInputProps = Omit<
 
 /**
  * One input for a 6-digit one-time code: numeric keypad, OS autofill from SMS or mail
- * (`one-time-code`), digits only. The value is an LTR island aligned to the start edge.
+ * (`one-time-code`), digits only (Arabic-Indic digits typed or pasted become 0-9). The value is an
+ * LTR island aligned to the start edge.
  */
 export function CodeInput({
   name,
@@ -43,6 +45,7 @@ export function CodeInput({
   return (
     <FieldFrame id={id} label={label} hint={hint} error={error}>
       <Input
+        {...props}
         ref={ref}
         id={id}
         name={name}
@@ -56,11 +59,10 @@ export function CodeInput({
         aria-describedby={describedBy(id, { hint, error })}
         className={cn("tabular text-start tracking-[0.4em]", className)}
         onChange={(event) => {
-          const digits = event.currentTarget.value.replace(/\D/g, "");
+          const digits = onlyLatinDigits(event.currentTarget.value);
           if (digits !== event.currentTarget.value) event.currentTarget.value = digits;
           onChange?.(event);
         }}
-        {...props}
       />
     </FieldFrame>
   );

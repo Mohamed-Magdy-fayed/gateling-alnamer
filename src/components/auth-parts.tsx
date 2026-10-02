@@ -5,13 +5,19 @@ import { useEffect, useRef, useState } from "react";
 import type { Dictionary } from "@/i18n/ar";
 import { format } from "@/i18n/config";
 import { formatCountdown } from "@/lib/countdown";
-import type { FormState } from "@/server/auth/actions";
+import type { FormState, MessageTone } from "@/server/auth/actions";
 import { Alert } from "@/ui";
 
-type AuthText = Dictionary["auth"];
+export type AuthText = Dictionary["auth"];
 
-export const linkClass = "font-medium text-primary underline-offset-4 hover:underline";
-const summaryLinkClass = "font-medium underline underline-offset-4";
+/** The resting form state every auth form starts from. */
+export const idle: FormState = { status: "idle" };
+
+/** A text link on an auth screen: underline on hover, and a 44px-tall hit area (DESIGN.md section 8). */
+export const linkClass =
+  "inline-flex min-h-11 items-center font-medium text-primary underline-offset-4 hover:underline";
+const summaryLinkClass =
+  "inline-flex min-h-11 items-center font-medium underline underline-offset-4";
 
 /** Focuses the field a summary entry points at (a plain fragment jump does not focus buttons). */
 function FieldLink({ field, children }: { field: string; children: string }) {
@@ -30,6 +36,10 @@ function FieldLink({ field, children }: { field: string; children: string }) {
   );
 }
 
+function toneOf(state: FormState): MessageTone {
+  return state.tone ?? (state.status === "error" ? "danger" : "success");
+}
+
 /**
  * Form-level result. After every submit it takes focus (a `tabIndex={-1}` alert) so keyboard and
  * screen-reader users land on the outcome; field-format errors are listed as links to the fields.
@@ -44,7 +54,7 @@ export function Message({ state, t }: { state: FormState; t: AuthText }) {
     (entry): entry is [string, string] => typeof entry[1] === "string",
   );
   return (
-    <Alert ref={ref} tabIndex={-1} tone={state.status === "error" ? "danger" : "success"}>
+    <Alert ref={ref} tabIndex={-1} tone={toneOf(state)}>
       {state.message}
       {state.offerReset ? (
         <>
