@@ -11,10 +11,13 @@ export type CodeEmailData = {
   name: string;
 };
 
+export type SupportRequestData = { userId: string; locale: Locale };
+
 /** Event name -> payload type. Add new events here; `sendEvent` and the handlers follow. */
 export type EventMap = {
   "email/send": EmailSendData;
   "auth/code-email": CodeEmailData;
+  "devices/support-request": SupportRequestData;
   "system/ping": Record<string, never>;
 };
 

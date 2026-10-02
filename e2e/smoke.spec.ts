@@ -1,4 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
+import { type Browser, type BrowserContext, expect, type Page, test } from "@playwright/test";
+import postgres from "postgres";
 import { uniqueClientIpPerTest } from "./helpers/client-ip";
 import { countMail, extractCode, waitForMailText } from "./helpers/mailpit";
 
@@ -511,4 +512,117 @@ test("the password toggle keeps one name and exposes aria-pressed", async ({ pag
     "true",
   );
   await expect(page.getByLabel(FIELD_PASSWORD, { exact: true })).toHaveAttribute("type", "text");
+});
+
+// ---- Device limit (A5.4): block screen, throttled removal, sign out of other devices ----
+const BLOCKED_TITLE = "وصلت إلى الحد الأقصى للأجهزة";
+const REMOVE_DEVICE = "إزالة هذا الجهاز";
+const THROTTLED = /يمكنك إزالة جهاز آخر بعد .*\d{4}/;
+const SUPPORT = "تواصل مع الدعم";
+const SUPPORT_SENT = "أرسلنا طلبك إلى فريق الدعم وإلى ولي أمرك إن وُجد.";
+const PRIVATE_NOTICE = "النافذة الخاصة أو مسح بيانات المتصفح يجعلان هذا المتصفح يُحتسب جهازًا جديدًا.";
+const SIGN_OUT_OTHERS = "تسجيل الخروج من الأجهزة الأخرى";
+const SIGN_OUT_OTHERS_DONE = "تم تسجيل الخروج من الأجهزة الأخرى. ما زالت أجهزتك مسجلة.";
+const ACCOUNT_LINK = "حسابي";
+
+async function setDeviceLimit(limit: number) {
+  const sql = postgres(process.env.TEST_DATABASE_URL ?? "", {
+    max: 1,
+    onnotice: () => {},
+  });
+  try {
+    await sql`update platform_settings set device_limit = ${limit} where id = 1`;
+  } finally {
+    await sql.end();
+  }
+}
+
+test.describe("device limit of 2", () => {
+  const studentEmail = `smoke-dev-${runId}@alnamer.local`;
+  let contexts: BrowserContext[] = [];
+
+  test.beforeAll(async () => {
+    await setDeviceLimit(2);
+  });
+  test.afterAll(async () => {
+    await Promise.all(contexts.map((c) => c.close()));
+    await setDeviceLimit(50);
+  });
+
+  async function newDevice(browser: Browser, baseURL: string, octet: number) {
+    const context = await browser.newContext({
+      baseURL,
+      extraHTTPHeaders: { "x-real-ip": `10.${runOctet}.${octet}.${deviceIpSeed}` },
+    });
+    contexts = [...contexts, context];
+    return { context, page: await context.newPage() };
+  }
+  const runOctet = Math.floor(Date.now() / 1000) % 250;
+  const deviceIpSeed = (Date.now() % 200) + 20;
+
+  async function signInStudent(page: Page, destination: RegExp) {
+    await page.goto("/sign-in");
+    await page.getByLabel(FIELD_EMAIL).fill(studentEmail);
+    await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+    await page.getByRole("button", { name: SIGN_IN, exact: true }).click();
+    await page.waitForURL(destination);
+  }
+
+  test("the sign-up form shows the private-window notice for students", async ({ page }) => {
+    await page.goto("/sign-up");
+    await expect(page.getByText(PRIVATE_NOTICE)).toBeVisible();
+  });
+
+  test("a third device is blocked, removes one, lands on the dashboard; a second removal is throttled", async ({
+    browser,
+    baseURL,
+  }) => {
+    test.setTimeout(90_000);
+    const first = await newDevice(browser, baseURL as string, 1);
+    await first.page.goto("/sign-up");
+    await first.page.getByLabel(FIELD_NAME).fill("Device Student");
+    await first.page.getByLabel(FIELD_EMAIL).fill(studentEmail);
+    await first.page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+    await pickDate(first.page, 25, 4, 14);
+    await first.page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+    await first.page.waitForURL("**/verify-email");
+    await first.page.goto("/dashboard");
+    await first.page.getByRole("button", { name: SIGN_OUT }).click();
+    await first.page.waitForURL((url) => url.pathname === "/");
+    await signInStudent(first.page, /[/]dashboard/);
+
+    const second = await newDevice(browser, baseURL as string, 2);
+    await signInStudent(second.page, /[/]dashboard/);
+
+    const third = await newDevice(browser, baseURL as string, 3);
+    await signInStudent(third.page, /[/]devices[/]blocked/);
+    await expect(third.page.getByRole("heading", { name: BLOCKED_TITLE })).toBeVisible();
+    await expect(third.page.getByText(PRIVATE_NOTICE)).toBeVisible();
+    await expect(third.page.getByRole("list").getByRole("listitem")).toHaveCount(2);
+
+    await third.page.getByRole("button", { name: REMOVE_DEVICE }).first().click();
+    await third.page.getByRole("alertdialog").getByRole("button", { name: REMOVE_DEVICE }).click();
+    await expect(third.page).toHaveURL(/[/]dashboard$/);
+    await expect(third.page.getByRole("button", { name: SIGN_OUT })).toBeVisible();
+
+    const fourth = await newDevice(browser, baseURL as string, 4);
+    await signInStudent(fourth.page, /[/]devices[/]blocked/);
+    await expect(fourth.page.getByText(THROTTLED).first()).toBeVisible();
+    await expect(fourth.page.getByRole("button", { name: REMOVE_DEVICE }).first()).toBeDisabled();
+
+    await fourth.page.getByRole("button", { name: SUPPORT }).click();
+    await expect(fourth.page.getByText(SUPPORT_SENT)).toBeVisible();
+
+    // Sign out of other devices from the third device keeps its own session.
+    await third.page.getByRole("link", { name: ACCOUNT_LINK }).click();
+    await third.page.waitForURL("**/dashboard/account");
+    await third.page.getByRole("button", { name: SIGN_OUT_OTHERS }).click();
+    await expect(third.page.getByText(SIGN_OUT_OTHERS_DONE)).toBeVisible();
+    await third.page.goto("/dashboard");
+    await expect(third.page.getByRole("button", { name: SIGN_OUT, exact: true })).toBeVisible();
+    await first.page.goto("/dashboard");
+    await expect(first.page).toHaveURL(/[/]sign-in/);
+    await second.page.goto("/dashboard");
+    await expect(second.page).toHaveURL(/[/]sign-in/);
+  });
 });

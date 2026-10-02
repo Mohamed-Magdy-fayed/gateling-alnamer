@@ -1,4 +1,4 @@
-import { LogOut } from "lucide-react";
+import { LogOut, UserRound } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { ThemeSwitch } from "@/components/al/theme-switch";
@@ -10,7 +10,7 @@ import { getDictionary } from "@/i18n/server";
 import { signOutAction } from "@/server/auth/actions";
 import { requireUser } from "@/server/auth/session";
 import { isEmailVerified } from "@/server/auth/verified-email";
-import { Button, Container, Wordmark } from "@/ui";
+import { Button, ButtonLink, Container, Wordmark } from "@/ui";
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
@@ -28,6 +28,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           <div className="ms-auto flex items-center gap-1">
             <LanguageSwitch />
             <ThemeSwitch />
+            <ButtonLink href="/dashboard/account" variant="ghost" size="sm">
+              <UserRound aria-hidden className="size-4" strokeWidth={1.75} />
+              <span className="max-sm:sr-only">{t.devices.accountTitle}</span>
+            </ButtonLink>
             <form action={signOutAction}>
               <Button type="submit" variant="ghost" size="sm">
                 <LogOut aria-hidden className="size-4 rtl:-scale-x-100" strokeWidth={1.75} />

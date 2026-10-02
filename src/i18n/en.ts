@@ -298,6 +298,12 @@ export const en: Dictionary = {
       expiry: "It is valid for 10 minutes.",
       footer: "If you did not ask for this, ignore this email.",
     },
+    deviceSupport: {
+      subject: "A student reached the device limit - Al-Namer",
+      body: "The student {name} reached the device limit and needs help signing in.",
+      numberLabel: "Public number:",
+      footer: "You can reset the student's devices from the admin area.",
+    },
   },
   dashboard: {
     hello: "Hello,",
@@ -371,8 +377,25 @@ export const en: Dictionary = {
   },
   devices: {
     blockedTitle: "You've reached your device limit",
+    blockedBody: {
+      one: "Your account can be used on 1 device. Remove one to sign in on this device.",
+      other: "Your account can be used on {count} devices. Remove one to sign in on this device.",
+    },
+    lastSeen: "Last used {time}",
+    remove: "Remove this device",
+    removeConfirm: "This device will be signed out. You can't remove another device until {date}.",
+    cancel: "Cancel",
+    throttled: "You can remove another device after {date}.",
+    contactSupport: "Contact support",
+    supportSent: "We've sent your request to support and to your parent, if linked.",
+    privateNotice:
+      "A private window or cleared browser data makes this browser count as a new device.",
+    accountTitle: "My account",
+    signOutOthers: "Sign out of other devices",
+    signOutOthersDone: "Signed out of other devices. Your devices stay registered.",
     softWarning:
       "You're over the device limit. Sign-in was allowed this time and the team was told.",
+    unknownDevice: "Unknown device",
   },
   legal: {
     terms: "Terms and conditions",

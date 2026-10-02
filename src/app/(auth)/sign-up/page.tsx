@@ -20,6 +20,7 @@ export default async function SignUpPage({
         defaultRole={role ?? "student"}
         locale={locale}
         captcha={currentCaptchaConfig()}
+        deviceNotice={t.devices.privateNotice}
       />
     </AuthShell>
   );

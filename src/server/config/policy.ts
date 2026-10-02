@@ -25,6 +25,8 @@ export type AuthLimits = {
   readonly signIn: { readonly ip: LimitRule };
   readonly signUp: { readonly ip: LimitRule };
   readonly codeSend: { readonly id: LimitRule; readonly ip: LimitRule };
+  /** "Contact support" from the device block screen: per student. */
+  readonly supportRequest: { readonly user: LimitRule };
   /** Failed code verifies, the D32 pattern: a pair lock per (identifier, device) and a captcha-only account counter. */
   readonly codeVerify: { readonly pair: LimitRule; readonly account: LimitRule };
   readonly lockout: {
@@ -39,11 +41,13 @@ export type AuthLimits = {
 
 const MINUTES_15 = 15 * 60;
 const HOUR = 60 * 60;
+const DAY = 24 * HOUR;
 /** Sliding-window limits for the auth actions (A2.2). */
 export const AUTH_LIMITS: AuthLimits = {
   signIn: { ip: { max: 20, windowSec: MINUTES_15 } },
   signUp: { ip: { max: 5, windowSec: HOUR } },
   codeSend: { id: { max: 3, windowSec: MINUTES_15 }, ip: { max: 10, windowSec: HOUR } },
+  supportRequest: { user: { max: 3, windowSec: DAY } },
   codeVerify: {
     pair: { max: 10, windowSec: MINUTES_15 },
     account: { max: 30, windowSec: MINUTES_15 },

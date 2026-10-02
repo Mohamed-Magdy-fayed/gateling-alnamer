@@ -5,12 +5,14 @@ import type { EventMap, EventName } from "./events";
 import { handlePing } from "./functions/ping";
 import { runCodeEmailInline } from "./functions/send-code-email";
 import { handleSendEmail } from "./functions/send-email";
+import { handleSupportRequest } from "./functions/support-request";
 
 type Handlers = { [K in EventName]: (data: EventMap[K]) => Promise<void> };
 
 const inlineHandlers: Handlers = {
   "email/send": handleSendEmail,
   "auth/code-email": runCodeEmailInline,
+  "devices/support-request": handleSupportRequest,
   "system/ping": handlePing,
 };
 

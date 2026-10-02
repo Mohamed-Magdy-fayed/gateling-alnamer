@@ -92,9 +92,16 @@ function toRole(value: string | undefined): Role {
   return roles.find((item) => item === value) ?? "student";
 }
 
-type SignUpFormProps = { t: AuthText; defaultRole: string; locale: Locale; captcha: CaptchaConfig };
+type SignUpFormProps = {
+  t: AuthText;
+  defaultRole: string;
+  locale: Locale;
+  captcha: CaptchaConfig;
+  /** The private-window / cleared-data device notice, shown while Student is picked. */
+  deviceNotice: string;
+};
 
-export function SignUpForm({ t, defaultRole, locale, captcha }: SignUpFormProps) {
+export function SignUpForm({ t, defaultRole, locale, captcha, deviceNotice }: SignUpFormProps) {
   const [state, action] = useActionState(signUpAction, idle);
   const block = useRetryBlock(state.retryAt, t);
   const dir = dirOf(locale);
@@ -210,6 +217,7 @@ export function SignUpForm({ t, defaultRole, locale, captcha }: SignUpFormProps)
           </div>
         </div>
       ) : null}
+      {role === "student" ? <p className="text-sm text-fg-muted">{deviceNotice}</p> : null}
       <Captcha
         config={captcha}
         locale={locale}

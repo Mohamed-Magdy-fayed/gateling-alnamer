@@ -115,6 +115,8 @@ try {
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));
 }
+// The device-limit specs reach the same database through this variable.
+process.env.TEST_DATABASE_URL ||= DEFAULT_TEST_DATABASE_URL;
 await checkServices();
 await resetTestDatabase();
 run(["node_modules/tsx/dist/cli.mjs", "scripts/migrate.mts", "--test-db"], "db:migrate");

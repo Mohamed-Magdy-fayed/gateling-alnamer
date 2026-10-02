@@ -11,6 +11,7 @@ import {
   guardCodeVerify,
   guardSignIn,
   guardSignUp,
+  guardSupportRequest,
 } from "./abuse";
 import { createCaptchaVerifier } from "./captcha";
 import { deriveKey } from "./keys";
@@ -348,5 +349,21 @@ describe("code verify (D32 pattern)", () => {
       return out;
     };
     expect(await run("nobody@example.com")).toEqual(await run("real@example.com"));
+  });
+});
+
+describe("support requests", () => {
+  it("allows 3 a day per user and blocks the 4th with the window end", async () => {
+    for (let i = 0; i < 3; i++) {
+      expect(await guardSupportRequest({ userId: "u1" }, deps())).toEqual({ ok: true });
+    }
+    const blocked = await guardSupportRequest({ userId: "u1" }, deps());
+    expect(blocked).toMatchObject({ blocked: "rateLimited" });
+    expect(await guardSupportRequest({ userId: "u2" }, deps())).toEqual({ ok: true });
+  });
+
+  it("keys on a keyed hash, never the raw user id", async () => {
+    await guardSupportRequest({ userId: "user-id-123" }, deps());
+    expect([...limiter.keys].join("\n")).not.toContain("user-id-123");
   });
 });

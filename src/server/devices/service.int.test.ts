@@ -284,3 +284,36 @@ describe("supportRecipients", () => {
     expect(await service.supportRecipients(student)).toContain(row?.email);
   });
 });
+
+describe("listActiveDevices", () => {
+  it("lists only active devices, most recently used first", async () => {
+    const userId = await makeUser("list");
+    await setSettings(5, "strict");
+    const old = (await service.registerOrBlock(userId, key(), UA)).deviceId;
+    const recent = (await service.registerOrBlock(userId, key(), null)).deviceId;
+    const gone = (await service.registerOrBlock(userId, key(), UA)).deviceId;
+    await db()
+      .update(devices)
+      .set({ lastSeenAt: new Date(NOW.getTime() - DAY) })
+      .where(eq(devices.id, old as string));
+    await db()
+      .update(devices)
+      .set({ revokedAt: NOW, revokedReason: "self" })
+      .where(eq(devices.id, gone as string));
+    const list = await service.listActiveDevices(userId);
+    expect(list.map((d) => d.id)).toEqual([recent, old]);
+    expect(list[0]?.label).toBeNull();
+    expect(list[1]?.label).toBe("Chrome on Windows");
+  });
+});
+
+describe("supportContacts", () => {
+  it("returns verified admins with their saved locale", async () => {
+    const admin = await makeUser("supc", "admin");
+    await db().update(users).set({ locale: "en" }).where(eq(users.id, admin));
+    const student = await makeUser("supcs");
+    const [row] = await db().select({ email: users.email }).from(users).where(eq(users.id, admin));
+    const contacts = await service.supportContacts(student);
+    expect(contacts).toContainEqual({ email: row?.email, locale: "en" });
+  });
+});

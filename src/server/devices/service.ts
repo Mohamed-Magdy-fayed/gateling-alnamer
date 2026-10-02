@@ -267,10 +267,23 @@ export async function expireDevices(): Promise<string[]> {
   return ids;
 }
 
+export type DeviceListItem = { id: string; label: string | null; lastSeenAt: Date };
+
+/** The student's active devices, most recently used first (the block screen's list). */
+export async function listActiveDevices(userId: string): Promise<DeviceListItem[]> {
+  return db()
+    .select({ id: devices.id, label: devices.label, lastSeenAt: devices.lastSeenAt })
+    .from(devices)
+    .where(and(eq(devices.userId, userId), isNull(devices.revokedAt)))
+    .orderBy(desc(devices.lastSeenAt));
+}
+
+export type SupportContact = { email: string; locale: string | null };
+
 /** Who hears a support request: verified admins for now; A6 extends this with the student's linked parents. */
-export async function supportRecipients(_userId: string): Promise<string[]> {
+export async function supportContacts(_userId: string): Promise<SupportContact[]> {
   const rows = await db()
-    .select({ email: users.email })
+    .select({ email: users.email, locale: users.locale })
     .from(users)
     .where(
       and(
@@ -280,5 +293,21 @@ export async function supportRecipients(_userId: string): Promise<string[]> {
         isNotNull(users.email),
       ),
     );
-  return rows.flatMap((r) => (r.email ? [r.email] : []));
+  return rows.flatMap((r) => (r.email ? [{ email: r.email, locale: r.locale }] : []));
+}
+
+export async function supportRecipients(userId: string): Promise<string[]> {
+  return (await supportContacts(userId)).map((c) => c.email);
+}
+
+/** The only student details a support email shows: name and public number. */
+export async function supportStudent(
+  userId: string,
+): Promise<{ name: string; publicNumber: string | null } | null> {
+  const [row] = await db()
+    .select({ name: users.name, publicNumber: users.publicNumber })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row ?? null;
 }
