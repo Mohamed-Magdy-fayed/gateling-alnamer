@@ -12,6 +12,7 @@ playwright-report/
 .env
 .env.*
 !.env.example
+*.secret
 
 # private: planning docs, contract, AI tooling, local runner
 docs/
