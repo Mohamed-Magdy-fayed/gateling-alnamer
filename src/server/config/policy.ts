@@ -25,7 +25,8 @@ export type AuthLimits = {
   readonly signIn: { readonly ip: LimitRule };
   readonly signUp: { readonly ip: LimitRule };
   readonly codeSend: { readonly id: LimitRule; readonly ip: LimitRule };
-  readonly codeVerify: { readonly id: LimitRule };
+  /** Failed code verifies, the D32 pattern: a pair lock per (identifier, device) and a captcha-only account counter. */
+  readonly codeVerify: { readonly pair: LimitRule; readonly account: LimitRule };
   readonly lockout: {
     /** Attempts per (identifier, device) pair; the attempt after the last allowed one is locked. */
     readonly pair: LimitRule;
@@ -43,7 +44,10 @@ export const AUTH_LIMITS: AuthLimits = {
   signIn: { ip: { max: 20, windowSec: MINUTES_15 } },
   signUp: { ip: { max: 5, windowSec: HOUR } },
   codeSend: { id: { max: 3, windowSec: MINUTES_15 }, ip: { max: 10, windowSec: HOUR } },
-  codeVerify: { id: { max: 10, windowSec: MINUTES_15 } },
+  codeVerify: {
+    pair: { max: 10, windowSec: MINUTES_15 },
+    account: { max: 30, windowSec: MINUTES_15 },
+  },
   lockout: {
     pair: { max: 10, windowSec: MINUTES_15 },
     stepUpAfter: 3,
@@ -58,3 +62,6 @@ export const DEVICE_COOKIE_MAX_AGE_SEC = 400 * 24 * 60 * 60;
 export const CODE_RESEND_COOLDOWN_MS = 60 * 1000;
 /** How long the signed `rp` cookie that remembers a reset request's email stays valid. */
 export const PENDING_RESET_TTL_MS = RESET_CODE_TTL_MS + 5 * 60 * 1000;
+
+/** The daily purge removes verification codes consumed or expired for longer than this. */
+export const CODE_PURGE_AFTER_MS = 24 * 60 * 60 * 1000;

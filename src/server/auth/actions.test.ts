@@ -8,12 +8,19 @@ const h = vi.hoisted(() => ({
   calls: [] as string[],
   sent: [] as unknown[],
   sendError: null as null | Error,
+  after: [] as Array<() => Promise<void> | void>,
   issue: vi.fn(async (_userId: string, _purpose: string) => ({ codeId: "c1", code: "123456" })),
-  decoy: vi.fn(async (_purpose: string) => undefined),
-  verify: vi.fn(async (_userId: string, _purpose: string, _code: string) => ({
-    ok: false as const,
-    reason: "invalid" as const,
-  })),
+  verify: vi.fn(
+    async (
+      _userId: string,
+      _purpose: string,
+      _code: string,
+      _executor?: unknown,
+    ): Promise<{ ok: false; reason: "invalid" } | { ok: true; codeId: string }> => ({
+      ok: false,
+      reason: "invalid",
+    }),
+  ),
   verifyDecoy: vi.fn(async (_purpose: string, _code: string) => undefined),
   memory: null as null | { hits: Map<string, number[]> },
   signUp: null as null | Mock<typeof import("./sign-up").signUpUser>,
@@ -26,6 +33,11 @@ const h = vi.hoisted(() => ({
   codeRow: null as null | { emailStatus: "queued" | "sent" | "failed"; createdAt: Date },
 }));
 
+vi.mock("next/server", () => ({
+  after: (task: () => Promise<void> | void) => {
+    h.after.push(task);
+  },
+}));
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
     throw new Error(`redirect:${to}`);
@@ -68,16 +80,31 @@ vi.mock("./pending-reset", () => ({
   },
 }));
 vi.mock("./code-status", () => ({ latestCodeRow: async () => h.codeRow }));
+const tx = {
+  insert: () => ({
+    values: () => ({
+      onConflictDoUpdate: async () => {
+        h.calls.push("credential");
+      },
+    }),
+  }),
+  update: () => ({
+    set: () => ({
+      where: async () => {
+        h.calls.push("verified");
+      },
+    }),
+  }),
+};
 vi.mock("@/server/db", () => ({
   db: () => ({
     query: { users: { findFirst: async () => h.user } },
-    update: () => ({
-      set: () => ({
-        where: async () => {
-          h.calls.push("verified");
-        },
-      }),
-    }),
+    transaction: async (run: (executor: typeof tx) => Promise<unknown>) => {
+      h.calls.push("tx:begin");
+      const result = await run(tx);
+      h.calls.push("tx:end");
+      return result;
+    },
   }),
 }));
 vi.mock("@/server/jobs/send", () => ({
@@ -88,8 +115,10 @@ vi.mock("@/server/jobs/send", () => ({
 }));
 vi.mock("./codes", () => ({
   issueCode: h.issue,
-  issueCodeDecoy: h.decoy,
-  verifyCode: h.verify,
+  verifyCode: async (...args: Parameters<typeof h.verify>) => {
+    h.calls.push(`verify:${args[0]}`);
+    return h.verify(...args);
+  },
   verifyCodeDecoy: h.verifyDecoy,
   markCodeEmailSent: async () => undefined,
   deleteCode: async () => undefined,
@@ -106,6 +135,12 @@ vi.mock("./session", () => ({
 }));
 
 const OK = { captcha_token: "fake-ok" };
+
+/** Runs what the actions handed to `after()`, as Next does once the response is sent. */
+async function runAfter(): Promise<void> {
+  const tasks = h.after.splice(0);
+  for (const task of tasks) await task();
+}
 const {
   requestPasswordResetAction,
   resendCodeAction,
@@ -123,6 +158,7 @@ function form(values: Record<string, string>): FormData {
 
 beforeEach(() => {
   h.calls.length = 0;
+  h.after.length = 0;
   h.user = undefined;
   h.sent.length = 0;
   h.sendError = null;
@@ -194,17 +230,21 @@ describe("requestPasswordResetAction", () => {
       requestPasswordResetAction({ status: "idle" }, form({ email: "who@example.test", ...OK })),
     );
 
-  it("does the same code work for an unknown email and skips only the send", async () => {
+  it("does the same in-request work for a known and an unknown email: the send runs after the response", async () => {
     h.user = undefined;
     const unknown = await request();
-    expect(h.decoy).toHaveBeenCalledWith("password_reset");
+    await runAfter();
     expect(h.issue).not.toHaveBeenCalled();
     expect(h.sent).toHaveLength(0);
 
     h.user = { id: "u1", name: "U", email: "who@example.test" };
     const known = await request();
+    // Nothing slow has happened yet: no code row, no mail, so both answers took the same path.
+    expect(h.issue).not.toHaveBeenCalled();
+    expect(h.sent).toHaveLength(0);
+    expect(h.after).toHaveLength(1);
+    await runAfter();
     expect(h.issue).toHaveBeenCalledWith("u1", "password_reset");
-    expect(h.decoy).toHaveBeenCalledTimes(1);
     expect(h.sent).toEqual([
       [
         "auth/code-email",
@@ -227,6 +267,7 @@ describe("requestPasswordResetAction", () => {
   it("uses the user's saved locale over the request locale", async () => {
     h.user = { id: "u1", name: "U", email: "who@example.test", locale: "ar" };
     await request();
+    await runAfter();
     expect(h.sent[0]).toMatchObject(["auth/code-email", { locale: "ar" }]);
   });
 
@@ -236,16 +277,17 @@ describe("requestPasswordResetAction", () => {
     h.user = { id: "u1", name: "U", email: "who@example.test" };
     h.sendError = new Error("smtp down");
     const known = await request();
+    await expect(runAfter()).resolves.toBeUndefined();
     expect(known).toEqual(unknown);
     expect(known.status).toBe("redirected");
   });
 });
 
 describe("resetPasswordAction", () => {
-  const reset = () =>
+  const reset = (extra: Record<string, string> = {}) =>
     resetPasswordAction(
       { status: "idle" },
-      form({ email: "who@example.test", code: "123456", password: "a-new-pass-1" }),
+      form({ email: "who@example.test", code: "123456", password: "a-new-pass-1", ...extra }),
     );
 
   it("spends a decoy verify and answers with the code error for an unknown email", async () => {
@@ -256,11 +298,21 @@ describe("resetPasswordAction", () => {
     expect(result).toMatchObject({ status: "error", message: en.auth.states.codeInvalid });
   });
 
-  it("verifies against verification_codes and rejects an invalid code", async () => {
+  it("verifies against verification_codes inside a transaction and rejects an invalid code", async () => {
     h.user = { id: "u1", email: "who@example.test" };
     const result = await reset();
-    expect(h.verify).toHaveBeenCalledWith("u1", "password_reset", "123456");
+    expect(h.verify).toHaveBeenCalledWith("u1", "password_reset", "123456", expect.anything());
+    expect(h.calls).toEqual(["tx:begin", "verify:u1", "tx:end"]);
     expect(result).toMatchObject({ status: "error", message: en.auth.states.codeInvalid });
+  });
+
+  it("consumes the code and writes the credential in one transaction", async () => {
+    h.user = { id: "u1", email: "who@example.test" };
+    h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" });
+    const result = await reset();
+    expect(h.calls).toEqual(["tx:begin", "verify:u1", "credential", "tx:end"]);
+    expect(result).toMatchObject({ status: "success", message: en.auth.reset.done });
+    expect(h.pendingCleared).toBe(1);
   });
 
   it("takes the email from the pending cookie when the form has none", async () => {
@@ -270,7 +322,7 @@ describe("resetPasswordAction", () => {
       { status: "idle" },
       form({ code: "123456", password: "a-new-pass-1" }),
     );
-    expect(h.verify).toHaveBeenCalledWith("u1", "password_reset", "123456");
+    expect(h.verify).toHaveBeenCalledWith("u1", "password_reset", "123456", expect.anything());
   });
 
   it("with neither a form email nor a pending cookie answers codeInvalid", async () => {
@@ -280,6 +332,43 @@ describe("resetPasswordAction", () => {
     );
     expect(result).toMatchObject({ status: "error", message: en.auth.states.codeInvalid });
     expect(h.verify).not.toHaveBeenCalled();
+  });
+
+  it("locks the (email, device) pair after 10 verifies, and a different device is not locked", async () => {
+    h.user = { id: "u1", email: "who@example.test" };
+    for (let i = 0; i < 10; i++) await reset();
+    const verifies = h.verify.mock.calls.length;
+    const locked = await reset();
+    expect(locked).toMatchObject({ status: "error", message: en.auth.states.rateLimited });
+    expect(locked.retryAt).toBeGreaterThan(Date.now());
+    expect(h.verify.mock.calls.length).toBe(verifies);
+    h.deviceId = "dev-victim";
+    await reset();
+    expect(h.verify.mock.calls.length).toBe(verifies + 1);
+  });
+
+  it("asks every device for a captcha after 30 failed verifies on the email, and never blocks", async () => {
+    h.user = { id: "u1", email: "who@example.test" };
+    for (let i = 0; i < 30; i++) {
+      h.deviceId = `dev-${i}`;
+      await reset();
+    }
+    h.deviceId = "dev-victim";
+    const asked = await reset();
+    expect(asked).toMatchObject({ captchaRequired: true, message: en.auth.states.captchaFailed });
+    const refused = await reset({ captcha_token: "fail" });
+    expect(refused).toMatchObject({ captchaRequired: true });
+    h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" });
+    expect(await reset({ captcha_token: "fake-ok" })).toMatchObject({ status: "success" });
+  });
+
+  it("forgets the pair's failures after a successful reset", async () => {
+    h.user = { id: "u1", email: "who@example.test" };
+    await reset();
+    h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" });
+    await reset();
+    const keys = [...(h.memory?.hits.keys() ?? [])].filter((key) => key.startsWith("vlock:"));
+    expect(keys).toEqual([]);
   });
 });
 
@@ -316,9 +405,25 @@ describe("captcha in the actions", () => {
       form({ email: "who@example.test", captcha_token: "fail" }),
     );
     expect(result).toMatchObject({ status: "error", message: en.auth.states.captchaFailed });
+    await runAfter();
     expect(h.issue).not.toHaveBeenCalled();
-    expect(h.decoy).not.toHaveBeenCalled();
     expect(h.sent).toHaveLength(0);
+  });
+
+  it("a failed captcha does not spend the code-send budget", async () => {
+    h.user = { id: "u1", name: "U", email: "who@example.test" };
+    for (let i = 0; i < 6; i++) {
+      await requestPasswordResetAction(
+        { status: "idle" },
+        form({ email: "who@example.test", captcha_token: "fail" }),
+      );
+    }
+    const keys = [...(h.memory?.hits.keys() ?? [])].filter((key) => key.startsWith("rl:codesend:"));
+    expect(keys).toEqual([]);
+    const result = await followRedirect(() =>
+      requestPasswordResetAction({ status: "idle" }, form({ email: "who@example.test", ...OK })),
+    );
+    expect(result).toEqual({ status: "redirected", to: "/reset-password" });
   });
 
   it("a reset request without a captcha is refused the same way", async () => {
@@ -437,20 +542,6 @@ describe("abuse guards in the actions", () => {
     expect(unknown).toMatchObject({ status: "error", message: en.auth.states.rateLimited });
     expect({ ...known, retryAt: 0 }).toEqual({ ...unknown, retryAt: 0 });
   });
-
-  it("rate-limits code verification per email before touching the code", async () => {
-    h.user = { id: "u1", email: "who@example.test" };
-    const verify = () =>
-      resetPasswordAction(
-        { status: "idle" },
-        form({ email: "who@example.test", code: "123456", password: "a-new-pass-1" }),
-      );
-    for (let i = 0; i < 10; i++) await verify();
-    const verifies = h.verify.mock.calls.length;
-    const blocked = await verify();
-    expect(blocked).toMatchObject({ status: "error", message: en.auth.states.rateLimited });
-    expect(h.verify.mock.calls.length).toBe(verifies);
-  });
 });
 
 describe("sign-up issues an email verification code", () => {
@@ -501,7 +592,7 @@ describe("verifyEmailAction", () => {
       status: "error",
       message: en.auth.states.codeInvalid,
     });
-    expect(h.verify).toHaveBeenCalledWith("u1", "email_verify", "123456");
+    expect(h.verify).toHaveBeenCalledWith("u1", "email_verify", "123456", expect.anything());
     h.verify.mockClear();
     expect(await submit("12ab")).toMatchObject({
       status: "error",
@@ -512,15 +603,16 @@ describe("verifyEmailAction", () => {
 
   it("confirms the email and answers verified on the right code", async () => {
     h.sessionUser = { id: "u1", email: "u@example.test" };
-    h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" } as never);
+    h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" });
     expect(await submit("123456")).toMatchObject({
       status: "success",
       message: en.auth.states.verified,
     });
-    expect(h.calls).toContain("verified");
+    // The code is consumed and email_verified_at set in one transaction.
+    expect(h.calls).toEqual(["tx:begin", "verify:u1", "verified", "tx:end"]);
   });
 
-  it("is rate-limited per account before it touches the code", async () => {
+  it("locks the (account, device) pair after 10 failed verifies before touching the code", async () => {
     h.sessionUser = { id: "u1", email: "u@example.test" };
     for (let i = 0; i < 10; i++) await submit("123456");
     h.verify.mockClear();
@@ -528,6 +620,21 @@ describe("verifyEmailAction", () => {
     expect(blocked).toMatchObject({ status: "error", message: en.auth.states.rateLimited });
     expect(blocked.retryAt).toBeGreaterThan(Date.now());
     expect(h.verify).not.toHaveBeenCalled();
+  });
+
+  it("asks for a captcha after 30 failed verifies on the account, from any device", async () => {
+    h.sessionUser = { id: "u1", email: "u@example.test" };
+    for (let i = 0; i < 30; i++) {
+      h.deviceId = `dev-${i}`;
+      await submit("123456");
+    }
+    h.deviceId = "dev-owner";
+    h.verify.mockClear();
+    expect(await submit("123456")).toMatchObject({ captchaRequired: true });
+    expect(h.verify).not.toHaveBeenCalled();
+    h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" });
+    const withToken = verifyEmailAction({ status: "idle" }, form({ code: "123456", ...OK }));
+    expect(await withToken).toMatchObject({ status: "success" });
   });
 });
 
@@ -578,10 +685,13 @@ describe("resendCodeAction", () => {
     h.pending = { email: "who@example.test", issuedAt: Date.now() - 5 * 60_000 };
     h.user = undefined;
     const unknown = await resend("password_reset");
-    expect(h.decoy).toHaveBeenCalledWith("password_reset");
+    await runAfter();
+    expect(h.issue).not.toHaveBeenCalled();
     h.memory?.hits.clear();
     h.user = { ...known, email: "who@example.test" };
     const answered = await resend("password_reset");
+    expect(h.issue).not.toHaveBeenCalled();
+    await runAfter();
     expect(h.issue).toHaveBeenCalledWith("u1", "password_reset");
     expect(answered).toEqual(unknown);
     expect(answered).toMatchObject({ status: "success", message: en.auth.states.codeSent });

@@ -9,7 +9,7 @@ const script = path.join(process.cwd(), "scripts", "env-init.mjs");
 const GENERATED = [
   "IBAN_ENCRYPTION_KEY",
   "TOTP_ENCRYPTION_KEY",
-  "DEVICE_COOKIE_SECRET",
+  "AUTH_SECRET",
   "LOCAL_REDIS_TOKEN",
 ];
 

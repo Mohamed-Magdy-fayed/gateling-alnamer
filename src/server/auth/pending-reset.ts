@@ -4,7 +4,7 @@ import { cookies, headers } from "next/headers";
 import { clock } from "@/server/clock";
 import { PENDING_RESET_TTL_MS } from "@/server/config/policy";
 import { serverEnv } from "@/server/env";
-import { resolveDeviceSecret } from "./device-cookie";
+import { authKey } from "./keys";
 
 /**
  * The password-reset screens need to know which account a code was requested for without the email in
@@ -15,13 +15,13 @@ export const PENDING_RESET_COOKIE = "rp";
 
 export type PendingReset = { email: string; issuedAt: number };
 
-const mac = (payload: string, secret: string): string =>
-  createHmac("sha256", secret).update(`pending-reset:${payload}`).digest("base64url");
+const mac = (payload: string, key: Buffer | string): string =>
+  createHmac("sha256", key).update(`pending-reset:${payload}`).digest("base64url");
 
 /** `<base64url(json)>.<base64url HMAC-SHA256>`; the email is encoded, not readable plain text. */
-export function signPendingReset(value: PendingReset, secret: string): string {
+export function signPendingReset(value: PendingReset, key: Buffer | string): string {
   const payload = Buffer.from(JSON.stringify(value)).toString("base64url");
-  return `${payload}.${mac(payload, secret)}`;
+  return `${payload}.${mac(payload, key)}`;
 }
 
 function isPending(value: unknown): value is PendingReset {
@@ -33,7 +33,7 @@ function isPending(value: unknown): value is PendingReset {
 /** The pending reset when the cookie is correctly signed and not older than the TTL, else null. */
 export function parsePendingReset(
   value: string | undefined,
-  secret: string,
+  key: Buffer | string,
   now: Date,
 ): PendingReset | null {
   if (!value) return null;
@@ -41,7 +41,7 @@ export function parsePendingReset(
   if (dot < 0) return null;
   const payload = value.slice(0, dot);
   const given = Buffer.from(value.slice(dot + 1));
-  const expected = Buffer.from(mac(payload, secret));
+  const expected = Buffer.from(mac(payload, key));
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
   try {
     const parsed: unknown = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
@@ -52,7 +52,7 @@ export function parsePendingReset(
   }
 }
 
-const secretNow = () => resolveDeviceSecret(serverEnv());
+const pendingKey = () => authKey("rp");
 
 /** Server actions only: remembers that a reset code was just requested for `email`. */
 export async function setPendingReset(email: string): Promise<void> {
@@ -61,7 +61,7 @@ export async function setPendingReset(email: string): Promise<void> {
   const secure =
     requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https" ||
     Boolean(env.VERCEL);
-  const value = signPendingReset({ email, issuedAt: clock.now().getTime() }, secretNow());
+  const value = signPendingReset({ email, issuedAt: clock.now().getTime() }, pendingKey());
   store.set(PENDING_RESET_COOKIE, value, {
     httpOnly: true,
     secure,
@@ -74,7 +74,7 @@ export async function setPendingReset(email: string): Promise<void> {
 /** Safe in server components, route handlers and actions. */
 export async function readPendingReset(): Promise<PendingReset | null> {
   const store = await cookies();
-  return parsePendingReset(store.get(PENDING_RESET_COOKIE)?.value, secretNow(), clock.now());
+  return parsePendingReset(store.get(PENDING_RESET_COOKIE)?.value, pendingKey(), clock.now());
 }
 
 export async function clearPendingReset(): Promise<void> {

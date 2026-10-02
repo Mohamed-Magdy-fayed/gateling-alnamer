@@ -19,7 +19,8 @@ export default defineConfig({
     command: "node scripts/start-local.mjs --test-db",
     url: baseURL,
     reuseExistingServer: false,
-    env: { PORT: String(PORT) },
+    // x-real-ip is trusted only here: each test sets its own address (e2e/helpers/client-ip.ts).
+    env: { PORT: String(PORT), TRUST_PROXY_HEADERS: "1" },
     timeout: 120_000,
     gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
   },

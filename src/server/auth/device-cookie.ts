@@ -1,29 +1,28 @@
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { DEVICE_COOKIE_MAX_AGE_SEC } from "@/server/config/policy";
 
 /** Not `__Host-`: the cookie must also work over plain http on localhost and in tests. */
 export const DEVICE_COOKIE = "did";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const MIN_SECRET_LENGTH = 32;
 
-const mac = (id: string, secret: string): string =>
-  createHmac("sha256", secret).update(id).digest("base64url");
+const mac = (id: string, key: Buffer | string): string =>
+  createHmac("sha256", key).update(id).digest("base64url");
 
-/** `<uuid>.<base64url HMAC-SHA256(uuid, secret)>`. */
-export function signDeviceId(id: string, secret: string): string {
-  return `${id}.${mac(id, secret)}`;
+/** `<uuid>.<base64url HMAC-SHA256(uuid, key)>`; `key` is the `did` sub-key of AUTH_SECRET. */
+export function signDeviceId(id: string, key: Buffer | string): string {
+  return `${id}.${mac(id, key)}`;
 }
 
 /** The device id when the cookie is correctly signed, otherwise null (tampered, unsigned or foreign). */
-export function parseDeviceCookie(value: string | undefined, secret: string): string | null {
+export function parseDeviceCookie(value: string | undefined, key: Buffer | string): string | null {
   if (!value) return null;
   const dot = value.indexOf(".");
   if (dot < 0) return null;
   const id = value.slice(0, dot);
   if (!UUID.test(id)) return null;
   const given = Buffer.from(value.slice(dot + 1));
-  const expected = Buffer.from(mac(id, secret));
+  const expected = Buffer.from(mac(id, key));
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return null;
   return id;
 }
@@ -44,11 +43,11 @@ export type DeviceCookieStore = {
  */
 export function issueDeviceCookie(
   store: DeviceCookieStore,
-  { secret, secure }: { secret: string; secure: boolean },
+  { key, secure }: { key: Buffer | string; secure: boolean },
 ): { id: string; existing: boolean } {
-  const current = parseDeviceCookie(store.get(DEVICE_COOKIE)?.value, secret);
+  const current = parseDeviceCookie(store.get(DEVICE_COOKIE)?.value, key);
   const id = current ?? randomUUID();
-  store.set(DEVICE_COOKIE, signDeviceId(id, secret), {
+  store.set(DEVICE_COOKIE, signDeviceId(id, key), {
     httpOnly: true,
     secure,
     sameSite: "lax",
@@ -56,23 +55,4 @@ export function issueDeviceCookie(
     maxAge: DEVICE_COOKIE_MAX_AGE_SEC,
   });
   return { id, existing: current !== null };
-}
-
-let processSecret: string | undefined;
-
-/**
- * The signing secret. env-schema requires one (>= 32 chars) when APP_MODE=live; in demo, when it is
- * unset, one random secret per process is used and a single warning says so (cookies then do not
- * survive a restart). The value is never logged.
- */
-export function resolveDeviceSecret(env: { DEVICE_COOKIE_SECRET?: string | undefined }): string {
-  const configured = env.DEVICE_COOKIE_SECRET;
-  if (configured && configured.length >= MIN_SECRET_LENGTH) return configured;
-  if (!processSecret) {
-    processSecret = randomBytes(32).toString("base64url");
-    console.warn(
-      "DEVICE_COOKIE_SECRET is not set; using a per-process secret (device cookies reset on restart).",
-    );
-  }
-  return processSecret;
 }

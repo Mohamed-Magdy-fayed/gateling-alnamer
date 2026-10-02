@@ -11,6 +11,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Fixed root secret so keyed hashes are deterministic and no per-process fallback warning fires.
+    env: { AUTH_SECRET: "vitest-auth-secret-0123456789abcdef-vitest" },
     include: ["src/**/*.int.test.ts", "scripts/**/*.int.test.mjs"],
     globalSetup: ["test/int/global-setup.ts"],
     setupFiles: ["test/int/setup.ts"],

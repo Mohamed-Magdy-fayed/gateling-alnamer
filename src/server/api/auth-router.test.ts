@@ -61,6 +61,15 @@ describe("auth.codeStatus", () => {
     expect(JSON.stringify(unknown)).not.toContain("ghost");
   });
 
+  it("never looks the account up for a reset, and reports sent even when the mail failed", async () => {
+    h.pending = { email: "ghost@example.test", issuedAt: Date.now() - 5 * 60_000 };
+    h.user = { id: "u2" };
+    h.row = { emailStatus: "failed", createdAt: new Date(Date.now() - 5 * 60_000) };
+    const result = await caller(null).auth.codeStatus({ purpose: "password_reset" });
+    expect(result.status).toBe("sent");
+    expect(h.asked).toEqual([]);
+  });
+
   it("has nothing to report for a reset without the pending cookie", async () => {
     expect(await caller(null).auth.codeStatus({ purpose: "password_reset" })).toEqual({
       status: "sent",

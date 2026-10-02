@@ -1,12 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { FakeCookieStore } from "../../../test/fake-cookies";
-import {
-  DEVICE_COOKIE,
-  issueDeviceCookie,
-  parseDeviceCookie,
-  resolveDeviceSecret,
-  signDeviceId,
-} from "./device-cookie";
+import { DEVICE_COOKIE, issueDeviceCookie, parseDeviceCookie, signDeviceId } from "./device-cookie";
 
 const SECRET = "s".repeat(40);
 const ID = "3f0c1c7e-8f5e-4c1e-9d55-0d6a1d1f6b11";
@@ -33,7 +27,7 @@ describe("signDeviceId / parseDeviceCookie", () => {
 });
 
 describe("issueDeviceCookie", () => {
-  const opts = { secret: SECRET, secure: true };
+  const opts = { key: SECRET, secure: true };
 
   it("creates a new signed cookie when none exists", () => {
     const store = new FakeCookieStore();
@@ -69,24 +63,7 @@ describe("issueDeviceCookie", () => {
 
   it("is not Secure over plain http", () => {
     const store = new FakeCookieStore();
-    issueDeviceCookie(store, { secret: SECRET, secure: false });
+    issueDeviceCookie(store, { key: SECRET, secure: false });
     expect(store.lastWrite(DEVICE_COOKIE)?.options).toMatchObject({ secure: false });
-  });
-});
-
-describe("resolveDeviceSecret", () => {
-  it("uses the configured secret", () => {
-    expect(resolveDeviceSecret({ DEVICE_COOKIE_SECRET: SECRET })).toBe(SECRET);
-  });
-
-  it("falls back to one per-process random secret and warns once without printing it", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const a = resolveDeviceSecret({});
-    const b = resolveDeviceSecret({});
-    expect(a).toBe(b);
-    expect(a.length).toBeGreaterThanOrEqual(32);
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]?.join(" ")).not.toContain(a);
-    warn.mockRestore();
   });
 });

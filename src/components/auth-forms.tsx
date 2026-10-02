@@ -242,9 +242,14 @@ export function ForgotPasswordForm({ t, captcha, locale }: { t: AuthText } & Cap
 }
 
 /** `pending`: a code was just requested in this browser, so the account is known server-side. */
-export function ResetPasswordForm({ t, pending }: { t: AuthText; pending: boolean }) {
+type ResetPasswordFormProps = { t: AuthText; pending: boolean } & CaptchaProps;
+
+export function ResetPasswordForm({ t, pending, captcha, locale }: ResetPasswordFormProps) {
   const [state, action] = useActionState(resetPasswordAction, idle);
   const block = useRetryBlock(state.retryAt, t);
+  // After 30 failed verifies on the email the server wants a captcha; the widget then stays.
+  const [needsCaptcha, setNeedsCaptcha] = useState(false);
+  if (state.captchaRequired && !needsCaptcha) setNeedsCaptcha(true);
   if (state.status === "success") {
     return (
       <div className="flex flex-col gap-4">
@@ -281,6 +286,14 @@ export function ResetPasswordForm({ t, pending }: { t: AuthText; pending: boolea
           minLength={8}
           required
         />
+        {needsCaptcha ? (
+          <Captcha
+            config={captcha}
+            locale={locale}
+            label={t.states.captchaLabel}
+            resetKey={state}
+          />
+        ) : null}
         <SubmitButton disabled={block.blocked} disabledReason={block.reason}>
           {t.reset.submit}
         </SubmitButton>

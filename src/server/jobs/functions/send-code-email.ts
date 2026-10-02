@@ -6,15 +6,28 @@ import type { CodeEmailData, WireData } from "../events";
 
 const MAX_RETRIES = 3;
 
-/** Sends the mail and records `sent`. Throws on a send error so Inngest can retry. */
-export async function handleSendCodeEmail(data: CodeEmailData): Promise<void> {
+/** The part of Inngest's `step` this function uses; tests pass a memoizing stand-in. */
+export type StepRunner = {
+  run(id: string, fn: () => Promise<void>): Promise<unknown>;
+};
+
+/** Renders and sends the mail. Throws on a send error so Inngest can retry. */
+async function sendCodeMail(data: CodeEmailData): Promise<void> {
   const mail = renderCodeEmail(data.locale, {
     name: data.name,
     code: data.code,
     purpose: data.purpose,
   });
   await sendMail({ to: data.to, ...mail });
-  await markCodeEmailSent(data.codeId);
+}
+
+/**
+ * Two steps, so a failure of the bookkeeping after a successful send retries only the bookkeeping:
+ * Inngest replays the memoized `send` result and never mails the code twice.
+ */
+export async function runCodeEmailSteps(data: CodeEmailData, step: StepRunner): Promise<void> {
+  await step.run("send", () => sendCodeMail(data));
+  await step.run("mark-sent", () => markCodeEmailSent(data.codeId));
 }
 
 export async function markCodeEmailFailedFromEvent(data: WireData<CodeEmailData>): Promise<void> {
@@ -23,14 +36,21 @@ export async function markCodeEmailFailedFromEvent(data: WireData<CodeEmailData>
 
 /**
  * The `inline` jobs provider: no retries, and a failed send must not change the caller's answer, so
- * the failure is recorded as `failed` and swallowed. Nothing logged contains the code or address.
+ * a send failure is recorded as `failed` and swallowed. A failed bookkeeping write after a send that
+ * went out is only logged (the mail was delivered). Nothing logged contains the code or address.
  */
 export async function runCodeEmailInline(data: CodeEmailData): Promise<void> {
   try {
-    await handleSendCodeEmail(data);
+    await sendCodeMail(data);
   } catch (error: unknown) {
     console.error("Code email failed", error instanceof Error ? error.name : "unknown");
     await markCodeEmailFailed(data.codeId);
+    return;
+  }
+  try {
+    await markCodeEmailSent(data.codeId);
+  } catch (error: unknown) {
+    console.error("Code email mark failed", error instanceof Error ? error.name : "unknown");
   }
 }
 
@@ -43,7 +63,7 @@ export const sendCodeEmail = inngest.createFunction(
       await markCodeEmailFailedFromEvent(event.data.event.data as WireData<CodeEmailData>);
     },
   },
-  async ({ event }) => {
-    await handleSendCodeEmail((event.data as WireData<CodeEmailData>).encrypted);
+  async ({ event, step }) => {
+    await runCodeEmailSteps((event.data as WireData<CodeEmailData>).encrypted, step);
   },
 );

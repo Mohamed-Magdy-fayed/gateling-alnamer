@@ -37,10 +37,10 @@ export async function latestCodeRow(
 }
 
 /**
- * What the code screens show. For a reset, `issuedAt` (from the pending cookie) anchors the resend
- * cooldown for known and unknown accounts alike, an unknown account (no row) reads as sent, and a
- * queued send younger than the cooldown also reads as sent: only a send that has really failed or
- * stalled differs, so a status poll does not tell a registered email from an unregistered one.
+ * What the code screens show. A reset always reports `sent`: `issuedAt` (from the pending cookie)
+ * anchors the resend cooldown for known and unknown accounts alike, and no delivery state is read
+ * at all, so a status poll can never tell a registered email from an unregistered one. Only the
+ * signed-in user's own email verification reports the real state (queued, sent, failed).
  */
 export function describeCodeStatus(input: {
   purpose: CodePurpose;
@@ -48,13 +48,11 @@ export function describeCodeStatus(input: {
   issuedAt?: number;
   now: Date;
 }): CodeStatus {
-  const { purpose, row, now } = input;
+  const { purpose, row } = input;
   const anchor = input.issuedAt ?? row?.createdAt.getTime();
   if (anchor === undefined) return { status: "sent", canResendAt: 0 };
-  const status = row?.emailStatus ?? "sent";
-  const fresh = now.getTime() - anchor < CODE_RESEND_COOLDOWN_MS;
   return {
-    status: purpose === "password_reset" && status === "queued" && fresh ? "sent" : status,
+    status: purpose === "password_reset" ? "sent" : (row?.emailStatus ?? "sent"),
     canResendAt: anchor + CODE_RESEND_COOLDOWN_MS,
   };
 }

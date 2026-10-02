@@ -47,15 +47,13 @@ describe("describeCodeStatus (password reset)", () => {
     );
   });
 
-  it("reports queued once it has been stuck for a full cooldown, and failed at once", () => {
-    const old = ago(CODE_RESEND_COOLDOWN_MS + 1).getTime();
-    const stuck = { emailStatus: "queued" as const, createdAt: new Date(old) };
-    expect(
-      describeCodeStatus({ purpose: "password_reset", row: stuck, issuedAt: old, now: NOW }).status,
-    ).toBe("queued");
-    const failed = { emailStatus: "failed" as const, createdAt: ago(1_000) };
-    expect(
-      describeCodeStatus({ purpose: "password_reset", row: failed, issuedAt, now: NOW }).status,
-    ).toBe("failed");
+  it("always reports sent, whatever the row says, so a poll never reveals an account", () => {
+    for (const emailStatus of ["queued", "sent", "failed"] as const) {
+      for (const age of [1_000, CODE_RESEND_COOLDOWN_MS + 1]) {
+        const row = { emailStatus, createdAt: ago(age) };
+        const result = describeCodeStatus({ purpose: "password_reset", row, issuedAt, now: NOW });
+        expect(result).toEqual({ status: "sent", canResendAt: issuedAt + CODE_RESEND_COOLDOWN_MS });
+      }
+    }
   });
 });

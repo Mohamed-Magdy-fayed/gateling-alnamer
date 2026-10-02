@@ -13,9 +13,15 @@ export const FAKE_CAPTCHA_FAIL_TOKEN = "fail";
 
 export type CaptchaSettings =
   | { readonly provider: "fake" }
+  /** A misconfiguration (no secret for turnstile, no provider): nothing verifies. */
+  | { readonly provider: "closed" }
   | {
       readonly provider: "turnstile";
       readonly secretKey: string;
+      /** The host the widget ran on (BASE_URL's); an answer minted for another host is refused. */
+      readonly expectedHostname?: string;
+      /** The widget action; checked only when one is configured. */
+      readonly expectedAction?: string;
       /** Injectable for tests. */
       readonly fetch?: (url: string, init?: RequestInit) => Promise<Response>;
       readonly timeoutMs?: number;
@@ -26,7 +32,11 @@ export type CaptchaConfig =
   | { readonly provider: "fake" }
   | { readonly provider: "turnstile"; readonly siteKey: string };
 
-const siteverifyAnswer = z.object({ success: z.boolean() });
+const siteverifyAnswer = z.object({
+  success: z.boolean(),
+  hostname: z.string().optional(),
+  action: z.string().optional(),
+});
 
 async function verifyWithTurnstile(
   settings: Extract<CaptchaSettings, { provider: "turnstile" }>,
@@ -42,7 +52,10 @@ async function verifyWithTurnstile(
     });
     if (!response.ok) return false;
     const answer = siteverifyAnswer.safeParse(await response.json());
-    return answer.success && answer.data.success;
+    if (!answer.success || !answer.data.success) return false;
+    const { expectedHostname, expectedAction } = settings;
+    if (expectedHostname && answer.data.hostname !== expectedHostname) return false;
+    return !expectedAction || answer.data.action === expectedAction;
   } catch {
     // Network error, timeout or malformed body: a challenge that cannot be checked is not passed.
     return false;
@@ -53,22 +66,43 @@ export function createCaptchaVerifier(settings: CaptchaSettings): CaptchaVerifie
   return async (token, ip) => {
     const value = token?.trim();
     if (!value) return false;
+    if (settings.provider === "closed") return false;
     if (settings.provider === "fake") return value !== FAKE_CAPTCHA_FAIL_TOKEN;
     return verifyWithTurnstile(settings, value, ip);
   };
 }
 
-/** Provider settings from the validated environment (env-schema guarantees the keys are present). */
-function settingsFromEnv(): CaptchaSettings {
-  const env = serverEnv();
-  if (env.providers.captcha === "turnstile" && env.TURNSTILE_SECRET_KEY) {
-    return { provider: "turnstile", secretKey: env.TURNSTILE_SECRET_KEY };
+function hostOf(url: string | undefined): string | undefined {
+  try {
+    return url ? new URL(url).hostname : undefined;
+  } catch {
+    return undefined;
   }
-  return { provider: "fake" };
+}
+
+/**
+ * Provider settings from the validated environment. Only an explicit fake provider is the fake;
+ * turnstile without its secret, or any other state, fails closed instead of quietly accepting
+ * tokens. env-schema already refuses those states, so this is the second lock.
+ */
+export function settingsFromEnvironment(env: {
+  providers: { captcha?: "turnstile" | "fake" | undefined };
+  TURNSTILE_SECRET_KEY?: string | undefined;
+  BASE_URL?: string | undefined;
+}): CaptchaSettings {
+  if (env.providers.captcha === "fake") return { provider: "fake" };
+  if (env.providers.captcha === "turnstile" && env.TURNSTILE_SECRET_KEY) {
+    return {
+      provider: "turnstile",
+      secretKey: env.TURNSTILE_SECRET_KEY,
+      expectedHostname: hostOf(env.BASE_URL),
+    };
+  }
+  return { provider: "closed" };
 }
 
 export const verifyCaptcha: CaptchaVerifier = (token, ip) =>
-  createCaptchaVerifier(settingsFromEnv())(token, ip);
+  createCaptchaVerifier(settingsFromEnvironment(serverEnv()))(token, ip);
 
 export function captchaConfig(
   keys: { provider: "fake" } | { provider: "turnstile"; siteKey: string; secretKey: string },

@@ -2,7 +2,8 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { serverEnv } from "@/server/env";
 import { clientIp } from "@/server/request-ip";
-import { issueDeviceCookie, resolveDeviceSecret } from "./device-cookie";
+import { issueDeviceCookie } from "./device-cookie";
+import { authKey } from "./keys";
 
 export type RequestContext = {
   /** Client IP (see `clientIp`); hashed before it goes anywhere near a key. */
@@ -22,9 +23,12 @@ export async function requestContext(): Promise<RequestContext> {
   const secure =
     requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https" ||
     Boolean(env.VERCEL);
-  const device = issueDeviceCookie(store, { secret: resolveDeviceSecret(env), secure });
+  const device = issueDeviceCookie(store, { key: authKey("did"), secure });
   return {
-    ip: clientIp(requestHeaders, { VERCEL: env.VERCEL }),
+    ip: clientIp(requestHeaders, {
+      VERCEL: env.VERCEL,
+      TRUST_PROXY_HEADERS: process.env.TRUST_PROXY_HEADERS,
+    }),
     deviceId: device.existing ? device.id : null,
   };
 }

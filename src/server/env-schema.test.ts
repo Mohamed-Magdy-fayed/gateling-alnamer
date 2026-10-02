@@ -126,7 +126,7 @@ describe("parseServerEnv", () => {
       INNGEST_EVENT_KEY: "event-key-value",
       INNGEST_SIGNING_KEY: "signing-key-value",
       INNGEST_ENCRYPTION_KEY: "encryption-key-value",
-      DEVICE_COOKIE_SECRET: "d".repeat(40),
+      AUTH_SECRET: "d".repeat(40),
       CAPTCHA: "turnstile",
       TURNSTILE_SITE_KEY: "site-key-value",
       TURNSTILE_SECRET_KEY: "turnstile-secret-value",
@@ -275,20 +275,27 @@ describe("parseServerEnv", () => {
       expect(message).not.toContain("signing-key-value");
     });
 
-    it("fails live without DEVICE_COOKIE_SECRET, naming the key only", () => {
-      expect(failure({ ...live, DEVICE_COOKIE_SECRET: undefined })).toContain(
-        "DEVICE_COOKIE_SECRET",
-      );
+    it("fails live without AUTH_SECRET, naming the key only", () => {
+      expect(failure({ ...live, AUTH_SECRET: undefined })).toContain("AUTH_SECRET");
     });
 
-    it("fails when DEVICE_COOKIE_SECRET is shorter than 32 characters, without echoing it", () => {
-      const message = failure({ ...live, DEVICE_COOKIE_SECRET: "short-secret-value" });
-      expect(message).toContain("DEVICE_COOKIE_SECRET");
+    it("fails on Vercel without AUTH_SECRET even in demo", () => {
+      expect(failure({ ...local, VERCEL: "1" })).toContain("AUTH_SECRET");
+      expect(() =>
+        parseServerEnv({ ...local, VERCEL: "1", AUTH_SECRET: "a".repeat(40) }),
+      ).not.toThrow();
+    });
+
+    it("fails when AUTH_SECRET is shorter than 32 characters, without echoing it", () => {
+      const message = failure({ ...live, AUTH_SECRET: "short-secret-value" });
+      expect(message).toContain("AUTH_SECRET");
       expect(message).not.toContain("short-secret-value");
     });
 
-    it("leaves DEVICE_COOKIE_SECRET optional in demo", () => {
+    it("leaves AUTH_SECRET optional in demo off Vercel; DEVICE_COOKIE_SECRET no longer counts", () => {
       expect(() => parseServerEnv(local)).not.toThrow();
+      const legacy = { ...live, AUTH_SECRET: undefined, DEVICE_COOKIE_SECRET: "d".repeat(40) };
+      expect(failure(legacy)).toContain("AUTH_SECRET");
     });
 
     it("leaves INNGEST_ENCRYPTION_KEY optional in demo", () => {

@@ -21,12 +21,16 @@ const data = {
   name: "Sam",
 };
 
-describe("handleSendCodeEmail", () => {
+const passThrough = {
+  run: async <T>(_id: string, fn: () => Promise<T>): Promise<T> => fn(),
+};
+
+describe("runCodeEmailSteps (rendering and failures)", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("sends the rendered mail in the recipient's locale and marks it sent", async () => {
-    const { handleSendCodeEmail } = await import("./send-code-email");
-    await handleSendCodeEmail(data);
+    const { runCodeEmailSteps } = await import("./send-code-email");
+    await runCodeEmailSteps(data, passThrough);
     const mail = h.sendMail.mock.calls[0]?.[0] as { to: string; subject: string; html: string };
     const { ar } = await import("@/i18n/ar");
     expect(mail.to).toBe("sam@example.test");
@@ -38,8 +42,8 @@ describe("handleSendCodeEmail", () => {
 
   it("throws on a send error without marking sent", async () => {
     h.sendMail.mockRejectedValueOnce(new Error("smtp down"));
-    const { handleSendCodeEmail } = await import("./send-code-email");
-    await expect(handleSendCodeEmail(data)).rejects.toThrow("smtp down");
+    const { runCodeEmailSteps } = await import("./send-code-email");
+    await expect(runCodeEmailSteps(data, passThrough)).rejects.toThrow("smtp down");
     expect(h.sent).not.toHaveBeenCalled();
   });
 });
@@ -72,5 +76,63 @@ describe("failure handler", () => {
     const { markCodeEmailFailedFromEvent } = await import("./send-code-email");
     await markCodeEmailFailedFromEvent({ encrypted: data });
     expect(h.failed).toHaveBeenCalledWith("c1");
+  });
+});
+
+/** Inngest memoizes a step that returned; a retry re-runs only the steps that did not. */
+function memoizingStep() {
+  const done = new Map<string, unknown>();
+  const ran: string[] = [];
+  return {
+    ran,
+    run: async <T>(id: string, fn: () => Promise<T>): Promise<T> => {
+      if (done.has(id)) return done.get(id) as T;
+      ran.push(id);
+      const value = await fn();
+      done.set(id, value);
+      return value;
+    },
+  };
+}
+
+describe("runCodeEmailSteps", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("sends in one step and marks sent in another", async () => {
+    const { runCodeEmailSteps } = await import("./send-code-email");
+    const step = memoizingStep();
+    await runCodeEmailSteps(data, step);
+    expect(step.ran).toEqual(["send", "mark-sent"]);
+    expect(h.sendMail).toHaveBeenCalledTimes(1);
+    expect(h.sent).toHaveBeenCalledWith("c1");
+  });
+
+  it("never re-sends when marking fails after a successful send", async () => {
+    const { runCodeEmailSteps } = await import("./send-code-email");
+    const step = memoizingStep();
+    h.sent.mockRejectedValueOnce(new Error("db blip"));
+    await expect(runCodeEmailSteps(data, step)).rejects.toThrow("db blip");
+    await runCodeEmailSteps(data, step);
+    expect(h.sendMail).toHaveBeenCalledTimes(1);
+    expect(h.sent).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not mark sent when the send step fails", async () => {
+    const { runCodeEmailSteps } = await import("./send-code-email");
+    h.sendMail.mockRejectedValueOnce(new Error("smtp down"));
+    await expect(runCodeEmailSteps(data, memoizingStep())).rejects.toThrow("smtp down");
+    expect(h.sent).not.toHaveBeenCalled();
+  });
+});
+
+describe("runCodeEmailInline after a successful send", () => {
+  it("does not record failed when only the mark step fails", async () => {
+    vi.clearAllMocks();
+    h.sent.mockRejectedValueOnce(new Error("db blip"));
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { runCodeEmailInline } = await import("./send-code-email");
+    await expect(runCodeEmailInline(data)).resolves.toBeUndefined();
+    expect(h.failed).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

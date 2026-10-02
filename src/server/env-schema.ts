@@ -42,7 +42,7 @@ const schema = z.object({
   INNGEST_EVENT_KEY: optionalText,
   INNGEST_SIGNING_KEY: optionalText,
   INNGEST_ENCRYPTION_KEY: optionalText,
-  DEVICE_COOKIE_SECRET: optionalText,
+  AUTH_SECRET: optionalText,
   DATABASE_URL: z.preprocess(blankAsUnset, z.string().min(1)),
   VERCEL: optionalText,
   VERCEL_ENV: z.preprocess(
@@ -212,17 +212,18 @@ function demoProblems(env: RawEnv): string[] {
   return problems;
 }
 
-const MIN_DEVICE_SECRET_LENGTH = 32;
+const MIN_AUTH_SECRET_LENGTH = 32;
 
-function deviceSecretProblems(env: RawEnv): string[] {
-  const secret = env.DEVICE_COOKIE_SECRET;
+/** The root of every auth key (codes, limiter keys, rp and did cookies); see auth/keys.ts. */
+function authSecretProblems(env: RawEnv): string[] {
+  const secret = env.AUTH_SECRET;
   if (!secret) {
-    return env.APP_MODE === "live"
-      ? [`DEVICE_COOKIE_SECRET is required when APP_MODE=live; ${FIX_HINT}.`]
+    return env.APP_MODE === "live" || env.VERCEL
+      ? [`AUTH_SECRET is required when APP_MODE=live or on Vercel; ${FIX_HINT}.`]
       : [];
   }
-  return secret.length < MIN_DEVICE_SECRET_LENGTH
-    ? [`DEVICE_COOKIE_SECRET must be at least ${MIN_DEVICE_SECRET_LENGTH} characters; ${FIX_HINT}.`]
+  return secret.length < MIN_AUTH_SECRET_LENGTH
+    ? [`AUTH_SECRET must be at least ${MIN_AUTH_SECRET_LENGTH} characters; ${FIX_HINT}.`]
     : [];
 }
 
@@ -248,7 +249,7 @@ function crossProblems(env: RawEnv, providers: ResolvedProviders): string[] {
   if (env.APP_MODE === "live" && env.DEMO_ACCOUNTS_PASSWORD) {
     problems.push("DEMO_ACCOUNTS_PASSWORD is refused when APP_MODE=live; unset it.");
   }
-  problems.push(...deviceSecretProblems(env));
+  problems.push(...authSecretProblems(env));
   problems.push(...redisProblems(env));
   problems.push(...selectorProblems(env, providers));
   return problems;

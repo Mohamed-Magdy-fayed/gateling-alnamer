@@ -11,7 +11,7 @@ const target = path.join(process.cwd(), ".env");
 const GENERATED = [
   "IBAN_ENCRYPTION_KEY",
   "TOTP_ENCRYPTION_KEY",
-  "DEVICE_COOKIE_SECRET",
+  "AUTH_SECRET",
   "INNGEST_ENCRYPTION_KEY",
 ];
 const REDIS_TOKEN = "LOCAL_REDIS_TOKEN";

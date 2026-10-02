@@ -1,8 +1,10 @@
 type HeaderReader = { get(name: string): string | null };
 
 /**
- * The client IP for rate limiting. `x-forwarded-for` is client-controlled everywhere except behind
- * Vercel's edge, so its first entry is trusted only when VERCEL=1; otherwise `x-real-ip`, else "local".
+ * The client IP for rate limiting. Both forwarding headers are client-controlled unless a proxy we
+ * run overwrites them, so neither is trusted by default (a spoofed header would pick its own
+ * bucket): `x-forwarded-for`'s first entry only behind Vercel's edge (VERCEL=1), `x-real-ip` only
+ * when TRUST_PROXY_HEADERS=1 (the smoke run, or a reverse proxy that sets it), else "local".
  */
 export function clientIp(
   headers: HeaderReader,
@@ -12,5 +14,9 @@ export function clientIp(
     const first = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
     if (first) return first;
   }
-  return headers.get("x-real-ip")?.trim() || "local";
+  if (env.TRUST_PROXY_HEADERS === "1") {
+    const real = headers.get("x-real-ip")?.trim();
+    if (real) return real;
+  }
+  return "local";
 }

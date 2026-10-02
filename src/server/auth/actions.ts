@@ -3,6 +3,7 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { z } from "zod";
 import type { Dictionary } from "@/i18n/ar";
 import { format, formatTime, type Locale } from "@/i18n/config";
@@ -12,6 +13,7 @@ import { CODE_RESEND_COOLDOWN_MS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { credentials, users } from "@/server/db/schema";
 import {
+  clearCodeVerifyFailures,
   clearSignInFailures,
   type GuardResult,
   guardCodeSend,
@@ -21,7 +23,7 @@ import {
 } from "./abuse";
 import { verifyCaptcha } from "./captcha";
 import { latestCodeRow } from "./code-status";
-import { type CodePurpose, issueCodeDecoy, verifyCode, verifyCodeDecoy } from "./codes";
+import { type CodePurpose, verifyCode, verifyCodeDecoy } from "./codes";
 import { authenticate } from "./credentials";
 import { hashPassword } from "./password";
 import { clearPendingReset, readPendingReset, setPendingReset } from "./pending-reset";
@@ -67,6 +69,35 @@ function blockedState(blocked: Blocked, t: Dictionary, locale: Locale): FormStat
     return { status: "error", message: t.auth.states.rateLimited, retryAt };
   }
   return { status: "error", message: t.auth.states.captchaFailed, captchaRequired: true };
+}
+
+/**
+ * A code-verify block. The pair lock reads as a rate limit with its end time (the sign-in lockout
+ * copy talks about signing in); a captcha step-up is the usual one.
+ */
+function verifyBlockedState(blocked: Blocked, t: Dictionary, locale: Locale): FormState {
+  if (blocked.blocked === "locked") {
+    return {
+      status: "error",
+      message: t.auth.states.rateLimited,
+      retryAt: blocked.until?.getTime(),
+    };
+  }
+  return blockedState(blocked, t, locale);
+}
+
+/**
+ * Runs a code send once the response has gone out, so a registered and an unregistered email return
+ * in the same time. A failure is logged by name only (never the code or the address).
+ */
+function sendAfterResponse(task: () => Promise<void>): void {
+  after(async () => {
+    try {
+      await task();
+    } catch (error: unknown) {
+      console.error("Deferred code send failed", error instanceof Error ? error.name : "unknown");
+    }
+  });
 }
 
 function captchaToken(raw: Record<string, unknown>): string | undefined {
@@ -193,22 +224,21 @@ export async function requestPasswordResetAction(
   const raw = fields(formData);
   const parsed = forgotSchema.safeParse(raw);
   if (!parsed.success) return { status: "error", message: t.auth.errors.invalid };
-  const guard = await guardCodeSend({ identifier: parsed.data.email, ip });
-  if (!("ok" in guard)) return blockedState(guard, t, locale);
+  // The captcha comes first: a failed challenge must not spend the account's send budget, or anyone
+  // could exhaust a victim's three codes without solving anything.
   if (!(await verifyCaptcha(captchaToken(raw), ip))) {
     return { status: "error", message: t.auth.states.captchaFailed };
   }
+  const guard = await guardCodeSend({ identifier: parsed.data.email, ip });
+  if (!("ok" in guard)) return blockedState(guard, t, locale);
 
   const user = await db().query.users.findFirst({
     columns: { id: true, name: true, email: true, locale: true },
     where: eq(users.email, parsed.data.email),
   });
-  if (user?.email) {
-    await sendCode(user, "password_reset", locale);
-  } else {
-    // Same hashing and DB work as the known-email path; only the send is skipped.
-    await issueCodeDecoy("password_reset");
-  }
+  // Issuing the code and sending the mail happen after the response; both paths do the same
+  // work before it (one lookup), so the answer's timing says nothing about the account.
+  if (user?.email) sendAfterResponse(() => sendCode(user, "password_reset", locale));
   // Same answer whether or not the email exists (no account enumeration): the code screen, with
   // the email kept in a signed server-side cookie instead of the URL.
   await setPendingReset(parsed.data.email);
@@ -220,8 +250,9 @@ export async function resetPasswordAction(
   formData: FormData,
 ): Promise<FormState> {
   const { t, locale } = await getDictionary();
-  await requestContext();
-  const parsed = resetSchema.safeParse(fields(formData));
+  const { ip, deviceId } = await requestContext();
+  const raw = fields(formData);
+  const parsed = resetSchema.safeParse(raw);
   if (!parsed.success) {
     const badCode = parsed.error.issues.some((issue) => issue.path[0] === "code");
     return {
@@ -232,8 +263,9 @@ export async function resetPasswordAction(
   const input = parsed.data;
   const target = input.email ?? (await readPendingReset())?.email;
   if (!target) return { status: "error", message: t.auth.states.codeInvalid };
-  const guard = await guardCodeVerify({ identifier: target });
-  if (!("ok" in guard)) return blockedState(guard, t, locale);
+  const who = { purpose: "password_reset", identifier: target, ip, deviceId } as const;
+  const guard = await guardCodeVerify({ ...who, captchaToken: captchaToken(raw) });
+  if (!("ok" in guard)) return verifyBlockedState(guard, t, locale);
 
   const user = await db().query.users.findFirst({
     columns: { id: true, email: true },
@@ -244,12 +276,13 @@ export async function resetPasswordAction(
     return { status: "error", message: t.auth.states.codeInvalid };
   }
 
-  const verified = await verifyCode(user.id, "password_reset", input.code);
-  if (!verified.ok) return { status: "error", message: t.auth.states.codeInvalid };
-
-  const passwordHash = await hashPassword(input.password);
-  const now = clock.now();
-  await db().transaction(async (tx) => {
+  // Consuming the code and writing the credential commit together: a failed write leaves the code
+  // usable, and a code can never be spent without the password changing.
+  const reset = await db().transaction(async (tx) => {
+    const verified = await verifyCode(user.id, "password_reset", input.code, tx);
+    if (!verified.ok) return false;
+    const passwordHash = await hashPassword(input.password);
+    const now = clock.now();
     await tx
       .insert(credentials)
       .values({ userId: user.id, passwordHash, passwordSalt: null, updatedAt: now })
@@ -257,7 +290,10 @@ export async function resetPasswordAction(
         target: credentials.userId,
         set: { passwordHash, passwordSalt: null, updatedAt: now },
       });
+    return true;
   });
+  if (!reset) return { status: "error", message: t.auth.states.codeInvalid };
+  await clearCodeVerifyFailures(who);
   // A password reset signs the account out everywhere.
   await invalidateUserSessions(user.id);
   await clearPendingReset();
@@ -269,15 +305,28 @@ export async function verifyEmailAction(_prev: FormState, formData: FormData): P
   const { t, locale } = await getDictionary();
   const user = await getCurrentUser();
   if (!user) redirect("/sign-in");
-  const parsed = verifySchema.safeParse(fields(formData));
+  const raw = fields(formData);
+  const parsed = verifySchema.safeParse(raw);
   if (!parsed.success) return { status: "error", message: t.auth.states.codeInvalid };
-  const guard = await guardCodeVerify({ identifier: user.email ?? user.id });
-  if (!("ok" in guard)) return blockedState(guard, t, locale);
+  const { ip, deviceId } = await requestContext();
+  const who = {
+    purpose: "email_verify",
+    identifier: user.email ?? user.id,
+    ip,
+    deviceId,
+  } as const;
+  const guard = await guardCodeVerify({ ...who, captchaToken: captchaToken(raw) });
+  if (!("ok" in guard)) return verifyBlockedState(guard, t, locale);
 
-  const verified = await verifyCode(user.id, "email_verify", parsed.data.code);
-  if (!verified.ok) return { status: "error", message: t.auth.states.codeInvalid };
-
-  await db().update(users).set({ emailVerifiedAt: clock.now() }).where(eq(users.id, user.id));
+  // The code is consumed and the email marked verified in one transaction.
+  const confirmed = await db().transaction(async (tx) => {
+    const verified = await verifyCode(user.id, "email_verify", parsed.data.code, tx);
+    if (!verified.ok) return false;
+    await tx.update(users).set({ emailVerifiedAt: clock.now() }).where(eq(users.id, user.id));
+    return true;
+  });
+  if (!confirmed) return { status: "error", message: t.auth.states.codeInvalid };
+  await clearCodeVerifyFailures(who);
   revalidatePath("/dashboard", "layout");
   return { status: "success", message: t.auth.states.verified };
 }
@@ -324,8 +373,11 @@ export async function resendCodeAction(_prev: FormState, formData: FormData): Pr
     columns: { id: true, name: true, email: true, locale: true },
     where: target.id ? eq(users.id, target.id) : eq(users.email, target.email),
   });
-  if (user) await sendCode(user, purpose, locale);
-  else await issueCodeDecoy(purpose);
+  if (user && purpose === "password_reset") {
+    sendAfterResponse(() => sendCode(user, purpose, locale));
+  } else if (user) {
+    await sendCode(user, purpose, locale);
+  }
   if (purpose === "password_reset") await setPendingReset(target.email);
   return { status: "success", message: t.auth.states.codeSent };
 }

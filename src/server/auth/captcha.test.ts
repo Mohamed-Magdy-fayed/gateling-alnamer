@@ -4,6 +4,7 @@ import {
   createCaptchaVerifier,
   FAKE_CAPTCHA_FAIL_TOKEN,
   FAKE_CAPTCHA_OK_TOKEN,
+  settingsFromEnvironment,
   TURNSTILE_TIMEOUT_MS,
   TURNSTILE_VERIFY_URL,
 } from "./captcha";
@@ -109,5 +110,68 @@ describe("captchaConfig", () => {
       provider: "turnstile",
       siteKey: "site",
     });
+  });
+});
+
+describe("turnstile answer checks", () => {
+  const base = { provider: "turnstile", secretKey: "s" } as const;
+  const verifyWith = (settings: object, answer: object) =>
+    createCaptchaVerifier({
+      ...base,
+      ...settings,
+      fetch: async () => json({ success: true, ...answer }),
+    })("t", "203.0.113.5");
+
+  it("rejects an answer minted for another hostname, or without one, when a hostname is expected", async () => {
+    const settings = { expectedHostname: "alnamer.example" };
+    expect(await verifyWith(settings, { hostname: "alnamer.example" })).toBe(true);
+    expect(await verifyWith(settings, { hostname: "evil.example" })).toBe(false);
+    expect(await verifyWith(settings, {})).toBe(false);
+  });
+
+  it("checks the action when one is expected", async () => {
+    const settings = { expectedAction: "auth" };
+    expect(await verifyWith(settings, { action: "auth" })).toBe(true);
+    expect(await verifyWith(settings, { action: "other" })).toBe(false);
+    expect(await verifyWith(settings, {})).toBe(false);
+  });
+
+  it("checks neither when none is configured", async () => {
+    expect(await verifyWith({}, { hostname: "anything", action: "anything" })).toBe(true);
+  });
+});
+
+describe("closed provider (misconfiguration)", () => {
+  it("never verifies, whatever the token", async () => {
+    const verify = createCaptchaVerifier({ provider: "closed" });
+    expect(await verify("fake-ok", "203.0.113.5")).toBe(false);
+    expect(await verify("anything", "203.0.113.5")).toBe(false);
+  });
+});
+
+describe("settingsFromEnvironment", () => {
+  it("is fake only for an explicit fake provider", () => {
+    expect(settingsFromEnvironment({ providers: { captcha: "fake" } })).toEqual({
+      provider: "fake",
+    });
+  });
+
+  it("fails closed for turnstile without a secret, and for anything else", () => {
+    expect(settingsFromEnvironment({ providers: { captcha: "turnstile" } })).toEqual({
+      provider: "closed",
+    });
+    expect(settingsFromEnvironment({ providers: { captcha: undefined } })).toEqual({
+      provider: "closed",
+    });
+  });
+
+  it("carries the BASE_URL host into the turnstile settings", () => {
+    expect(
+      settingsFromEnvironment({
+        providers: { captcha: "turnstile" },
+        TURNSTILE_SECRET_KEY: "secret",
+        BASE_URL: "https://alnamer.example/path",
+      }),
+    ).toMatchObject({ provider: "turnstile", expectedHostname: "alnamer.example" });
   });
 });
