@@ -51,7 +51,11 @@ async function resetTestDatabase() {
     fail("TEST_DATABASE_URL does not point at a local host; refusing to reset it.");
   }
   const name = decodeURIComponent(target.pathname.slice(1));
-  if (!name || name === "postgres") fail("TEST_DATABASE_URL must name a dedicated test database.");
+  if (!name.endsWith("_test")) {
+    fail(
+      `TEST_DATABASE_URL must name a database ending in "_test" (got "${name}"); refusing to reset it.`,
+    );
+  }
   const admin = new URL(target);
   admin.pathname = "/postgres";
   const sql = postgres(admin.toString(), { max: 1, onnotice: () => {} });

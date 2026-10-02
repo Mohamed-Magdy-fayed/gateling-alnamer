@@ -40,10 +40,20 @@ afterAll(async () => {
   await client.end();
 });
 
-async function insertRealCourse(status: "draft" | "published", slug: string) {
+type TeacherStatus = (typeof schema.teacherStatus.enumValues)[number];
+
+async function insertRealCourse(
+  status: "draft" | "published",
+  slug: string,
+  teacherStatus: TeacherStatus = "approved",
+): Promise<{ lessonId: string }> {
   const teacherId = randomUUID();
   const courseId = randomUUID();
   const revisionId = randomUUID();
+  const sectionId = randomUUID();
+  const sectionRevisionId = randomUUID();
+  const lessonId = randomUUID();
+  const lessonRevisionId = randomUUID();
   await conn.insert(schema.users).values({
     id: teacherId,
     name: "Real Teacher",
@@ -54,7 +64,7 @@ async function insertRealCourse(status: "draft" | "published", slug: string) {
     userId: teacherId,
     publicName: { en: "Real Teacher" },
     bio: { en: "Bio" },
-    status: "approved",
+    status: teacherStatus,
   });
   await conn.insert(schema.courses).values({ id: courseId, slug, teacherId, status });
   await conn.insert(schema.courseRevisions).values({
@@ -70,6 +80,25 @@ async function insertRealCourse(status: "draft" | "published", slug: string) {
     .update(schema.courses)
     .set({ publishedRevisionId: revisionId })
     .where(eq(schema.courses.id, courseId));
+  await conn.insert(schema.sections).values({ id: sectionId, courseId, sort: 1 });
+  await conn
+    .insert(schema.sectionRevisions)
+    .values({ id: sectionRevisionId, sectionId, title: { en: "Section" } });
+  await conn
+    .update(schema.sections)
+    .set({ publishedRevisionId: sectionRevisionId })
+    .where(eq(schema.sections.id, sectionId));
+  await conn
+    .insert(schema.lessons)
+    .values({ id: lessonId, courseId, sectionId, kind: "video", sort: 1 });
+  await conn
+    .insert(schema.lessonRevisions)
+    .values({ id: lessonRevisionId, lessonId, title: { en: "Lesson" } });
+  await conn
+    .update(schema.lessons)
+    .set({ publishedRevisionId: lessonRevisionId })
+    .where(eq(schema.lessons.id, lessonId));
+  return { lessonId };
 }
 
 describe("catalogue repository", () => {
@@ -147,9 +176,41 @@ describe("catalogue repository", () => {
     expect(await getPublishedLesson(randomUUID(), conn)).toBeNull();
   });
 
+  it("serves an approved real teacher's lessons", async () => {
+    const { lessonId } = await insertRealCourse("published", "int-real", "approved");
+    expect((await listPublishedCourses(conn)).map((course) => course.slug)).toContain("int-real");
+    expect(await getPublishedLesson(lessonId, conn)).not.toBeNull();
+  });
+
+  it.each(["suspended", "rejected", "applied"] as const)(
+    "hides a published course whose teacher is %s",
+    async (teacherStatus) => {
+      const { lessonId } = await insertRealCourse("published", "int-real", teacherStatus);
+      expect((await listPublishedCourses(conn)).map((course) => course.slug)).not.toContain(
+        "int-real",
+      );
+      expect(await getPublishedCourseBySlug("int-real", conn)).toBeNull();
+      expect(await getPublishedLesson(lessonId, conn)).toBeNull();
+      expect((await listCoursesForDashboard(conn)).map((course) => course.slug)).not.toContain(
+        "int-real",
+      );
+    },
+  );
+
+  it("bounds both list functions with a limit", async () => {
+    expect(await listPublishedCourses(conn, { limit: 2 })).toHaveLength(2);
+    expect(await listCoursesForDashboard(conn, { limit: 3 })).toHaveLength(3);
+    expect(await listPublishedCourses(conn)).toHaveLength(4);
+  });
+
   it("returns dashboard rows with lesson counts", async () => {
     const rows = await listCoursesForDashboard(conn);
     expect(rows).toHaveLength(4);
     expect(rows.every((row) => row.lessonCount > 0 && row.firstLessonId)).toBe(true);
+    const sample = await getPublishedCourseBySlug(SAMPLE_SLUG, conn);
+    const row = rows.find((candidate) => candidate.slug === SAMPLE_SLUG);
+    const lessonList = sample?.sections.flatMap((section) => section.lessons) ?? [];
+    expect(row?.lessonCount).toBe(lessonList.length);
+    expect(row?.firstLessonId).toBe(lessonList[0]?.id);
   });
 });

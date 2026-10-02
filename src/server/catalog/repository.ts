@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { type DbExecutor, db } from "@/server/db";
 import {
   categories,
@@ -65,8 +65,19 @@ function publishedCourseQuery(executor: DbExecutor) {
     .innerJoin(teacherProfiles, eq(teacherProfiles.userId, courses.teacherId));
 }
 
+/** Default and ceiling for list reads; callers may ask for fewer. */
+const DEFAULT_LIST_LIMIT = 100;
+
+export type ListOptions = { limit?: number };
+
+function listLimit(options: ListOptions): number {
+  const requested = options.limit ?? DEFAULT_LIST_LIMIT;
+  return Math.min(Math.max(Math.trunc(requested), 1), DEFAULT_LIST_LIMIT);
+}
+
 const publishedVisible = and(
   eq(courses.status, "published"),
+  eq(teacherProfiles.status, "approved"),
   sampleVisible(courses.isSample),
   sampleVisible(users.isSample),
 );
@@ -119,10 +130,14 @@ function toSummary(row: SummaryRow, cats: CatalogCategory[]): CourseSummary {
   };
 }
 
-export async function listPublishedCourses(executor: DbExecutor = db()): Promise<CourseSummary[]> {
+export async function listPublishedCourses(
+  executor: DbExecutor = db(),
+  options: ListOptions = {},
+): Promise<CourseSummary[]> {
   const rows = await publishedCourseQuery(executor)
     .where(publishedVisible)
-    .orderBy(asc(courses.createdAt), asc(courses.slug));
+    .orderBy(asc(courses.createdAt), asc(courses.slug))
+    .limit(listLimit(options));
   const cats = await categoriesByCourse(
     executor,
     rows.map((row) => row.id),
@@ -200,6 +215,7 @@ export async function getPublishedLesson(
     .innerJoin(courses, eq(courses.id, lessons.courseId))
     .innerJoin(courseRevisions, eq(courseRevisions.id, courses.publishedRevisionId))
     .innerJoin(users, eq(users.id, courses.teacherId))
+    .innerJoin(teacherProfiles, eq(teacherProfiles.userId, courses.teacherId))
     .where(and(eq(lessons.id, lessonId), publishedVisible, sampleVisible(lessons.isSample)));
   if (!row) return null;
   return {
@@ -215,11 +231,13 @@ export async function getPublishedLesson(
 
 export async function listCoursesForDashboard(
   executor: DbExecutor = db(),
+  options: ListOptions = {},
 ): Promise<DashboardCourse[]> {
-  const rows = await listPublishedCourses(executor);
+  const rows = await listPublishedCourses(executor, options);
   if (rows.length === 0) return [];
-  const lessonRows = await executor
-    .select({ id: lessons.id, courseId: lessons.courseId })
+  const firstLessonId = sql<string>`(array_agg(${lessons.id} order by ${sections.sort}, ${lessons.sort}))[1]`;
+  const lessonStats = await executor
+    .select({ courseId: lessons.courseId, lessonCount: count(), firstLessonId })
     .from(lessons)
     .innerJoin(sections, eq(sections.id, lessons.sectionId))
     .where(
@@ -231,17 +249,18 @@ export async function listCoursesForDashboard(
         sampleVisible(lessons.isSample),
       ),
     )
-    .orderBy(asc(sections.sort), asc(lessons.sort));
+    .groupBy(lessons.courseId);
+  const statsByCourse = new Map(lessonStats.map((stat) => [stat.courseId, stat]));
   return rows.map((row) => {
-    const own = lessonRows.filter((lesson) => lesson.courseId === row.id);
+    const stat = statsByCourse.get(row.id);
     return {
       id: row.id,
       slug: row.slug,
       title: row.title,
       teacher: row.teacher.name,
       priceMinor: row.priceMinor,
-      lessonCount: own.length,
-      firstLessonId: own[0]?.id ?? null,
+      lessonCount: stat?.lessonCount ?? 0,
+      firstLessonId: stat?.firstLessonId ?? null,
     };
   });
 }

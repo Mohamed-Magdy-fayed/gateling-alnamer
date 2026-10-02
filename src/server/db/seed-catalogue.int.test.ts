@@ -3,7 +3,7 @@ import path from "node:path";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
-import { getPublishedCourseBySlug } from "@/server/catalog/repository";
+import { getPublishedCourseBySlug, listPublishedCourses } from "@/server/catalog/repository";
 import * as schema from "@/server/db/schema";
 
 const client = postgres(process.env.DATABASE_URL ?? "", { max: 1, onnotice: () => {} });
@@ -61,6 +61,17 @@ const SAMPLE_SLUGS = [
 const sectionTotal = 5;
 const lessonTotal = 20;
 
+async function rerunMigration() {
+  const statements = readFileSync(MIGRATION, "utf8")
+    .split("--> statement-breakpoint")
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
+  expect(statements.length).toBeGreaterThan(0);
+  for (const statement of statements) {
+    await client.unsafe(statement);
+  }
+}
+
 describe("sample catalogue seed", () => {
   it("creates the expected number of rows", async () => {
     const counts = await fingerprint();
@@ -105,18 +116,36 @@ describe("sample catalogue seed", () => {
 
   it("changes nothing when the migration SQL runs a second time", async () => {
     const before = await fingerprint();
-    const statements = readFileSync(MIGRATION, "utf8")
-      .split("--> statement-breakpoint")
-      .map((statement) => statement.trim())
-      .filter((statement) => statement.length > 0);
-    expect(statements.length).toBeGreaterThan(0);
-    for (const statement of statements) {
-      await client.unsafe(statement);
-    }
+    await rerunMigration();
     expect(await fingerprint()).toEqual(before);
   });
 
   it.each(SAMPLE_SLUGS)("repository output for %s is stable", async (slug) => {
     expect(await getPublishedCourseBySlug(slug, conn)).toMatchSnapshot();
+  });
+});
+
+describe("seed rerun after edits", () => {
+  const COURSE = "00000000-0000-7000-8000-000000000301";
+  const REVISION = "00000000-0000-7000-8000-000000000401";
+
+  it("keeps edited titles and does not republish an unpublished sample course", async () => {
+    const original = (await client`select title from course_revisions where id = ${REVISION}`)[0]
+      ?.title;
+    try {
+      await client`update course_revisions set title = '{"ar":"x","en":"Edited title"}'::jsonb where id = ${REVISION}`;
+      await client`update courses set status = 'hidden', published_revision_id = null where id = ${COURSE}`;
+      await rerunMigration();
+      const [rev] =
+        await client`select title->>'en' as en from course_revisions where id = ${REVISION}`;
+      expect(rev?.en).toBe("Edited title");
+      const [course] = await client`select status from courses where id = ${COURSE}`;
+      expect(course?.status).toBe("hidden");
+      const slugs = (await listPublishedCourses(conn)).map((c) => c.slug);
+      expect(slugs).not.toContain("math-grade-12-calculus");
+    } finally {
+      await client`update course_revisions set title = ${client.json(original)} where id = ${REVISION}`;
+      await client`update courses set status = 'published', published_revision_id = ${REVISION} where id = ${COURSE}`;
+    }
   });
 });
