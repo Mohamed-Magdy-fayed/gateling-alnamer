@@ -12,6 +12,8 @@ type SubmitButtonProps = {
   disabled?: boolean;
   /** Visible reason shown under a disabled button (touch has no tooltip), e.g. a retry countdown. */
   disabledReason?: string;
+  /** `secondary` for a side action next to the primary submit (e.g. resend a code). */
+  variant?: "primary" | "secondary";
 };
 
 export function SubmitButton({
@@ -19,6 +21,7 @@ export function SubmitButton({
   className,
   disabled = false,
   disabledReason,
+  variant = "primary",
 }: SubmitButtonProps) {
   const { pending } = useFormStatus();
   const reasonId = useId();
@@ -30,7 +33,7 @@ export function SubmitButton({
         disabled={pending || disabled}
         aria-busy={pending}
         aria-describedby={reason ? reasonId : undefined}
-        className={cn(buttonClasses("primary", "lg"), "w-full", className)}
+        className={cn(buttonClasses(variant, "lg"), "w-full", className)}
       >
         {pending ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null}
         {children}

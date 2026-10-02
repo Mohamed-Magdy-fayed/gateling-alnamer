@@ -57,7 +57,7 @@ for (const viewport of VIEWPORTS) {
       await page.getByRole("combobox", { name: "اليوم" }).click();
       await page.getByRole("option").first().click();
       await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
-      await page.waitForURL("**/dashboard");
+      await page.waitForURL("**/verify-email");
       await page.goto("/dashboard?view=student");
       await settle(page);
       await expect(page).toHaveScreenshot(`dashboard-student-${viewport.label}.png`, shot);

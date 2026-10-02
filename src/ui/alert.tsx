@@ -1,10 +1,10 @@
-import { CircleAlert, CircleCheck, Info } from "lucide-react";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 import { AlertDescription, Alert as BaseAlert } from "@/components/ui/alert";
 
-type Tone = "info" | "success" | "danger";
+type Tone = "info" | "success" | "warning" | "danger";
 
-const icons = { info: Info, success: CircleCheck, danger: CircleAlert };
+const icons = { info: Info, success: CircleCheck, warning: TriangleAlert, danger: CircleAlert };
 
 type AlertProps = {
   tone?: Tone;

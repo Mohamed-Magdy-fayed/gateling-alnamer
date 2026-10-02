@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { uniqueClientIpPerTest } from "./helpers/client-ip";
-import { extractCode, waitForMailText } from "./helpers/mailpit";
+import { countMail, extractCode, waitForMailText } from "./helpers/mailpit";
 
 // Arabic is the default locale; labels below are the `ar` dictionary values.
 const BRAND = "النمر";
@@ -26,6 +26,15 @@ const PARENT_AGE_ERROR = "حساب ولي الأمر يتطلب تاريخ مي�
 const CAPTCHA_FAILED = "لم نتمكن من التحقق من أنك لست برنامجًا آليًا";
 const CREDENTIALS_ERROR = "البريد أو اسم المستخدم أو كلمة المرور غير صحيحة";
 const LOCKOUT = "تم إيقاف تسجيل الدخول من هذا الجهاز مؤقتًا";
+const VERIFY = "تأكيد";
+const RESEND = "إرسال رمز جديد";
+const CONTINUE = "المتابعة إلى لوحتي";
+const BANNER_ACTION = "تأكيد البريد";
+const BANNER = "أكّد بريدك الإلكتروني قبل شراء أي دورة";
+const VERIFIED = "تم تأكيد بريدك الإلكتروني.";
+const CODE_INVALID = "هذا الرمز غير صحيح أو انتهت صلاحيته. اطلب رمزًا جديدًا.";
+const CODE_SENT = "إذا كان هناك حساب بهذا البريد، فستصلك رسالة برمز من 6 أرقام خلال دقائق.";
+const EMAIL_DELAYED = "تأخّر وصول الرسالة. تحقق من مجلد الرسائل غير المرغوب فيها أو أعد الإرسال.";
 const LINK_PARENT = "ربط حساب ولي الأمر قادم قريبًا ليتمكن من متابعة تقدّمك.";
 
 const runId = Date.now().toString(36);
@@ -34,6 +43,7 @@ const password = "Smoke-pass-1";
 const newPassword = "Smoke-pass-2";
 const username = `smoke_${runId}`;
 const parentEmail = `smoke-parent-${runId}@alnamer.local`;
+const verifyEmail = `smoke-verify-${runId}@alnamer.local`;
 const minorEmail = `smoke-minor-${runId}@alnamer.local`;
 
 /** Picks a date in the three DOB selects by option position, so it does not depend on month names. */
@@ -45,6 +55,12 @@ async function pickDate(page: Page, yearsAgo: number, monthIndex: number, dayInd
   await page.getByRole("option").nth(monthIndex).click();
   await page.getByRole("combobox", { name: DOB_DAY }).click();
   await page.getByRole("option").nth(dayIndex).click();
+}
+
+/** Sign-up now lands on /verify-email; the dashboard is one navigation away (the email stays unverified). */
+async function finishSignUp(page: Page) {
+  await page.waitForURL("**/verify-email");
+  await page.goto("/dashboard");
 }
 
 async function signIn(page: Page, withPassword: string) {
@@ -97,7 +113,7 @@ test("sign-up an adult student with a username, sign out, sign in with the usern
   await pickDate(page, 25, 4, 14);
   await expect(page.getByLabel(CONSENT)).toHaveCount(0);
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
-  await page.waitForURL("**/dashboard");
+  await finishSignUp(page);
   await expect(page.getByText(LINK_PARENT)).toHaveCount(0);
 
   await page.getByRole("button", { name: SIGN_OUT }).click();
@@ -124,7 +140,7 @@ test("10 wrong passwords lock sign-in for that device and the message shows a ti
   await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
   await pickDate(page, 25, 4, 14);
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
-  await page.waitForURL("**/dashboard");
+  await finishSignUp(page);
   await page.getByRole("button", { name: SIGN_OUT }).click();
   await page.waitForURL((url) => url.pathname === "/");
 
@@ -141,6 +157,71 @@ test("10 wrong passwords lock sign-in for that device and the message shows a ti
   await expect(alert).toContainText(LOCKOUT);
   await expect(alert).toContainText(/\d{1,2}:\d{2}/);
   await expect(page.getByRole("button", { name: SIGN_IN, exact: true })).toBeDisabled();
+});
+
+test("sign-up -> Mailpit code -> /verify-email -> verified, and the banner goes away", async ({
+  page,
+}) => {
+  await page.goto("/sign-up");
+  await page.getByLabel(FIELD_NAME).fill("Smoke Verify");
+  await page.getByLabel(FIELD_EMAIL).fill(verifyEmail);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await pickDate(page, 25, 4, 14);
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  await page.waitForURL("**/verify-email");
+  const code = extractCode(await waitForMailText(verifyEmail));
+
+  // The code field is a one-time-code numeric LTR input; resend waits out its cooldown.
+  const field = page.getByLabel(FIELD_CODE, { exact: true });
+  await expect(field).toHaveAttribute("autocomplete", "one-time-code");
+  await expect(field).toHaveAttribute("inputmode", "numeric");
+  await expect(field).toHaveAttribute("maxlength", "6");
+  await expect(field).toHaveAttribute("dir", "ltr");
+  await expect(page.getByRole("button", { name: RESEND })).toBeDisabled();
+  await expect(page.getByText(/\d:\d{2}/)).toBeVisible();
+
+  const wrong = code === "000000" ? "111111" : "000000";
+  await field.fill(wrong);
+  await page.getByRole("button", { name: VERIFY, exact: true }).click();
+  await expect(page.locator('[data-slot="alert"]', { hasText: CODE_INVALID })).toBeVisible();
+
+  await page.goto("/dashboard");
+  await expect(page.getByText(BANNER)).toBeVisible();
+  await expect(page.locator("bdi", { hasText: verifyEmail })).toBeVisible();
+  await page.getByRole("link", { name: BANNER_ACTION }).click();
+  await page.waitForURL("**/verify-email");
+
+  await page.getByLabel(FIELD_CODE, { exact: true }).fill(code);
+  await page.getByRole("button", { name: VERIFY, exact: true }).click();
+  await expect(page.getByText(VERIFIED)).toBeVisible();
+  await page.getByRole("link", { name: CONTINUE }).click();
+  await page.waitForURL("**/dashboard");
+  await expect(page.getByText(BANNER)).toHaveCount(0);
+
+  // Once verified, /verify-email only confirms it.
+  await page.goto("/verify-email");
+  await expect(page.getByText(VERIFIED)).toBeVisible();
+});
+
+test("a failed or slow code email shows the delayed state with a resend button", async ({
+  page,
+}) => {
+  const delayedEmail = `smoke-delayed-${runId}@alnamer.local`;
+  await page.goto("/sign-up");
+  await page.getByLabel(FIELD_NAME).fill("Smoke Delayed");
+  await page.getByLabel(FIELD_EMAIL).fill(delayedEmail);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await pickDate(page, 25, 4, 14);
+  await page.route("**/api/trpc/auth.codeStatus*", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify([{ result: { data: { json: { status: "failed", canResendAt: 0 } } } }]),
+    }),
+  );
+  await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
+  await page.waitForURL("**/verify-email");
+  await expect(page.getByText(EMAIL_DELAYED)).toBeVisible();
+  await expect(page.getByRole("button", { name: RESEND })).toBeEnabled();
 });
 
 test("an under-18 student needs the consent tick, then the dashboard asks to link a parent", async ({
@@ -162,7 +243,7 @@ test("an under-18 student needs the consent tick, then the dashboard asks to lin
   await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
   await consent.check();
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
-  await page.waitForURL("**/dashboard");
+  await finishSignUp(page);
   await expect(page.getByText(LINK_PARENT)).toBeVisible();
 });
 
@@ -206,7 +287,7 @@ test("a parent needs a date of birth, then signs up as an adult", async ({ page 
   await startParentSignUp(page);
   await pickDate(page, 35, 2, 9);
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
-  await page.waitForURL("**/dashboard");
+  await finishSignUp(page);
 });
 
 test("each dashboard view renders", async ({ page }) => {
@@ -229,19 +310,45 @@ test("a lesson link on the student dashboard opens its learn page", async ({ pag
   await expect(page.locator("h1")).not.toBeEmpty();
 });
 
-test("forgot password: code from Mailpit, reset, sign in with the new password", async ({
+test("forgot password: wrong code, Mailpit code, reset signs out other sessions, new password works", async ({
   page,
+  browser,
+  baseURL,
 }) => {
+  // A second browser holds a live session for the same account.
+  const octet = () => Math.floor(Math.random() * 250);
+  const other = await browser.newContext({
+    baseURL: baseURL as string,
+    extraHTTPHeaders: { "x-real-ip": `10.${octet()}.${octet()}.201` },
+  });
+  const otherPage = await other.newPage();
+  await signIn(otherPage, password);
+
+  const before = await countMail(email);
   await page.goto("/forgot-password");
   await page.getByLabel(FIELD_EMAIL).fill(email);
   await page.getByRole("button", { name: SEND_CODE }).click();
-  const code = extractCode(await waitForMailText(email));
+  await page.waitForURL("**/reset-password");
+  expect(page.url()).not.toContain("alnamer.local");
+  await expect(page.getByText(CODE_SENT)).toBeVisible();
+  await expect(page.getByLabel(FIELD_EMAIL)).toHaveCount(0);
+  await expect(page.getByLabel(FIELD_CODE, { exact: true })).toBeFocused();
+  const code = extractCode(await waitForMailText(email, { after: before }));
 
-  await page.goto(`/reset-password?email=${encodeURIComponent(email)}`);
+  const wrong = code === "000000" ? "111111" : "000000";
+  await page.getByLabel(FIELD_CODE, { exact: true }).fill(wrong);
+  await page.getByLabel(FIELD_NEW_PASSWORD).fill(newPassword);
+  await page.getByRole("button", { name: SAVE_PASSWORD }).click();
+  await expect(page.locator('[data-slot="alert"]', { hasText: CODE_INVALID })).toBeVisible();
+
   await page.getByLabel(FIELD_CODE, { exact: true }).fill(code);
   await page.getByLabel(FIELD_NEW_PASSWORD).fill(newPassword);
   await page.getByRole("button", { name: SAVE_PASSWORD }).click();
   await expect(page.getByRole("link", { name: "تسجيل الدخول" })).toBeVisible();
+
+  await otherPage.goto("/dashboard");
+  await expect(otherPage).toHaveURL(/[/]sign-in/);
+  await other.close();
 
   await signIn(page, newPassword);
 });

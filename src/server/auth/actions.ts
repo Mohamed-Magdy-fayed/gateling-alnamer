@@ -1,15 +1,16 @@
 "use server";
 
 import { eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { Dictionary } from "@/i18n/ar";
-import { format, formatTime, isLocale, type Locale } from "@/i18n/config";
+import { format, formatTime, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { clock } from "@/server/clock";
+import { CODE_RESEND_COOLDOWN_MS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { credentials, users } from "@/server/db/schema";
-import { sendEvent } from "@/server/jobs/send";
 import {
   clearSignInFailures,
   type GuardResult,
@@ -19,17 +20,19 @@ import {
   guardSignUp,
 } from "./abuse";
 import { verifyCaptcha } from "./captcha";
-import { issueCode, issueCodeDecoy, verifyCode, verifyCodeDecoy } from "./codes";
+import { latestCodeRow } from "./code-status";
+import { type CodePurpose, issueCodeDecoy, verifyCode, verifyCodeDecoy } from "./codes";
 import { authenticate } from "./credentials";
 import { hashPassword } from "./password";
+import { clearPendingReset, readPendingReset, setPendingReset } from "./pending-reset";
 import { requestContext } from "./request-context";
-import { createSession, destroySession, invalidateUserSessions } from "./session";
+import { sendCode } from "./send-code";
+import { createSession, destroySession, getCurrentUser, invalidateUserSessions } from "./session";
 import { type SignUpField, signUpUser } from "./sign-up";
 
 export type FormState = {
   status: "idle" | "error" | "success";
   message?: string;
-  email?: string;
   /** Per-field messages (already translated) for the sign-up form. */
   fieldErrors?: Partial<Record<SignUpField, string>>;
   /** Set when the form-level error should offer the forgot-password link. */
@@ -78,7 +81,15 @@ const signInSchema = z.object({
   password: z.string().min(1).max(128),
 });
 const forgotSchema = z.object({ email });
-const resetSchema = z.object({ email, code: z.string().regex(/^\d{6}$/), password });
+const codeField = z.string().regex(/^\d{6}$/);
+const resetSchema = z.object({
+  /** Absent when the pending-reset cookie names the account. */
+  email: z.preprocess((value) => (value === "" ? undefined : value), email.optional()),
+  code: codeField,
+  password,
+});
+const verifySchema = z.object({ code: codeField });
+const resendSchema = z.object({ purpose: z.enum(["email_verify", "password_reset"]) });
 
 function fields(formData: FormData): Record<string, unknown> {
   return Object.fromEntries(formData.entries());
@@ -125,7 +136,21 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
   }
 
   await createSession(result.userId);
-  redirect("/dashboard");
+  await sendVerificationCode(result.userId, locale);
+  redirect("/verify-email");
+}
+
+/** Sign-up still succeeds when the code cannot be issued: /verify-email offers a resend. */
+async function sendVerificationCode(userId: string, locale: Locale): Promise<void> {
+  try {
+    const created = await db().query.users.findFirst({
+      columns: { id: true, name: true, email: true, locale: true },
+      where: eq(users.id, userId),
+    });
+    if (created) await sendCode(created, "email_verify", locale);
+  } catch (error: unknown) {
+    console.error("Verification code failed", error instanceof Error ? error.name : "unknown");
+  }
 }
 
 export async function signInAction(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -159,12 +184,6 @@ export async function signOutAction(): Promise<void> {
   redirect("/");
 }
 
-/** The user's saved locale, else the locale of the request that issued the code. */
-function recipientLocale(saved: string | null, fallback: Locale): Locale {
-  const value = saved ?? undefined;
-  return isLocale(value) ? value : fallback;
-}
-
 export async function requestPasswordResetAction(
   _prev: FormState,
   formData: FormData,
@@ -184,34 +203,16 @@ export async function requestPasswordResetAction(
     columns: { id: true, name: true, email: true, locale: true },
     where: eq(users.email, parsed.data.email),
   });
-  // Same answer whether or not the email exists (no account enumeration).
-  const sent: FormState = {
-    status: "success",
-    message: t.auth.forgot.sent,
-    email: parsed.data.email,
-  };
-  if (!user?.email) {
+  if (user?.email) {
+    await sendCode(user, "password_reset", locale);
+  } else {
     // Same hashing and DB work as the known-email path; only the send is skipped.
     await issueCodeDecoy("password_reset");
-    return sent;
   }
-
-  const { codeId, code } = await issueCode(user.id, "password_reset");
-
-  try {
-    await sendEvent("auth/code-email", {
-      codeId,
-      to: user.email,
-      locale: recipientLocale(user.locale, locale),
-      purpose: "password_reset",
-      code,
-      name: user.name,
-    });
-  } catch (error: unknown) {
-    // Same answer as for an unknown email; the status endpoint reports a failed send later.
-    console.error("Code email enqueue failed", error instanceof Error ? error.name : "unknown");
-  }
-  return sent;
+  // Same answer whether or not the email exists (no account enumeration): the code screen, with
+  // the email kept in a signed server-side cookie instead of the URL.
+  await setPendingReset(parsed.data.email);
+  redirect("/reset-password");
 }
 
 export async function resetPasswordAction(
@@ -221,22 +222,30 @@ export async function resetPasswordAction(
   const { t, locale } = await getDictionary();
   await requestContext();
   const parsed = resetSchema.safeParse(fields(formData));
-  if (!parsed.success) return { status: "error", message: t.auth.errors.invalid };
+  if (!parsed.success) {
+    const badCode = parsed.error.issues.some((issue) => issue.path[0] === "code");
+    return {
+      status: "error",
+      message: badCode ? t.auth.states.codeInvalid : t.auth.errors.invalid,
+    };
+  }
   const input = parsed.data;
-  const guard = await guardCodeVerify({ identifier: input.email });
+  const target = input.email ?? (await readPendingReset())?.email;
+  if (!target) return { status: "error", message: t.auth.states.codeInvalid };
+  const guard = await guardCodeVerify({ identifier: target });
   if (!("ok" in guard)) return blockedState(guard, t, locale);
 
   const user = await db().query.users.findFirst({
     columns: { id: true, email: true },
-    where: eq(users.email, input.email),
+    where: eq(users.email, target),
   });
   if (!user) {
     await verifyCodeDecoy("password_reset", input.code);
-    return { status: "error", message: t.auth.errors.code };
+    return { status: "error", message: t.auth.states.codeInvalid };
   }
 
   const verified = await verifyCode(user.id, "password_reset", input.code);
-  if (!verified.ok) return { status: "error", message: t.auth.errors.code };
+  if (!verified.ok) return { status: "error", message: t.auth.states.codeInvalid };
 
   const passwordHash = await hashPassword(input.password);
   const now = clock.now();
@@ -251,5 +260,72 @@ export async function resetPasswordAction(
   });
   // A password reset signs the account out everywhere.
   await invalidateUserSessions(user.id);
+  await clearPendingReset();
   return { status: "success", message: t.auth.reset.done };
+}
+
+/** Confirms the signed-in user's email with the code that was mailed to them. */
+export async function verifyEmailAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  const { t, locale } = await getDictionary();
+  const user = await getCurrentUser();
+  if (!user) redirect("/sign-in");
+  const parsed = verifySchema.safeParse(fields(formData));
+  if (!parsed.success) return { status: "error", message: t.auth.states.codeInvalid };
+  const guard = await guardCodeVerify({ identifier: user.email ?? user.id });
+  if (!("ok" in guard)) return blockedState(guard, t, locale);
+
+  const verified = await verifyCode(user.id, "email_verify", parsed.data.code);
+  if (!verified.ok) return { status: "error", message: t.auth.states.codeInvalid };
+
+  await db().update(users).set({ emailVerifiedAt: clock.now() }).where(eq(users.id, user.id));
+  revalidatePath("/dashboard", "layout");
+  return { status: "success", message: t.auth.states.verified };
+}
+
+/** What a resend needs: who the code is for and the earliest time a new one may go out. */
+type ResendTarget = { email: string; id: string | null; nextAt: number };
+
+async function resendTarget(purpose: CodePurpose): Promise<ResendTarget | "anonymous" | null> {
+  if (purpose === "email_verify") {
+    const user = await getCurrentUser();
+    if (!user) return "anonymous";
+    if (!user.email) return null;
+    const row = await latestCodeRow(user.id, purpose);
+    const nextAt = row ? row.createdAt.getTime() + CODE_RESEND_COOLDOWN_MS : 0;
+    return { email: user.email, id: user.id, nextAt };
+  }
+  const pending = await readPendingReset();
+  if (!pending) return null;
+  return { email: pending.email, id: null, nextAt: pending.issuedAt + CODE_RESEND_COOLDOWN_MS };
+}
+
+/**
+ * Sends a new code for the screen the user is on: email verification (signed in) or the reset in
+ * progress (the pending cookie). Both pass the code-send limits and a one-minute cooldown, and a
+ * reset answers the same for an unknown email.
+ */
+export async function resendCodeAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  const { t, locale } = await getDictionary();
+  const parsed = resendSchema.safeParse(fields(formData));
+  if (!parsed.success) return { status: "error", message: t.auth.states.codeInvalid };
+  const { purpose } = parsed.data;
+  const { ip } = await requestContext();
+
+  const target = await resendTarget(purpose);
+  if (target === "anonymous") redirect("/sign-in");
+  if (!target) return { status: "error", message: t.auth.states.codeInvalid };
+  if (target.nextAt > clock.now().getTime()) {
+    return { status: "error", message: t.auth.states.rateLimited, retryAt: target.nextAt };
+  }
+  const guard = await guardCodeSend({ identifier: target.email, ip });
+  if (!("ok" in guard)) return blockedState(guard, t, locale);
+
+  const user = await db().query.users.findFirst({
+    columns: { id: true, name: true, email: true, locale: true },
+    where: target.id ? eq(users.id, target.id) : eq(users.email, target.email),
+  });
+  if (user) await sendCode(user, purpose, locale);
+  else await issueCodeDecoy(purpose);
+  if (purpose === "password_reset") await setPendingReset(target.email);
+  return { status: "success", message: t.auth.states.codeSent };
 }

@@ -223,13 +223,11 @@ export const en: Dictionary = {
       title: "Reset your password",
       subtitle: "Enter your email and we'll send you a 6-digit code.",
       submit: "Send code",
-      sent: "If the email is registered, a code will arrive within minutes. It is valid for 10 minutes.",
       haveCode: "I already have a code",
     },
     reset: {
       title: "Set a new password",
       subtitle: "Enter the code you received and your new password.",
-      code: "Code",
       newPassword: "New password",
       submit: "Save password",
       done: "Your password was changed. Sign in now.",
@@ -242,6 +240,15 @@ export const en: Dictionary = {
       identifier: "Email or username",
       showPassword: "Show password",
       requiredNote: "All fields are required unless marked optional.",
+      code: "Code",
+    },
+    verify: {
+      title: "Confirm your email",
+      subtitle: "Enter the 6-digit code we sent to your email.",
+      submit: "Confirm",
+      resend: "Send a new code",
+      continue: "Continue to my dashboard",
+      bannerAction: "Confirm email",
     },
     states: {
       under18Consent:
@@ -253,6 +260,12 @@ export const en: Dictionary = {
       captchaFailed: "We couldn't confirm you're not a bot. Please try again.",
       captchaLabel: "Security check",
       retryCountdown: "You can try again in {time}.",
+      codeInvalid: "This code is wrong or has expired. Request a new one.",
+      codeSent: "If an account uses this email, a 6-digit code is on its way.",
+      emailDelayed:
+        "The email is taking longer than usual. Check your spam folder or send it again.",
+      verifyBanner: "Confirm your email before buying a course. We sent a code to {email}.",
+      verified: "Your email is confirmed.",
     },
     errors: {
       invalid: "Check the details you entered.",
@@ -271,7 +284,6 @@ export const en: Dictionary = {
         studentMinAge:
           "Student accounts are for ages 8 and up. A parent can create an account for a younger child.",
       },
-      code: "The code is wrong or has expired.",
     },
   },
   email: {
