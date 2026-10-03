@@ -336,3 +336,113 @@ describe("startCheckout", () => {
     );
   });
 });
+
+describe("startCheckout, T1 review regressions", () => {
+  it("never hands one buyer's pending order to another buyer (H1)", async () => {
+    const child = await createUser(conn);
+    const parentA = await createUser(conn, { role: "parent" });
+    const parentB = await createUser(conn, { role: "parent" });
+    await linkParent(conn, parentA.id, child.id);
+    await linkParent(conn, parentB.id, child.id);
+    const course = await createCourse(conn);
+    const a = await startCheckout(
+      { buyer: parentA, courseId: course.courseId, beneficiaryStudentId: child.id },
+      deps(),
+    );
+    const b = await startCheckout(
+      { buyer: parentB, courseId: course.courseId, beneficiaryStudentId: child.id },
+      deps(),
+    );
+    if (!a.ok || !b.ok) throw new Error("both starts should succeed");
+    expect(b.orderId).not.toBe(a.orderId);
+    const rows = await ordersOf(child.id, course.courseId);
+    const orderA = rows.find((row) => row.id === a.orderId);
+    const orderB = rows.find((row) => row.id === b.orderId);
+    expect(orderA?.status).toBe("expired");
+    expect(orderA?.buyerId).toBe(parentA.id);
+    expect(orderB).toMatchObject({ status: "pending", buyerId: parentB.id });
+    // A's invoice was cancelled with its order.
+    const aInvoice = orderA?.gatewayInvoiceId;
+    if (!aInvoice) throw new Error("A had no invoice");
+    expect((await gateway.getPaymentStatus(aInvoice)).status).toBe("expired");
+  });
+
+  it("two concurrent restarts leave one live invoice on the order (M2)", async () => {
+    const student = await createUser(conn);
+    const course = await createCourse(conn);
+    const first = await startCheckout({ buyer: student, courseId: course.courseId }, deps());
+    if (!first.ok) throw new Error("first start failed");
+    await Promise.all([
+      startCheckout({ buyer: student, courseId: course.courseId }, deps()),
+      startCheckout({ buyer: student, courseId: course.courseId }, deps()),
+    ]);
+    const live = await conn
+      .select({ id: schema.mockGatewayInvoices.id })
+      .from(schema.mockGatewayInvoices)
+      .where(eq(schema.mockGatewayInvoices.customerReference, first.orderId))
+      .then((rows) => rows);
+    const statuses = await Promise.all(
+      live.map(async (row) => (await gateway.getPaymentStatus(row.id)).status),
+    );
+    expect(statuses.filter((status) => status === "pending")).toHaveLength(1);
+    const [order] = await ordersOf(student.id, course.courseId);
+    const current = order?.gatewayInvoiceId;
+    if (!current) throw new Error("no current invoice");
+    expect((await gateway.getPaymentStatus(current)).status).toBe("pending");
+  });
+
+  it("a failed-order retry keeps its amount and cancels the old invoice (M3)", async () => {
+    const student = await createUser(conn);
+    const course = await createCourse(conn, { priceMinor: 5000 });
+    const first = await startCheckout({ buyer: student, courseId: course.courseId }, deps());
+    if (!first.ok) throw new Error("first start failed");
+    const [before] = await ordersOf(student.id, course.courseId);
+    const oldInvoice = before?.gatewayInvoiceId;
+    if (!oldInvoice) throw new Error("no first invoice");
+    await conn
+      .update(schema.orders)
+      .set({ status: "failed" })
+      .where(eq(schema.orders.id, first.orderId));
+    const retry = await startCheckout({ buyer: student, courseId: course.courseId }, deps());
+    if (!retry.ok) throw new Error("retry failed");
+    const [after] = await ordersOf(student.id, course.courseId);
+    expect(after?.amountMinor).toBe(5000);
+    expect(after?.courseRevisionId).toBe(course.revisionId);
+    expect((await gateway.getPaymentStatus(oldInvoice)).status).toBe("expired");
+  });
+
+  it("a failed order whose course terms changed is cancelled, not re-priced (M3)", async () => {
+    const student = await createUser(conn);
+    const course = await createCourse(conn, { priceMinor: 5000 });
+    const first = await startCheckout({ buyer: student, courseId: course.courseId }, deps());
+    if (!first.ok) throw new Error("first start failed");
+    await conn
+      .update(schema.orders)
+      .set({ status: "failed" })
+      .where(eq(schema.orders.id, first.orderId));
+    // A new published revision with another price.
+    const [revision] = await conn
+      .select()
+      .from(schema.courseRevisions)
+      .where(eq(schema.courseRevisions.id, course.revisionId));
+    if (!revision) throw new Error("no revision");
+    const newRevisionId = crypto.randomUUID();
+    await conn
+      .insert(schema.courseRevisions)
+      .values({ ...revision, id: newRevisionId, priceMinor: 7000 });
+    await conn
+      .update(schema.courses)
+      .set({ publishedRevisionId: newRevisionId })
+      .where(eq(schema.courses.id, course.courseId));
+
+    const retry = await startCheckout({ buyer: student, courseId: course.courseId }, deps());
+    if (!retry.ok) throw new Error("retry failed");
+    expect(retry.orderId).not.toBe(first.orderId);
+    const rows = await ordersOf(student.id, course.courseId);
+    expect(rows.find((row) => row.id === first.orderId)?.status).toBe("cancelled");
+    expect(rows.find((row) => row.id === retry.orderId)).toMatchObject({
+      status: "pending",
+      amountMinor: 7000,
+    });
+  });
+});

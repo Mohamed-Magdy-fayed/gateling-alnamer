@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { type AbuseDeps, guardCheckout } from "@/server/auth/abuse";
 import { isUniqueViolation } from "@/server/auth/sign-up";
@@ -130,8 +130,13 @@ async function loadTerms(courseId: string): Promise<Terms | null> {
 }
 
 /** The latest end of the beneficiary's active access to the course, or null. */
-async function activeAccessEnd(studentId: string, courseId: string, now: Date) {
-  const [row] = await db()
+async function activeAccessEnd(
+  executor: Pick<Tx, "select">,
+  studentId: string,
+  courseId: string,
+  now: Date,
+) {
+  const [row] = await executor
     .select({ endsAt: sql<Date | null>`max(${entitlements.endsAt})` })
     .from(entitlements)
     .where(
@@ -166,10 +171,24 @@ function snapshotValues(reservation: Reservation, now: Date) {
   };
 }
 
-/** Reuse the live pending order, retry a failed one on its own row, or open a new one. */
-async function reserveOrder(tx: Tx, reservation: Reservation, now: Date): Promise<OrderRow> {
-  const { beneficiaryId, terms } = reservation;
+type Reserved =
+  | { kind: "order"; order: OrderRow; cancelInvoiceIds: string[] }
+  | { kind: "has_access"; endsAt: Date };
+
+/**
+ * Under the student+course lock (shared with confirmPayment): refuse if access is already live;
+ * reuse this buyer's live pending order; retry this buyer's failed order on its own row when the
+ * course terms have not changed (same amount, so a late payment on its old invoice still matches);
+ * otherwise open a new order. A pending order of another buyer (another parent, or the student) is
+ * expired, never handed over: its buyer stays the payer of record. Invoices of orders this replaces
+ * are returned for cancelling after the commit.
+ */
+async function reserveOrder(tx: Tx, reservation: Reservation, now: Date): Promise<Reserved> {
+  const { beneficiaryId, buyerId, terms } = reservation;
   await lockStudentCourse(tx, beneficiaryId, terms.courseId);
+  const endsAt = await activeAccessEnd(tx, beneficiaryId, terms.courseId, now);
+  if (endsAt) return { kind: "has_access", endsAt };
+
   const open = await tx
     .select()
     .from(orders)
@@ -182,24 +201,41 @@ async function reserveOrder(tx: Tx, reservation: Reservation, now: Date): Promis
     )
     .orderBy(desc(orders.createdAt))
     .for("update");
+  const cancelInvoiceIds: string[] = [];
 
   const pending = open.find((order) => order.status === "pending");
-  if (pending && pending.expiresAt.getTime() > now.getTime()) return pending;
+  if (pending && pending.buyerId === buyerId && pending.expiresAt.getTime() > now.getTime()) {
+    return { kind: "order", order: pending, cancelInvoiceIds };
+  }
   if (pending) {
     await tx
       .update(orders)
       .set({ status: "expired", updatedAt: now })
       .where(eq(orders.id, pending.id));
+    if (pending.gatewayInvoiceId) cancelInvoiceIds.push(pending.gatewayInvoiceId);
   }
 
-  const failed = open.find((order) => order.status === "failed");
-  if (failed && !pending) {
-    const [retried] = await tx
+  const failed = open.find((order) => order.status === "failed" && order.buyerId === buyerId);
+  if (failed) {
+    if (failed.courseRevisionId === terms.revisionId) {
+      // Same terms: only the expiry moves. The old invoice id stays until the new one replaces it.
+      const [retried] = await tx
+        .update(orders)
+        .set({
+          status: "pending",
+          expiresAt: new Date(now.getTime() + reservation.snapshot.invoiceTtlMs),
+          updatedAt: now,
+        })
+        .where(eq(orders.id, failed.id))
+        .returning();
+      if (retried) return { kind: "order", order: retried, cancelInvoiceIds };
+    }
+    // The course changed since: close the old order (and its invoice) rather than re-price it.
+    await tx
       .update(orders)
-      .set({ status: "pending", gatewayInvoiceId: null, ...snapshotValues(reservation, now) })
-      .where(eq(orders.id, failed.id))
-      .returning();
-    if (retried) return retried;
+      .set({ status: "cancelled", updatedAt: now })
+      .where(eq(orders.id, failed.id));
+    if (failed.gatewayInvoiceId) cancelInvoiceIds.push(failed.gatewayInvoiceId);
   }
 
   const [created] = await tx
@@ -207,7 +243,7 @@ async function reserveOrder(tx: Tx, reservation: Reservation, now: Date): Promis
     .values({
       id: uuidv7(),
       number: generateOrderNumber(),
-      buyerId: reservation.buyerId,
+      buyerId,
       beneficiaryStudentId: beneficiaryId,
       courseId: terms.courseId,
       isSample: terms.isSample,
@@ -215,10 +251,10 @@ async function reserveOrder(tx: Tx, reservation: Reservation, now: Date): Promis
     })
     .returning();
   if (!created) throw new Error("order insert returned no row");
-  return created;
+  return { kind: "order", order: created, cancelInvoiceIds };
 }
 
-async function reserveWithRetry(reservation: Reservation, now: Date): Promise<OrderRow> {
+async function reserveWithRetry(reservation: Reservation, now: Date): Promise<Reserved> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await db().transaction((tx) => reserveOrder(tx, reservation, now));
@@ -294,10 +330,7 @@ export async function startCheckout(
     return { ok: false, reason: "access_ended" };
   }
 
-  const endsAt = await activeAccessEnd(beneficiaryId, terms.courseId, now);
-  if (endsAt) return { ok: false, reason: "already_has_access", endsAt };
-
-  const order = await reserveWithRetry(
+  const reserved = await reserveWithRetry(
     {
       buyerId: buyer.id,
       beneficiaryId,
@@ -310,9 +343,14 @@ export async function startCheckout(
     },
     now,
   );
+  if (reserved.kind === "has_access") {
+    return { ok: false, reason: "already_has_access", endsAt: reserved.endsAt };
+  }
+  const { order, cancelInvoiceIds } = reserved;
+  const gateway = deps.gateway ?? paymentGateway();
+  for (const invoiceId of cancelInvoiceIds) await supersedeInvoice(gateway, invoiceId);
 
   try {
-    const gateway = deps.gateway ?? paymentGateway();
     const previousInvoiceId = order.gatewayInvoiceId;
     const invoice = await gateway.createInvoice({
       orderId: order.id,
@@ -322,10 +360,26 @@ export async function startCheckout(
       customerName: buyer.name,
       locale: input.locale ?? "en",
     });
-    await db()
+    // Compare-and-set: only replace the invoice this attempt read. A concurrent attempt (double
+    // click, second tab) that already swapped it wins; this one cancels its own invoice instead,
+    // so an order never has two live invoices.
+    const swapped = await db()
       .update(orders)
       .set({ gatewayInvoiceId: invoice.invoiceId, updatedAt: now })
-      .where(eq(orders.id, order.id));
+      .where(
+        and(
+          eq(orders.id, order.id),
+          eq(orders.status, "pending"),
+          previousInvoiceId === null
+            ? isNull(orders.gatewayInvoiceId)
+            : eq(orders.gatewayInvoiceId, previousInvoiceId),
+        ),
+      )
+      .returning({ id: orders.id });
+    if (swapped.length === 0) {
+      await supersedeInvoice(gateway, invoice.invoiceId);
+      return { ok: false, reason: "try_again", orderNumber: order.number };
+    }
     if (previousInvoiceId) await supersedeInvoice(gateway, previousInvoiceId);
     return {
       ok: true,

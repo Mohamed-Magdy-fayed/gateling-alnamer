@@ -95,7 +95,13 @@ async function applyPaid(
   const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
   if (!order) throw new Error("order vanished during confirmation");
   if (PAID_STATUSES.includes(order.status)) {
-    if (order.gatewayInvoiceId === invoiceId || order.refundFlag) return order;
+    if (order.gatewayInvoiceId === invoiceId) return order;
+    if (order.refundFlag) {
+      // Already flagged for another reason: one flag column cannot hold a second extra payment.
+      // Loud log until P4's payment_events records every payment (STATE carry-over).
+      console.error(`[payments] extra paid invoice ${invoiceId} on flagged order ${order.id}`);
+      return order;
+    }
     // A different invoice of an already-paid order was also paid: the buyer was charged twice.
     // Keep the status and the first payment ids, grant nothing, flag it for a refund.
     console.warn(`[payments] second paid invoice ${invoiceId} for order ${order.id}`);
@@ -200,7 +206,7 @@ export async function confirmPayment(
   if (!order) return { kind: "not_found" };
   if (order.amountMinor !== payment.amountMinor || order.currency !== payment.currency) {
     // Ids only: the amounts are not secret but the P4 payment_events row will carry them.
-    console.warn(`[payments] amount mismatch for order ${order.id} invoice ${invoiceId}`);
+    console.error(`[payments] amount mismatch for order ${order.id} invoice ${invoiceId}`);
     return { kind: "mismatch", orderId: order.id };
   }
 
