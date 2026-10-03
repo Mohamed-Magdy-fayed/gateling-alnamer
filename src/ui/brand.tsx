@@ -1,7 +1,16 @@
 import { cn } from "./cn";
 
 /** Text wordmark until the client supplies a logo. */
-export function Wordmark({ label, className }: { label: string; className?: string }) {
+export function Wordmark({
+  label,
+  className,
+  labelClassName,
+}: {
+  label: string;
+  className?: string;
+  /** Class for the text, e.g. `max-sm:sr-only` to keep only the star where the header is tight. */
+  labelClassName?: string;
+}) {
   return (
     <span
       className={cn(
@@ -16,7 +25,7 @@ export function Wordmark({ label, className }: { label: string; className?: stri
         />
         <circle cx="16" cy="16" r="4.5" fill="var(--highlight)" />
       </svg>
-      {label}
+      <span className={labelClassName}>{label}</span>
     </span>
   );
 }

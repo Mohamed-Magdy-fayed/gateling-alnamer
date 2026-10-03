@@ -30,20 +30,30 @@ function SheetOverlay({ className, ...props }: ComponentProps<typeof SheetPrimit
 type SheetContentProps = ComponentProps<typeof SheetPrimitive.Content> & {
   /** Visible, translated label for the close control. Required so no string is hardcoded here. */
   closeLabel: string;
+  /** Edge the panel slides from: `end` (default) or `start` (the app-shell sidebar). */
+  side?: "start" | "end";
 };
 
 /**
- * Side panel on the inline-end edge: right in LTR, left in RTL. The slide direction comes from
+ * Side panel on the inline-end edge (right in LTR, left in RTL), or the inline-start edge with `side="start"`. The slide direction comes from
  * the `--dir` custom property (1 in LTR, -1 in RTL), see globals.css.
  */
-function SheetContent({ className, children, closeLabel, ...props }: SheetContentProps) {
+function SheetContent({
+  className,
+  children,
+  closeLabel,
+  side = "end",
+  ...props
+}: SheetContentProps) {
   return (
     <SheetPrimitive.Portal>
       <SheetOverlay />
       <SheetPrimitive.Content
         data-slot="sheet-content"
+        data-side={side}
         className={cn(
-          "sheet-content fixed inset-y-0 end-0 z-50 flex h-full w-3/4 max-w-sm flex-col gap-4 border-s border-line bg-raised p-4 shadow-e3",
+          "sheet-content fixed inset-y-0 z-50 flex h-full w-3/4 max-w-sm flex-col gap-4 border-line bg-raised p-4 shadow-e3",
+          side === "start" ? "start-0 border-e" : "end-0 border-s",
           className,
         )}
         {...props}

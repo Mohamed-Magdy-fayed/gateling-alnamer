@@ -1,16 +1,19 @@
 import Link from "next/link";
 import { linkClass } from "@/components/auth-parts";
 import { AdminView } from "@/components/dashboard/admin-view";
+import {
+  AdminLanding,
+  ParentLandingExtras,
+  ReviewerLanding,
+  StudentLanding,
+  TeacherLanding,
+} from "@/components/dashboard/landings";
 import { ParentView } from "@/components/dashboard/parent-view";
 import { ReviewerView } from "@/components/dashboard/reviewer-view";
 import { StudentView } from "@/components/dashboard/student-view";
 import { TeacherView } from "@/components/dashboard/teacher-view";
-import {
-  type DashboardView,
-  dashboardViewForRole,
-  dashboardViews,
-  isDashboardView,
-} from "@/components/dashboard/views";
+import { ViewAs } from "@/components/dashboard/view-as";
+import { isViewAsEnabled, resolveView } from "@/components/dashboard/views";
 import { SoftWarning } from "@/components/devices/soft-warning";
 import { ParentCards } from "@/components/parents/parent-cards";
 import { format } from "@/i18n/config";
@@ -18,8 +21,9 @@ import { getDictionary } from "@/i18n/server";
 import { requirePageUser } from "@/server/auth/page-guard";
 import { shouldPromptParentLink } from "@/server/auth/profile";
 import { listCoursesForDashboard } from "@/server/catalog/repository";
+import { serverEnv } from "@/server/env";
 import { loadParentDashboard } from "@/server/parents/dashboard";
-import { Alert, Badge, Container, cn } from "@/ui";
+import { Alert, Container } from "@/ui";
 
 export default async function DashboardPage({
   searchParams,
@@ -29,14 +33,13 @@ export default async function DashboardPage({
   const user = await requirePageUser();
   const { t, locale } = await getDictionary();
   const { view: requested, notice } = await searchParams;
-  const ownView = dashboardViewForRole(user.role);
-  const view: DashboardView = isDashboardView(requested) ? requested : ownView;
-  // A real parent sees their children; any other role previewing the parent view sees the sample.
-  const ownParentCards = user.role === "parent" && view === "parent";
+  const mode = serverEnv().APP_MODE;
+  // A sample preview (demo only) shows the W1 sample screens; otherwise the user's own landing.
+  const sample = resolveView(mode, requested);
   const [courses, promptParentLink, parentData] = await Promise.all([
-    listCoursesForDashboard(),
+    sample ? listCoursesForDashboard() : [],
     shouldPromptParentLink(user.id),
-    ownParentCards ? loadParentDashboard(user.id) : null,
+    !sample && user.role === "parent" ? loadParentDashboard(user.id) : null,
   ]);
 
   return (
@@ -47,31 +50,10 @@ export default async function DashboardPage({
             {t.dashboard.hello} <bdi>{user.name}</bdi>
           </h1>
           <p className="text-sm text-fg-muted">
-            {format(t.dashboard.roleLabel, { role: t.dashboard.views[ownView] })}
+            {format(t.dashboard.roleLabel, { role: t.dashboard.views[user.role] })}
           </p>
         </div>
-        <nav aria-label={t.dashboard.viewAs} className="flex flex-col gap-1.5">
-          <span className="flex items-center gap-2 text-xs font-medium text-fg-muted">
-            {t.dashboard.viewAs}
-            <Badge tone="highlight">{t.common.sample}</Badge>
-          </span>
-          <ul className="flex flex-wrap gap-1 rounded-md bg-sunken p-1">
-            {dashboardViews.map((item) => (
-              <li key={item}>
-                <Link
-                  href={{ pathname: "/dashboard", query: { view: item } }}
-                  aria-current={item === view ? "page" : undefined}
-                  className={cn(
-                    "flex min-h-11 items-center rounded-sm px-3 text-sm font-medium",
-                    item === view ? "bg-raised text-fg shadow-e1" : "text-fg-2 hover:text-fg",
-                  )}
-                >
-                  {t.dashboard.views[item]}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
+        {isViewAsEnabled(mode) ? <ViewAs t={t} current={sample} /> : null}
       </div>
 
       {notice === "device-over" && user.role === "student" ? (
@@ -92,14 +74,25 @@ export default async function DashboardPage({
       ) : null}
 
       <div className="mt-8">
-        {view === "student" ? <StudentView t={t} locale={locale} courses={courses} /> : null}
-        {view === "parent" && parentData ? (
-          <ParentCards data={parentData} t={{ parents: t.parents, auth: t.auth }} locale={locale} />
+        {sample === "student" ? <StudentView t={t} locale={locale} courses={courses} /> : null}
+        {sample === "parent" ? <ParentView t={t} locale={locale} /> : null}
+        {sample === "teacher" ? <TeacherView t={t} locale={locale} courses={courses} /> : null}
+        {sample === "reviewer" ? <ReviewerView t={t} /> : null}
+        {sample === "admin" ? <AdminView t={t} locale={locale} courses={courses} /> : null}
+        {sample === null && user.role === "student" ? <StudentLanding t={t} /> : null}
+        {sample === null && user.role === "parent" && parentData ? (
+          <>
+            <ParentCards
+              data={parentData}
+              t={{ parents: t.parents, auth: t.auth }}
+              locale={locale}
+            />
+            <ParentLandingExtras t={t} />
+          </>
         ) : null}
-        {view === "parent" && !parentData ? <ParentView t={t} locale={locale} /> : null}
-        {view === "teacher" ? <TeacherView t={t} locale={locale} courses={courses} /> : null}
-        {view === "reviewer" ? <ReviewerView t={t} /> : null}
-        {view === "admin" ? <AdminView t={t} locale={locale} courses={courses} /> : null}
+        {sample === null && user.role === "teacher" ? <TeacherLanding t={t} /> : null}
+        {sample === null && user.role === "reviewer" ? <ReviewerLanding t={t} /> : null}
+        {sample === null && user.role === "admin" ? <AdminLanding t={t} /> : null}
       </div>
     </Container>
   );

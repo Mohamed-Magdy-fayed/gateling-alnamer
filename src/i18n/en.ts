@@ -360,6 +360,7 @@ export const en: Dictionary = {
     noCourses: "No courses here yet.",
     browseCourses: "Browse courses",
     viewAs: "View screens as",
+    samplePreview: "Sample preview",
     views: {
       student: "Student",
       parent: "Parent",
@@ -456,6 +457,15 @@ export const en: Dictionary = {
     privacy: "Privacy policy",
     refunds: "Refund policy",
     pending: "The platform owner provides the final text for this page before launch.",
+  },
+  shell: {
+    comingSoon: "Coming in the full test version",
+    openMenu: "Open menu",
+    closeMenu: "Close menu",
+  },
+  errors: {
+    retry: "Something went wrong while loading.",
+    retryAction: "Try again",
   },
   notFound: {
     title: "Page not found",

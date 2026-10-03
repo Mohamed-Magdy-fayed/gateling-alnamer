@@ -28,7 +28,12 @@ function RequiredNote({ t }: { t: AuthText }) {
 
 type CaptchaProps = { captcha: CaptchaConfig; locale: Locale };
 
-export function SignInForm({ t, captcha, locale }: { t: AuthText } & CaptchaProps) {
+export function SignInForm({
+  t,
+  captcha,
+  locale,
+  next,
+}: { t: AuthText; next?: string } & CaptchaProps) {
   const [state, action] = useActionState(signInAction, idle);
   const block = useRetryBlock(state.retryAt, t);
   // Once the server asks for a captcha the widget stays for the rest of this visit.
@@ -36,6 +41,7 @@ export function SignInForm({ t, captcha, locale }: { t: AuthText } & CaptchaProp
   if (state.captchaRequired && !needsCaptcha) setNeedsCaptcha(true);
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <Message state={state} t={t} />
       <RequiredNote t={t} />
       <Field

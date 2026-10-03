@@ -181,11 +181,33 @@ h4 {
     opacity: 0;
   }
 }
+@keyframes sheet-in-start {
+  from {
+    transform: translateX(calc(var(--dir) * -100%));
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes sheet-out-start {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(calc(var(--dir) * -100%));
+  }
+}
 .sheet-content[data-state="open"] {
   animation: sheet-in var(--dur-slow) var(--ease-out);
 }
 .sheet-content[data-state="closed"] {
   animation: sheet-out var(--dur-slow) var(--ease-in) forwards;
+}
+.sheet-content[data-side="start"][data-state="open"] {
+  animation-name: sheet-in-start;
+}
+.sheet-content[data-side="start"][data-state="closed"] {
+  animation-name: sheet-out-start;
 }
 @keyframes dialog-pop-in {
   from {
@@ -217,6 +239,12 @@ h4 {
   }
   .sheet-content[data-state="closed"] {
     animation: sheet-fade-out var(--dur-fast) linear forwards;
+  }
+  .sheet-content[data-side="start"][data-state="open"] {
+    animation-name: sheet-fade-in;
+  }
+  .sheet-content[data-side="start"][data-state="closed"] {
+    animation-name: sheet-fade-out;
   }
   .dialog-pop[data-state="open"] {
     animation: sheet-fade-in var(--dur-fast) linear;

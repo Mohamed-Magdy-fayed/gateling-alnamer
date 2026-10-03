@@ -12,6 +12,7 @@ import { clock } from "@/server/clock";
 import { CODE_RESEND_COOLDOWN_MS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { credentials, users } from "@/server/db/schema";
+import { safeNextPath } from "@/server/devices/next-path";
 import { gateDevice } from "@/server/devices/sign-in";
 import {
   clearCodeVerifyFailures,
@@ -229,7 +230,13 @@ export async function signInAction(_prev: FormState, formData: FormData): Promis
   // A student over the limit in strict mode gets a pre-session, never a session.
   if (gate.kind === "blocked") redirect("/devices/blocked");
   await createSession(userId, { deviceId: gate.deviceId });
-  redirect(gate.overLimit ? "/dashboard?notice=device-over" : "/dashboard");
+  // The over-limit notice lives on the dashboard, so it wins over `next`; otherwise a same-origin
+  // relative `next` is honoured and anything else falls back to the dashboard.
+  redirect(
+    gate.overLimit
+      ? "/dashboard?notice=device-over"
+      : safeNextPath(typeof raw.next === "string" ? raw.next : undefined),
+  );
 }
 
 export async function signOutAction(): Promise<void> {

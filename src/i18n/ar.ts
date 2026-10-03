@@ -365,6 +365,7 @@ export const ar = {
     noCourses: "لا توجد دورات هنا بعد.",
     browseCourses: "تصفّح الدورات",
     viewAs: "عرض الشاشات كـ",
+    samplePreview: "معاينة بيانات تجريبية",
     views: {
       student: "طالب",
       parent: "ولي أمر",
@@ -466,6 +467,15 @@ export const ar = {
     privacy: "سياسة الخصوصية",
     refunds: "سياسة الاسترداد",
     pending: "النص النهائي لهذه الصفحة يقدّمه صاحب المنصة قبل الإطلاق.",
+  },
+  shell: {
+    comingSoon: "قريبًا في نسخة الاختبار الكاملة",
+    openMenu: "فتح القائمة",
+    closeMenu: "إغلاق القائمة",
+  },
+  errors: {
+    retry: "حدث خطأ أثناء التحميل.",
+    retryAction: "إعادة المحاولة",
   },
   notFound: {
     title: "الصفحة غير موجودة",
