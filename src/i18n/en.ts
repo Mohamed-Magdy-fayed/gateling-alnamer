@@ -521,7 +521,7 @@ export const en: Dictionary = {
     resultTitle: "Your score: {score}%",
     passed: "Passed",
     notPassed: "Not passed yet",
-    late: "Submitted after the time limit; it was graded as it was.",
+    late: "Submitted after the time limit, so only the answers saved before it counted.",
     tryAgain: "Try again",
     noAttemptsLeft: "You have used all your attempts for this quiz.",
     previewOnly: "Preview: teachers and staff see the questions but do not take attempts.",

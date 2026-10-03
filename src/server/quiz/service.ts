@@ -24,7 +24,7 @@ export async function quizStateFor(
 ): Promise<{ ok: true; state: QuizState } | Denied> {
   const access = await getLessonAccess(user, lessonId, clock.now());
   if (!access.allowed) return { ok: false, reason: access.reason };
-  const state = await getQuizState(access.grant);
+  const state = await getQuizState(access.grant, user.role);
   return state ? { ok: true, state } : { ok: false, reason: "no_quiz" };
 }
 
@@ -39,7 +39,7 @@ export async function startQuizFor(
   const now = clock.now();
   const access = await getLessonAccess(user, lessonId, now);
   if (!access.allowed) return { ok: false, reason: access.reason };
-  return startQuiz(access.grant, now);
+  return startQuiz(access.grant, user.role, now);
 }
 
 /** Submits the caller's open attempt: rate limit and the access decision run again at submit. */
@@ -55,5 +55,5 @@ export async function submitQuizFor(
   const now = clock.now();
   const access = await getLessonAccess(user, lessonId, now);
   if (!access.allowed) return { ok: false, reason: access.reason };
-  return submitQuiz(access.grant, attemptId, answers, now);
+  return submitQuiz(access.grant, user.role, attemptId, answers, now);
 }

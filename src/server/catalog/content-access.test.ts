@@ -157,11 +157,20 @@ describe("content table access", () => {
       if (TEST_FILE.test(relative)) continue;
       if (ANSWER_DIRS.some((dir) => relative.startsWith(dir + path.sep))) continue;
       const source = readFileSync(file, "utf8");
+      // Any whole-schema access (namespace, dynamic import, re-export) could reach `questions` too,
+      // and so could raw SQL naming the answer column.
+      const wholeSchema = contentViolations(source).filter(
+        (found) => !found.startsWith("imports ") && !found.startsWith("uses .query."),
+      );
       const used = [
         ...schemaImports(source).filter((name) => ANSWER_TABLES.includes(name)),
         ...[...source.matchAll(/\.query\.(\w+)/g)]
           .map((match) => match[1] ?? "")
           .filter((name) => ANSWER_TABLES.includes(name)),
+        ...wholeSchema,
+        ...(/questions\.correct|"correct"\s+from\s+"?questions/i.test(source)
+          ? ["names questions.correct"]
+          : []),
       ];
       if (used.length > 0) {
         offenders.push(

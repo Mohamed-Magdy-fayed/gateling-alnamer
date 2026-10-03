@@ -12,6 +12,7 @@ import {
   quizAttempts,
   quizQuestions,
   quizzes,
+  type UserRole,
 } from "@/server/db/schema";
 import type { AccessGranted } from "./lesson-access";
 import { type AnswerKey, cleanAnswers, scoreAnswers } from "./quiz-score";
@@ -125,15 +126,33 @@ function stateOf(
   };
 }
 
-const takesAttempts = (grant: AccessGranted) => grant.mode !== "staff_preview" && grant.userId;
+/**
+ * The student who takes attempts, or null. Only students take attempts: teachers, reviewers and
+ * admins see a quiz in preview (also on a free-preview lesson, where the grant mode is "preview").
+ */
+function takerOf(grant: AccessGranted, role: UserRole): string | null {
+  if (role !== "student" || grant.mode === "staff_preview") return null;
+  return grant.userId;
+}
+
+/** Past the deadline plus grace: the attempt is over and only answers saved by then count (L2). */
+function isExpired(attempt: { deadlineAt: Date | null }, now: Date): boolean {
+  return (
+    attempt.deadlineAt !== null &&
+    now.getTime() > attempt.deadlineAt.getTime() + QUIZ_GRACE_S * 1000
+  );
+}
 
 /** The lesson's quiz and the caller's attempts; null when the lesson has no quiz. */
-export async function getQuizState(grant: AccessGranted): Promise<QuizState | null> {
+export async function getQuizState(
+  grant: AccessGranted,
+  role: UserRole,
+): Promise<QuizState | null> {
   const quiz = await lessonQuiz(db(), grant.lessonId);
   if (!quiz) return null;
   const rows = await quizQuestionRows(db(), quiz.id);
   const attempts = grant.userId ? await attemptsOf(db(), grant.userId, quiz.id) : [];
-  return stateOf(quiz, rows.length, attempts, Boolean(takesAttempts(grant)));
+  return stateOf(quiz, rows.length, attempts, takerOf(grant, role) !== null);
 }
 
 export type StartResult =
@@ -144,8 +163,12 @@ export type StartResult =
  * Starts the next attempt, or returns the open one (a reload resumes it). Serialised per student
  * and quiz, so two clicks never make two attempts; the unique (student, quiz, attempt_no) backs it.
  */
-export async function startQuiz(grant: AccessGranted, now: Date): Promise<StartResult> {
-  const studentId = takesAttempts(grant);
+export async function startQuiz(
+  grant: AccessGranted,
+  role: UserRole,
+  now: Date,
+): Promise<StartResult> {
+  const studentId = takerOf(grant, role);
   if (!studentId) return { ok: false, reason: "preview_only" };
   return db().transaction(async (tx) => {
     const quiz = await lessonQuiz(tx, grant.lessonId);
@@ -156,7 +179,15 @@ export async function startQuiz(grant: AccessGranted, now: Date): Promise<StartR
     const rows = await quizQuestionRows(tx, quiz.id);
     const attempts = await attemptsOf(tx, studentId, quiz.id);
     const open = attempts.find((attempt) => attempt.submittedAt === null);
-    if (open) {
+    if (open && isExpired(open, now)) {
+      // An attempt left open past its deadline closes with what was saved by then (T4: nothing).
+      const key = rows.map(toKey);
+      const saved = cleanAnswers(key, open.answers);
+      await tx
+        .update(quizAttempts)
+        .set({ submittedAt: open.deadlineAt ?? now, scorePct: scoreAnswers(key, saved).pct })
+        .where(and(eq(quizAttempts.id, open.id), isNull(quizAttempts.submittedAt)));
+    } else if (open) {
       return {
         ok: true,
         attemptId: open.id,
@@ -186,7 +217,7 @@ export type SubmitResult =
       passed: boolean;
       bestScore: number;
       attemptsLeft: number;
-      /** Submitted after the deadline plus grace; still graded as-is (MASTER-PLAN L2). */
+      /** Submitted after the deadline plus grace: graded on the answers saved by the deadline. */
       late: boolean;
     }
   | { ok: false; reason: "not_found" | "already_submitted" | "preview_only" };
@@ -194,11 +225,12 @@ export type SubmitResult =
 /** Grades the caller's open attempt in one transaction. Correct answers are not returned (L2). */
 export async function submitQuiz(
   grant: AccessGranted,
+  role: UserRole,
   attemptId: string,
   rawAnswers: unknown,
   now: Date,
 ): Promise<SubmitResult> {
-  const studentId = takesAttempts(grant);
+  const studentId = takerOf(grant, role);
   if (!studentId) return { ok: false, reason: "preview_only" };
   return db().transaction(async (tx) => {
     const quiz = await lessonQuiz(tx, grant.lessonId);
@@ -217,7 +249,9 @@ export async function submitQuiz(
     if (!attempt) return { ok: false, reason: "not_found" };
     if (attempt.submittedAt) return { ok: false, reason: "already_submitted" };
     const key = (await quizQuestionRows(tx, quiz.id)).map(toKey);
-    const answers = cleanAnswers(key, rawAnswers);
+    // Past the deadline plus grace the new answers do not count: only what was saved by then (L2).
+    const late = isExpired(attempt, now);
+    const answers = cleanAnswers(key, late ? attempt.answers : rawAnswers);
     const score = scoreAnswers(key, answers);
     await tx
       .update(quizAttempts)
@@ -237,9 +271,6 @@ export async function submitQuiz(
       .select({ count: sql<number>`count(*)::int` })
       .from(quizAttempts)
       .where(and(eq(quizAttempts.studentId, studentId), eq(quizAttempts.quizId, quiz.id)));
-    const late = attempt.deadlineAt
-      ? now.getTime() > attempt.deadlineAt.getTime() + QUIZ_GRACE_S * 1000
-      : false;
     return {
       ok: true,
       scorePct: score.pct,

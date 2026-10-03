@@ -84,15 +84,18 @@ async function courseWithQuiz(options: { maxAttempts?: number; timeLimitS?: numb
     { quizId, questionId: q1, sort: 1 },
     { quizId, questionId: q2, sort: 2 },
   ]);
-  const [lesson] = await conn
-    .select({ revisionId: schema.lessons.publishedRevisionId })
-    .from(schema.lessons)
-    .where(eq(schema.lessons.id, course.lessonId));
-  if (!lesson?.revisionId) throw new Error("no revision");
-  await conn
-    .update(schema.lessonRevisions)
-    .set({ quizId })
-    .where(eq(schema.lessonRevisions.id, lesson.revisionId));
+  // Both the paid lesson and the free-preview lesson carry the quiz.
+  for (const lessonId of [course.lessonId, course.previewLessonId]) {
+    const [lesson] = await conn
+      .select({ revisionId: schema.lessons.publishedRevisionId })
+      .from(schema.lessons)
+      .where(eq(schema.lessons.id, lessonId));
+    if (!lesson?.revisionId) throw new Error("no revision");
+    await conn
+      .update(schema.lessonRevisions)
+      .set({ quizId })
+      .where(eq(schema.lessonRevisions.id, lesson.revisionId));
+  }
   return { ...course, quizId, q1, q2 };
 }
 
@@ -175,7 +178,7 @@ describe("quiz start and submit", () => {
     });
   });
 
-  it("grades a late submit as-is and marks it late", async () => {
+  it("past the deadline plus grace, new answers do not count (graded on what was saved)", async () => {
     const course = await courseWithQuiz({ timeLimitS: 60 });
     const student = await entitled(course.courseId);
     const attempt = await startQuizFor(student, course.lessonId, deps());
@@ -188,7 +191,41 @@ describe("quiz start and submit", () => {
       { [course.q1]: "b" },
       deps(),
     );
-    expect(graded).toMatchObject({ ok: true, scorePct: 50, late: true });
+    expect(graded).toMatchObject({ ok: true, scorePct: 0, late: true });
+  });
+
+  it("an attempt left open past its deadline closes when the student starts again", async () => {
+    const course = await courseWithQuiz({ timeLimitS: 60, maxAttempts: 2 });
+    const student = await entitled(course.courseId);
+    const first = await startQuizFor(student, course.lessonId, deps());
+    if (!first.ok) throw new Error("start failed");
+    setClockForTests(new Date(NOW.getTime() + 2 * 60_000));
+    const second = await startQuizFor(student, course.lessonId, deps());
+    if (!second.ok) throw new Error("second start failed");
+    expect(second.attemptId).not.toBe(first.attemptId);
+    const [closed] = await conn
+      .select()
+      .from(schema.quizAttempts)
+      .where(eq(schema.quizAttempts.id, first.attemptId));
+    expect(closed?.scorePct).toBe(0);
+    expect(closed?.submittedAt?.getTime()).toBe(NOW.getTime() + 60_000);
+  });
+
+  it("staff and other teachers on a free-preview quiz lesson cannot write attempts", async () => {
+    const course = await courseWithQuiz();
+    const admin = await createUser(conn, { role: "admin" });
+    const otherTeacher = await createUser(conn, { role: "teacher" });
+    for (const user of [
+      { id: admin.id, role: "admin" as UserRole, deviceId: null },
+      { id: otherTeacher.id, role: "teacher" as UserRole, deviceId: null },
+    ]) {
+      const state = await quizStateFor(user, course.previewLessonId);
+      expect(state.ok && state.state.canAttempt, user.role).toBe(false);
+      expect(await startQuizFor(user, course.previewLessonId, deps()), user.role).toEqual({
+        ok: false,
+        reason: "preview_only",
+      });
+    }
   });
 
   it("denies the leak rows at start", async () => {
