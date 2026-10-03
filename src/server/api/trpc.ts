@@ -117,8 +117,11 @@ export function logTrpcError({
 }
 
 let twoFactorEnforced: () => boolean = () => TWO_FACTOR_ENFORCED;
-/** Test hook: pass a getter to override `TWO_FACTOR_ENFORCED`, or null to restore it. */
+/** Test hook: pass a getter to override `TWO_FACTOR_ENFORCED`, or null to restore it. Throws outside tests. */
 export function setTwoFactorEnforcedForTests(getter: (() => boolean) | null): void {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error('setTwoFactorEnforcedForTests is only available when NODE_ENV is "test"');
+  }
   twoFactorEnforced = getter ?? (() => TWO_FACTOR_ENFORCED);
 }
 

@@ -5,6 +5,9 @@ import { credentials, devices, sessions, users, verificationCodes } from "@/serv
 
 const sent = vi.hoisted(() => ({
   calls: [] as Array<{ name: string; data: Record<string, unknown> }>,
+  cookies: [] as Array<{ token: string; expiresAt: Date }>,
+  /** A fresh client address per request so the per-IP limits do not couple unrelated tests. */
+  requests: 0,
 }));
 
 vi.mock("@/server/redis", () => ({ getRedis: () => null }));
@@ -18,11 +21,18 @@ vi.mock("@/server/auth/session", async () => {
   return {
     getCurrentSession: vi.fn(async () => null),
     invalidateUserSessions: core.invalidateUserSessionsCore,
+    setSessionCookie: vi.fn(async (token: string, expiresAt: Date) => {
+      sent.cookies.push({ token, expiresAt });
+    }),
   };
+});
+vi.mock("@/server/auth/session-invalidate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/server/auth/session-invalidate")>();
+  return { ...actual, deleteUserSessionsIn: vi.fn(actual.deleteUserSessionsIn) };
 });
 vi.mock("@/server/auth/request-context", () => ({
   requestContext: vi.fn(async () => ({
-    ip: "9.9.9.9",
+    ip: `9.9.${Math.floor(sent.requests / 250)}.${(sent.requests++ % 250) + 1}`,
     deviceId: null,
     deviceKey: "00000000-0000-4000-8000-0000000000aa",
     userAgent: null,
@@ -50,6 +60,8 @@ const { appRouter } = await import("../root");
 const { createCallerFactory } = await import("../trpc");
 const { hashPassword, verifyPassword } = await import("@/server/auth/password");
 const { verifyCode } = await import("@/server/auth/codes");
+const invalidate = await import("@/server/auth/session-invalidate");
+const { sha256 } = await import("@/server/auth/password");
 const db = () =>
   dbModule.db() as unknown as import("drizzle-orm/postgres-js").PostgresJsDatabase<
     typeof import("@/server/db/schema")
@@ -121,6 +133,7 @@ async function rowsFor(userId: string) {
 beforeEach(() => {
   setClockForTests(NOW);
   sent.calls.length = 0;
+  sent.cookies.length = 0;
 });
 afterAll(async () => {
   setClockForTests(null);
@@ -182,7 +195,7 @@ describe("account.changePassword", () => {
     ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
   });
 
-  it("success writes argon2id, signs out other sessions and keeps the current one", async () => {
+  it("success writes argon2id, signs out other sessions and rotates the current one", async () => {
     const user = await makeUser();
     const current = await makeSession(user.id);
     const other = await makeSession(user.id);
@@ -198,8 +211,49 @@ describe("account.changePassword", () => {
     expect(await verifyPassword("brand-new-pass-2", cred as never)).toBe(true);
     expect(await verifyPassword(PASSWORD, cred as never)).toBe(false);
     const left = (await rowsFor(user.id)).map((row) => row.tokenHash);
-    expect(left).toEqual([current]);
+    expect(left).toHaveLength(1);
+    expect(left).not.toContain(current);
     expect(left).not.toContain(other);
+  });
+
+  it("rotates the current session: new id and token, old id dead, cookie re-issued", async () => {
+    const user = await makeUser();
+    const deviceId = await makeDevice(user.id);
+    const current = await makeSession(user.id, deviceId);
+    const [before] = await rowsFor(user.id);
+    await as(user, { tokenHash: current, deviceId }).account.changePassword({
+      current: PASSWORD,
+      next: "brand-new-pass-2",
+    });
+    const rows = await rowsFor(user.id);
+    expect(rows).toHaveLength(1);
+    const [after] = rows;
+    expect(after?.id).not.toBe(before?.id);
+    expect(after?.tokenHash).not.toBe(current);
+    expect(after?.deviceId).toBe(deviceId);
+    expect(after?.expiresAt).toEqual(before?.expiresAt);
+    expect(sent.cookies).toHaveLength(1);
+    expect(sha256(sent.cookies[0]?.token ?? "")).toBe(after?.tokenHash);
+    expect(sent.cookies[0]?.expiresAt).toEqual(after?.expiresAt);
+  });
+
+  it("rolls the password back when the session invalidation fails", async () => {
+    const user = await makeUser();
+    const current = await makeSession(user.id);
+    const other = await makeSession(user.id);
+    vi.mocked(invalidate.deleteUserSessionsIn).mockRejectedValueOnce(new Error("boom"));
+    await expect(
+      as(user, { tokenHash: current }).account.changePassword({
+        current: PASSWORD,
+        next: "brand-new-pass-2",
+      }),
+    ).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    const [cred] = await db().select().from(credentials).where(eq(credentials.userId, user.id));
+    expect(await verifyPassword(PASSWORD, cred as never)).toBe(true);
+    expect((await rowsFor(user.id)).map((row) => row.tokenHash).sort()).toEqual(
+      [current, other].sort(),
+    );
+    expect(sent.cookies).toHaveLength(0);
   });
 
   it("rejects a next password that is too short", async () => {
@@ -301,18 +355,44 @@ describe("account.addEmail and verifyAddedEmail", () => {
     expect(code?.pendingEmail).toBe(address);
   });
 
-  it("answers codeSent for a taken address but sends nothing and stores nothing", async () => {
+  it("a taken address takes the same path as a free one: same answer, same rows, no mail", async () => {
     const taken = await makeUser("parent");
-    const child = await makeUser("student", false);
+    const takenChild = await makeUser("student", false);
+    const freeChild = await makeUser("student", false);
+    const freeResult = await as(freeChild).account.addEmail({
+      email: `free-${crypto.randomUUID()}@example.test`,
+    });
+    const mailsAfterFree = sent.calls.length;
+    const takenResult = await as(takenChild).account.addEmail({
+      email: (taken.email ?? "").toUpperCase(),
+    });
+    expect(takenResult).toEqual(freeResult);
+    expect(Object.keys(takenResult)).toEqual(Object.keys(freeResult));
+    // The owner of the taken address is never mailed.
+    expect(sent.calls).toHaveLength(mailsAfterFree);
+    const rowsOf = (userId: string) =>
+      db().select().from(verificationCodes).where(eq(verificationCodes.userId, userId));
+    expect(await rowsOf(takenChild.id)).toHaveLength((await rowsOf(freeChild.id)).length);
+    // The decoy can never confirm: the unique index refuses the address.
+    const [row] = await db().select().from(users).where(eq(users.id, takenChild.id));
+    expect(row?.email).toBeNull();
+  });
+
+  it("limits one address across accounts: the fourth request is refused", async () => {
+    const address = `shared-${crypto.randomUUID()}@example.test`;
+    for (let i = 0; i < 3; i += 1) {
+      const child = await makeUser("student", false);
+      await expect(as(child).account.addEmail({ email: address })).resolves.toEqual({
+        codeSent: true,
+      });
+    }
+    const fourth = await makeUser("student", false);
+    await expect(as(fourth).account.addEmail({ email: address })).rejects.toMatchObject({
+      code: "TOO_MANY_REQUESTS",
+    });
     await expect(
-      as(child).account.addEmail({ email: (taken.email ?? "").toUpperCase() }),
-    ).resolves.toEqual({ codeSent: true });
-    expect(sent.calls).toHaveLength(0);
-    const codes = await db()
-      .select()
-      .from(verificationCodes)
-      .where(eq(verificationCodes.userId, child.id));
-    expect(codes).toHaveLength(0);
+      as(fourth).account.addEmail({ email: address.toUpperCase() }),
+    ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
   });
 
   it("is only for users without an email", async () => {

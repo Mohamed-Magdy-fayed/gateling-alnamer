@@ -7,6 +7,7 @@ import { MemoryLimiter } from "../../../test/fake-limiter";
 import {
   clearCodeVerifyFailures,
   clearSignInFailures,
+  guardAddEmailTarget,
   guardCodeSend,
   guardCodeVerify,
   guardSignIn,
@@ -48,6 +49,28 @@ beforeEach(() => {
 afterEach(() => {
   setClockForTests(null);
   vi.restoreAllMocks();
+});
+
+describe("guardAddEmailTarget", () => {
+  it("allows three per address per hour across callers, case-insensitively, then limits", async () => {
+    for (const address of ["Taken@Example.com", "taken@example.com", " TAKEN@example.com "]) {
+      expect(await guardAddEmailTarget({ address }, deps())).toEqual({ ok: true });
+    }
+    expect(await guardAddEmailTarget({ address: "taken@example.com" }, deps())).toMatchObject({
+      blocked: "rateLimited",
+    });
+    expect(await guardAddEmailTarget({ address: "other@example.com" }, deps())).toEqual({
+      ok: true,
+    });
+  });
+
+  it("keys on an HMAC, never the raw address", async () => {
+    await guardAddEmailTarget({ address: "Secret.Person@Example.com" }, deps());
+    const all = [...limiter.keys].join("\n").toLowerCase();
+    expect(all).not.toContain("secret");
+    expect(all).not.toContain("example.com");
+    expect([...limiter.keys].some((key) => key.startsWith("rl:addemail:addr:"))).toBe(true);
+  });
 });
 
 describe("keys", () => {

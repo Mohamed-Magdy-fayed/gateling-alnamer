@@ -11,6 +11,7 @@ import {
 } from "@/server/account/service";
 import { clearCodeVerifyFailures, guardCodeVerify } from "@/server/auth/abuse";
 import { requestContext } from "@/server/auth/request-context";
+import { setSessionCookie } from "@/server/auth/session";
 import { clock } from "@/server/clock";
 import { listActiveDevices, nextSelfRemovalAt, removeDevice } from "@/server/devices/service";
 import { AppError } from "@/server/errors";
@@ -61,12 +62,14 @@ export const accountRouter = router({
   changePassword: protectedProcedure
     .input(z.object({ current: z.string().min(1, INVALID).max(128, INVALID), next: password }))
     .mutation(async ({ ctx, input }) => {
-      await changePassword({
+      const { rotated } = await changePassword({
         userId: ctx.user.id,
         current: input.current,
         next: input.next,
         currentTokenHash: ctx.sessionTokenHash,
       });
+      // After the commit: the old token is dead, so the browser must carry the new one.
+      if (rotated) await setSessionCookie(rotated.token, rotated.expiresAt);
       return { changed: true as const };
     }),
 

@@ -9,12 +9,15 @@ import { isUnder18 } from "./age";
  * True for a student whose date of birth makes them under 18 today (Cairo date) and who has no
  * linked parent yet: they should link one. A parent-created child is linked from the start.
  */
-export async function shouldPromptParentLink(userId: string): Promise<boolean> {
+export async function shouldPromptParentLink(user: { id: string; role: string }): Promise<boolean> {
+  // Only students are ever prompted, so every other role costs no query.
+  if (user.role !== "student") return false;
+  const userId = user.id;
   const row = await db().query.users.findFirst({
-    columns: { role: true, dateOfBirth: true },
+    columns: { dateOfBirth: true },
     where: eq(users.id, userId),
   });
-  if (row?.role !== "student" || !row.dateOfBirth) return false;
+  if (!row?.dateOfBirth) return false;
   if (!isUnder18(row.dateOfBirth, clock.now())) return false;
   const link = await db().query.parentLinks.findFirst({
     columns: { id: true },

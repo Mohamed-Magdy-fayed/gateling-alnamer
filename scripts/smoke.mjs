@@ -72,6 +72,68 @@ async function resetTestDatabase() {
   console.log(`smoke: reset test database "${name}".`);
 }
 
+// Rate-limit counters live in Redis for an hour or more, so a second run would inherit the first
+// run's sign-in, code-send and lockout counters and fail. Only the limiter's own keys are deleted
+// (SCAN + DEL, never FLUSHDB), and only on a local Redis REST host; anything else is skipped.
+const LIMITER_KEY_PATTERNS = ["alnamer:rl:rl:*", "alnamer:rl:lock*:*", "alnamer:rl:vlock*:*"];
+
+async function redisPipeline(base, token, commands) {
+  const response = await fetch(`${base}/pipeline`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(commands),
+  });
+  if (!response.ok) throw new Error(`Redis REST answered ${response.status}`);
+  return response.json();
+}
+
+async function scanKeys(base, token, pattern) {
+  const keys = [];
+  let cursor = "0";
+  do {
+    const [reply] = await redisPipeline(base, token, [
+      ["SCAN", cursor, "MATCH", pattern, "COUNT", "500"],
+    ]);
+    const [next, batch] = reply?.result ?? ["0", []];
+    cursor = String(next);
+    keys.push(...batch);
+  } while (cursor !== "0");
+  return keys;
+}
+
+async function flushRateLimits() {
+  const raw = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!raw || !token) {
+    console.log("smoke: no Redis REST url/token configured; rate limits are not flushed.");
+    return;
+  }
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    console.log("smoke: the Redis REST url is not valid; rate limits are not flushed.");
+    return;
+  }
+  if (!LOCAL_DB_HOSTS.has(url.hostname.toLowerCase())) {
+    console.log("smoke: the Redis REST host is not local; refusing to flush rate limits.");
+    return;
+  }
+  try {
+    let removed = 0;
+    for (const pattern of LIMITER_KEY_PATTERNS) {
+      const keys = await scanKeys(url.origin, token, pattern);
+      for (let i = 0; i < keys.length; i += 200) {
+        await redisPipeline(url.origin, token, [["DEL", ...keys.slice(i, i + 200)]]);
+      }
+      removed += keys.length;
+    }
+    console.log(`smoke: cleared ${removed} rate-limit keys.`);
+  } catch (error) {
+    fail(`could not flush rate limits (${error instanceof Error ? error.message : "error"}).`);
+  }
+}
+
 // The smoke signs in as one student from a fresh browser context per test (a new device each time),
 // so the real limit of 2 would block the third. The device-limit specs set their own limit.
 async function relaxDeviceLimit() {
@@ -119,6 +181,7 @@ try {
 process.env.TEST_DATABASE_URL ||= DEFAULT_TEST_DATABASE_URL;
 await checkServices();
 await resetTestDatabase();
+await flushRateLimits();
 run(["node_modules/tsx/dist/cli.mjs", "scripts/migrate.mts", "--test-db"], "db:migrate");
 await relaxDeviceLimit();
 if (!process.argv.includes("--no-build") && buildIsStale())

@@ -33,6 +33,8 @@ export type AuthLimits = {
   };
   /** Failed code verifies, the D32 pattern: a pair lock per (identifier, device) and a captcha-only account counter. */
   readonly codeVerify: { readonly pair: LimitRule; readonly account: LimitRule };
+  /** "Add email" on the account page: per target address across all accounts, so one inbox cannot be flooded. */
+  readonly addEmail: { readonly address: LimitRule };
   /** Parent-created child accounts: per parent per day. */
   readonly childCreate: { readonly parent: LimitRule };
   /** Invite redemption attempts (right or wrong): per student and per IP. */
@@ -60,6 +62,7 @@ export const AUTH_LIMITS: AuthLimits = {
     ip: { max: 5, windowSec: DAY },
     global: { max: 20, windowSec: DAY },
   },
+  addEmail: { address: { max: 3, windowSec: HOUR } },
   childCreate: { parent: { max: 10, windowSec: DAY } },
   inviteRedeem: { student: { max: 5, windowSec: MINUTES_15 }, ip: { max: 20, windowSec: HOUR } },
   codeVerify: {

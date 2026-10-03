@@ -169,6 +169,19 @@ export async function guardCodeSend(
   ]);
 }
 
+/** "Add email": 3 an hour per target address across all accounts; keyed on an HMAC of the lower-cased address. */
+export async function guardAddEmailTarget(
+  input: { address: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  const limits = deps.limits ?? AUTH_LIMITS;
+  return within(
+    limiterOf(deps),
+    `rl:addemail:addr:${hasherOf(deps).id(input.address)}`,
+    limits.addEmail.address,
+  );
+}
+
 export type CodeVerifyContext = {
   readonly purpose: "email_verify" | "password_reset";
   readonly identifier: string;

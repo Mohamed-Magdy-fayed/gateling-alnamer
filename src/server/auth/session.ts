@@ -46,7 +46,7 @@ type CreateOptions = { deviceId?: string | null; twoFactorVerified?: boolean };
  * server actions and route handlers (Next refuses `cookies().set` during a render). Deleting a
  * leftover legacy cookie and the daily cookie re-issue that sliding expiry needs happen in `src/proxy.ts`.
  */
-async function writeSessionCookie(token: string, expiresAt: Date): Promise<void> {
+export async function setSessionCookie(token: string, expiresAt: Date): Promise<void> {
   const store = await cookies();
   const options = sessionCookieOptions(expiresAt);
   store.set(SESSION_COOKIE, token, options);
@@ -64,7 +64,7 @@ async function insertFor(
   const tokenHash = sha256(token);
   const expiresAt = new Date(clock.now().getTime() + SESSION_TTL_MS);
   await insertSession({ tokenHash, userId, expiresAt, deviceId, twoFactorVerified });
-  await writeSessionCookie(token, expiresAt);
+  await setSessionCookie(token, expiresAt);
   return { token, tokenHash, expiresAt };
 }
 

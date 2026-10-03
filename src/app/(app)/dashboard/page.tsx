@@ -38,7 +38,7 @@ export default async function DashboardPage({
   const sample = resolveView(mode, requested);
   const [courses, promptParentLink, parentData] = await Promise.all([
     sample ? listCoursesForDashboard() : [],
-    shouldPromptParentLink(user.id),
+    shouldPromptParentLink(user),
     !sample && user.role === "parent" ? loadParentDashboard(user.id) : null,
   ]);
 

@@ -3,14 +3,16 @@ import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import type { Locale } from "@/i18n/config";
 import {
   clearPasswordChangeFailures,
+  guardAddEmailTarget,
   guardCodeSend,
   guardPasswordChange,
 } from "@/server/auth/abuse";
-import { verifyPendingEmailCode } from "@/server/auth/codes";
+import { issueCode, verifyPendingEmailCode } from "@/server/auth/codes";
 import { hashPassword, verifyDummy, verifyPassword } from "@/server/auth/password";
 import { sendCode } from "@/server/auth/send-code";
-import { invalidateUserSessions } from "@/server/auth/session";
 import { cacheDelete, cacheDeleteUser } from "@/server/auth/session-cache";
+import { purgeSessionCache } from "@/server/auth/session-invalidate";
+import { type RotatedSession, rotateAndRevokeIn } from "@/server/auth/session-rotate";
 import { isUniqueViolation } from "@/server/auth/sign-up";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
@@ -19,33 +21,43 @@ import { AppError } from "@/server/errors";
 
 const WRONG_PASSWORD_KEY = "auth.errors.invalid";
 
-/** The cached copies of a user's sessions carry name and email, so a change to either drops them. */
-async function purgeUserSessionCache(userId: string): Promise<void> {
-  const rows = await db()
+type Database = ReturnType<typeof db>;
+type Executor = Pick<Database, "select">;
+
+async function sessionHashesOf(executor: Executor, userId: string): Promise<string[]> {
+  const rows = await executor
     .select({ tokenHash: sessions.tokenHash })
     .from(sessions)
     .where(eq(sessions.userId, userId));
-  await cacheDeleteUser(
-    userId,
-    rows.map((row) => row.tokenHash),
-  );
+  return rows.map((row) => row.tokenHash);
 }
 
+/** The cached copies of a user's sessions carry name and email, so a change to either drops them. */
+async function purgeUserSessionCache(userId: string): Promise<void> {
+  await cacheDeleteUser(userId, await sessionHashesOf(db(), userId));
+}
+
+/** The write and the list of cached sessions to drop share a transaction; the Redis purge runs after commit. */
 export async function updateProfile(
   userId: string,
   input: { name: string; locale: Locale },
 ): Promise<void> {
-  await db()
-    .update(users)
-    .set({ name: input.name, locale: input.locale })
-    .where(eq(users.id, userId));
-  await purgeUserSessionCache(userId);
+  const hashes = await db().transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({ name: input.name, locale: input.locale })
+      .where(eq(users.id, userId));
+    return sessionHashesOf(tx, userId);
+  });
+  await cacheDeleteUser(userId, hashes);
 }
 
 /**
  * Starts adding an email to an account that has none. The address is stored only on the code row
- * (`pending_email`). A taken address gets no code and the same answer as a free one, so the form
- * cannot be used to learn which emails are registered.
+ * (`pending_email`). A taken address runs the same steps as a free one (limits, code hashing, a
+ * pending code row) and gets the same answer; only the mail is not sent, and its code can never
+ * confirm because the unique index refuses the address. The form therefore cannot be used to learn
+ * which emails are registered. Limits: per account and IP, plus per target address (HMAC key).
  */
 export async function requestAddedEmail(input: {
   userId: string;
@@ -64,18 +76,26 @@ export async function requestAddedEmail(input: {
   const guard = await guardCodeSend({ identifier: `account:${userId}`, ip });
   if (!("ok" in guard)) throw new AppError("rate_limited");
 
+  const target = await guardAddEmailTarget({ address });
+  if (!("ok" in target)) throw new AppError("rate_limited");
+
   const taken = await db().query.users.findFirst({
     columns: { id: true },
     where: eq(users.email, address),
   });
-  if (taken) return;
+  if (taken) {
+    // Decoy: the same hash and insert as a real send; the code is never mailed to anyone.
+    await issueCode(user.id, "email_verify", db(), address);
+    return;
+  }
   await sendCode({ ...user, email: null }, "email_verify", locale, address);
 }
 
 /**
  * Confirms the pending address: the code is consumed and `users.email` plus `email_verified_at` are
- * written in one transaction. If the address was taken in the meantime the code is spent and the
- * answer is the usual invalid one; the account keeps no email.
+ * written in one transaction. If the address was taken in the meantime the unique index fails the
+ * statement and the whole transaction rolls back, so the code is NOT spent (it stays usable until it
+ * expires or runs out of attempts); the answer is the usual invalid one and the account keeps no email.
  */
 export async function confirmAddedEmail(userId: string, code: string): Promise<boolean> {
   const now = clock.now();
@@ -100,15 +120,17 @@ export async function confirmAddedEmail(userId: string, code: string): Promise<b
 }
 
 /**
- * Changes the password after checking the current one (per-user attempt limit), then signs out every
- * other session. Every wrong-password path costs one argon2 verify.
+ * Changes the password after checking the current one (per-user attempt limit). The new hash, the
+ * rotation of the calling session (fresh token and id, the old one dead) and the deletion of every
+ * other session are one transaction; the Redis purge runs after commit. Returns the new session
+ * token for the caller to set as the cookie. Every wrong-password path costs one argon2 verify.
  */
 export async function changePassword(input: {
   userId: string;
   current: string;
   next: string;
   currentTokenHash: string | undefined;
-}): Promise<void> {
+}): Promise<{ rotated: RotatedSession | null }> {
   const { userId, current, next, currentTokenHash } = input;
   const guard = await guardPasswordChange({ userId });
   if (!("ok" in guard)) throw new AppError("rate_limited");
@@ -123,12 +145,16 @@ export async function changePassword(input: {
   if (!matches) throw new AppError("invalid_input", { i18nKey: WRONG_PASSWORD_KEY });
 
   const passwordHash = await hashPassword(next);
-  await db()
-    .update(credentials)
-    .set({ passwordHash, passwordSalt: null, updatedAt: clock.now() })
-    .where(eq(credentials.userId, userId));
+  const { rotated, deletedHashes } = await db().transaction(async (tx) => {
+    await tx
+      .update(credentials)
+      .set({ passwordHash, passwordSalt: null, updatedAt: clock.now() })
+      .where(eq(credentials.userId, userId));
+    return rotateAndRevokeIn(tx, userId, currentTokenHash);
+  });
+  await purgeSessionCache(userId, deletedHashes);
   await clearPasswordChangeFailures({ userId });
-  await invalidateUserSessions(userId, { exceptTokenHash: currentTokenHash });
+  return { rotated };
 }
 
 export type SessionListItem = {

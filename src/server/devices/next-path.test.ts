@@ -18,6 +18,15 @@ describe("safeNextPath", () => {
     "",
     "/ok\nSet-Cookie: a=b",
     "/\tevil",
+    "/sign-in",
+    "/sign-in?next=/dashboard",
+    "/sign-in/x",
+    "/sign-up",
+    "/sign-up/parent#top",
+    "/SIGN-IN",
+    "/api",
+    "/api/trpc/account.listSessions",
+    "/API/auth",
   ])("falls back to /dashboard for %j", (value) => {
     expect(safeNextPath(value)).toBe("/dashboard");
   });

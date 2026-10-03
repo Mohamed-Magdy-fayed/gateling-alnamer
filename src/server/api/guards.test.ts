@@ -7,7 +7,7 @@ vi.mock("@/server/env", () => ({
 
 import { PUBLIC_PROCEDURES } from "./public-procedures";
 import { appRouter } from "./root";
-import type { GuardMeta } from "./trpc";
+import { createCallerFactory, type GuardMeta, publicProcedure, router } from "./trpc";
 
 const RECIPE = "docs-public/recipes/trpc-procedure.md";
 const FIX =
@@ -74,5 +74,65 @@ describe("procedure guard enumeration", () => {
       );
       expect(reason.trim().length, `${path} needs a reason`).toBeGreaterThan(5);
     }
+  });
+});
+
+/** Minimal valid input for procedures whose zod schema would otherwise answer BAD_REQUEST. */
+const INPUT_FIXTURES: Readonly<Record<string, unknown>> = {};
+
+const HEADERS = new Headers({ origin: "https://alnamer.example", host: "alnamer.example" });
+
+type AnyRouter = Parameters<typeof createCallerFactory>[0];
+
+/** Calls every non-public procedure anonymously; returns the ones that did not answer UNAUTHORIZED. */
+async function anonymousLeaks(target: AnyRouter, allowed: ReadonlySet<string>): Promise<string[]> {
+  const caller = createCallerFactory(target)({ user: null, headers: HEADERS }) as unknown as Record<
+    string,
+    unknown
+  >;
+  const procedures = (target._def as unknown as { procedures: Record<string, unknown> }).procedures;
+  const leaks: string[] = [];
+  for (const path of Object.keys(procedures)) {
+    if (allowed.has(path)) continue;
+    const call = path
+      .split(".")
+      .reduce<unknown>((node, key) => (node as Record<string, unknown>)[key], caller);
+    try {
+      await (call as (input?: unknown) => Promise<unknown>)(INPUT_FIXTURES[path]);
+      leaks.push(`${path}: answered an anonymous caller.`);
+    } catch (error: unknown) {
+      const code = (error as { code?: string }).code;
+      if (code === "UNAUTHORIZED") continue;
+      leaks.push(
+        code === "BAD_REQUEST"
+          ? `${path}: input parsing failed before auth ran; add a minimal valid input to INPUT_FIXTURES["${path}"] (or run auth before .input()).`
+          : `${path}: expected UNAUTHORIZED for an anonymous caller, got ${code ?? String(error)}.`,
+      );
+    }
+  }
+  return leaks;
+}
+
+describe("behavioural guard", () => {
+  it("every non-public procedure answers an anonymous caller UNAUTHORIZED", async () => {
+    const leaks = await anonymousLeaks(appRouter, new Set(Object.keys(PUBLIC_PROCEDURES)));
+    expect(leaks, leaks.join("\n")).toEqual([]);
+  });
+
+  it("catches a procedure that declares a guard in meta but has no guard middleware", async () => {
+    const fake = router({
+      sneaky: publicProcedure.meta({ guard: "protected" }).query(() => "secret"),
+    });
+    expect(await anonymousLeaks(fake, new Set())).toEqual([
+      "sneaky: answered an anonymous caller.",
+    ]);
+  });
+
+  it("raw publicProcedure is only used by allow-listed procedures", () => {
+    const publics = enumerate()
+      .filter((e) => e.meta?.guard === "public")
+      .map((e) => e.path)
+      .sort();
+    expect(publics).toEqual(Object.keys(PUBLIC_PROCEDURES).sort());
   });
 });
