@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// The learn page's wiring to the single access decision. `getLessonAccess` itself (entitlements,
+// devices, roles) is covered by src/server/access/lesson-access.int.test.ts.
 const h = vi.hoisted(() => ({
   session: null as null | {
     tokenHash: string;
     deviceId: string | null;
     user: { id: string; name: string; email: string | null; role: string; status: string };
   },
-  check: { ok: true } as { ok: true } | { ok: false; reason: "needs_check" | "device_inactive" },
-  assertArgs: [] as unknown[],
+  access: { allowed: true, grant: {} } as
+    | { allowed: true; grant: object }
+    | { allowed: false; reason: string },
+  accessArgs: [] as unknown[],
 }));
 
 vi.mock("next/navigation", () => ({
@@ -27,19 +31,24 @@ vi.mock("@/server/catalog/repository", () => ({
   getPublishedLesson: async () => ({
     id: "x",
     title: { en: "Lesson", ar: "درس" },
-    course: { title: { en: "Course", ar: "دورة" } },
+    course: { slug: "course", title: { en: "Course", ar: "دورة" } },
   }),
 }));
 vi.mock("@/i18n/server", () => ({
   getDictionary: async () => ({
-    t: { dashboard: { player: {} }, common: {} },
+    t: {
+      dashboard: { player: {} },
+      common: {},
+      parents: { cannotPlay: "cannot play" },
+      orders: { noAccess: "no access", accessEnded: "ended", accessStopped: "stopped" },
+    },
     locale: "en" as const,
   }),
 }));
-vi.mock("@/server/devices/service", () => ({
-  assertActiveDevice: async (session: unknown) => {
-    h.assertArgs.push(session);
-    return h.check;
+vi.mock("@/server/access/lesson-access", () => ({
+  getLessonAccess: async (...args: unknown[]) => {
+    h.accessArgs.push(args.slice(0, 2));
+    return h.access;
   },
 }));
 
@@ -56,35 +65,40 @@ function sessionFor(role: string, deviceId: string | null) {
 }
 
 beforeEach(() => {
-  h.check = { ok: true };
-  h.assertArgs = [];
+  h.access = { allowed: true, grant: {} };
+  h.accessArgs = [];
   h.session = sessionFor("student", null);
 });
 
-describe("lesson page device guard", () => {
-  it("sends a student with no device through /devices/check and back to the lesson", async () => {
-    h.check = { ok: false, reason: "needs_check" };
-    const next = encodeURIComponent(`/dashboard/learn/${LESSON}`);
-    await expect(render()).rejects.toThrow(`redirect:/devices/check?next=${next}`);
-    expect(h.assertArgs).toEqual([{ role: "student", deviceId: null }]);
+describe("lesson page access wiring", () => {
+  it("passes the session's user, role and device to the access decision", async () => {
+    h.session = sessionFor("student", "dev-1");
+    await render();
+    expect(h.accessArgs).toEqual([[{ id: "u1", role: "student", deviceId: "dev-1" }, LESSON]]);
   });
 
-  it("treats a revoked device the same way, so the check re-registers or blocks it", async () => {
-    h.session = sessionFor("student", "dev-1");
-    h.check = { ok: false, reason: "device_inactive" };
+  it("sends an inactive device through /devices/check and back to the lesson", async () => {
+    h.access = { allowed: false, reason: "device_inactive" };
     const next = encodeURIComponent(`/dashboard/learn/${LESSON}`);
     await expect(render()).rejects.toThrow(`redirect:/devices/check?next=${next}`);
   });
 
-  it("renders for a student with an active device", async () => {
-    h.session = sessionFor("student", "dev-1");
+  it("renders the lesson when access is granted", async () => {
     await expect(render()).resolves.toBeTruthy();
   });
 
-  it("asks the guard about non-students too (it passes them)", async () => {
-    h.session = sessionFor("teacher", null);
-    await expect(render()).resolves.toBeTruthy();
-    expect(h.assertArgs).toEqual([{ role: "teacher", deviceId: null }]);
+  it("answers not found for an unknown or unpublished lesson", async () => {
+    h.access = { allowed: false, reason: "not_found" };
+    await expect(render()).rejects.toThrow("notFound");
+    h.access = { allowed: false, reason: "not_published" };
+    await expect(render()).rejects.toThrow("notFound");
+  });
+
+  it("shows a notice (not the lesson) for a parent or a student without access", async () => {
+    for (const reason of ["parent", "no_entitlement", "expired", "revoked"]) {
+      h.access = { allowed: false, reason };
+      await expect(render(), reason).resolves.toBeTruthy();
+    }
   });
 
   it("sends a signed-out visitor to sign-in", async () => {

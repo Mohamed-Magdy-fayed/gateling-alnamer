@@ -7,6 +7,8 @@ import type { SeedAccount } from "./lib/seed-accounts.mts";
 
 // Local development passwords only; the guards below keep them off deployed databases.
 const SEED_PASSWORD = "Alnamer-local-1";
+// Fixed order number (Crockford base32) so re-running the seed finds the same sample order.
+const LOCAL_SAMPLE_ORDER = "SAMPE001";
 const ACCOUNTS = [
   { name: "Local Student", email: "student@alnamer.local", role: "student" },
   { name: "Local Parent", email: "parent@alnamer.local", role: "parent" },
@@ -41,6 +43,7 @@ if (!url) {
 const { drizzle } = await import("drizzle-orm/postgres-js");
 const { default: postgres } = await import("postgres");
 const { upsertAccount } = await import("./lib/seed-accounts.mts");
+const { seedSampleOrder } = await import("./lib/seed-orders.mts");
 
 const client = postgres(url, { max: 1, onnotice: () => {} });
 const db = drizzle(client);
@@ -53,6 +56,8 @@ try {
       refresh: false,
     });
     if (result.created) created += 1;
+    // The local student owns one sample course, so a paid lesson opens without a purchase.
+    if (account.role === "student") await seedSampleOrder(db, result.userId, LOCAL_SAMPLE_ORDER);
   }
   console.log(`Seeded ${ACCOUNTS.length} accounts (${created} new).`);
 } finally {

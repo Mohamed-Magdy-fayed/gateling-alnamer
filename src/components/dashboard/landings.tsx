@@ -10,7 +10,10 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/al/empty-state";
 import type { Dictionary } from "@/i18n/ar";
-import { Button, ButtonLink } from "@/ui";
+import { format, formatDate, type Locale } from "@/i18n/config";
+import { pickText } from "@/lib/localized-text";
+import type { StudentCourse } from "@/server/orders/my-courses";
+import { Button, ButtonLink, Card } from "@/ui";
 
 /**
  * Real-user landings (A7a screen map), built only from data that exists today. Anything not built
@@ -19,22 +22,97 @@ import { Button, ButtonLink } from "@/ui";
  */
 const grid = "grid gap-4 md:grid-cols-2";
 
-export function StudentLanding({ t }: { t: Dictionary }) {
+type StudentLandingProps = { t: Dictionary; locale: Locale; courses: StudentCourse[] };
+
+/** My courses (live access first), then ended ones with "Buy again"; quizzes are still planned. */
+export function StudentLanding({ t, locale, courses }: StudentLandingProps) {
   const s = t.dashboard.student;
+  const live = courses.filter((course) => course.active);
+  const ended = courses.filter((course) => !course.active);
   return (
-    <div className={grid}>
-      <EmptyState
-        icon={BookOpen}
-        title={s.title}
-        body={t.dashboard.noCourses}
-        action={<ButtonLink href="/courses">{t.dashboard.browseCourses}</ButtonLink>}
-      />
-      <EmptyState icon={ClipboardCheck} title={s.quizzes} comingSoon={t.shell.comingSoon} />
+    <div className="flex flex-col gap-8">
+      {live.length === 0 ? (
+        <div className={grid}>
+          <EmptyState
+            icon={BookOpen}
+            title={s.title}
+            body={t.dashboard.noCourses}
+            action={<ButtonLink href="/courses">{t.dashboard.browseCourses}</ButtonLink>}
+          />
+          <EmptyState icon={ClipboardCheck} title={s.quizzes} comingSoon={t.shell.comingSoon} />
+        </div>
+      ) : (
+        <section aria-labelledby="my-courses" className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="my-courses" className="text-lg font-semibold">
+              {s.title}
+            </h2>
+            <ButtonLink href="/courses" variant="ghost" size="sm" className="min-h-11">
+              {t.dashboard.browseCourses}
+            </ButtonLink>
+          </div>
+          <ul className={grid}>
+            {live.map((course) => (
+              <li key={course.courseId}>
+                <Card className="flex h-full flex-col gap-3 p-5">
+                  <h3 className="font-semibold">
+                    <bdi>{pickText(course.title, locale)}</bdi>
+                  </h3>
+                  <p className="text-sm text-fg-muted">
+                    {format(t.courses.hasAccess, { date: formatDate(locale, course.endsAt) })}
+                  </p>
+                  {course.firstLessonId ? (
+                    <ButtonLink
+                      href={`/dashboard/learn/${course.firstLessonId}`}
+                      className="mt-auto self-start"
+                    >
+                      {s.continue}
+                    </ButtonLink>
+                  ) : null}
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {live.length > 0 ? (
+        <div className={grid}>
+          <EmptyState icon={ClipboardCheck} title={s.quizzes} comingSoon={t.shell.comingSoon} />
+        </div>
+      ) : null}
+      {ended.length > 0 ? (
+        <section aria-labelledby="ended-courses" className="flex flex-col gap-4">
+          <h2 id="ended-courses" className="text-lg font-semibold">
+            {s.endedTitle}
+          </h2>
+          <ul className={grid}>
+            {ended.map((course) => (
+              <li key={course.courseId}>
+                <Card className="flex h-full flex-col gap-3 p-5">
+                  <h3 className="font-semibold">
+                    <bdi>{pickText(course.title, locale)}</bdi>
+                  </h3>
+                  <p className="text-sm text-fg-muted">
+                    {format(s.endedOn, { date: formatDate(locale, course.endsAt) })}
+                  </p>
+                  <ButtonLink
+                    href={`/courses/${course.slug}`}
+                    variant="secondary"
+                    className="mt-auto self-start"
+                  >
+                    {s.buyAgain}
+                  </ButtonLink>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }
 
-/** Sits under the A6 child cards: buying for a child is not built yet. */
+/** Sits under the A6 child cards: buying starts from a course page, which offers the child picker. */
 export function ParentLandingExtras({ t }: { t: Dictionary }) {
   const p = t.dashboard.parent;
   return (
@@ -42,8 +120,8 @@ export function ParentLandingExtras({ t }: { t: Dictionary }) {
       <EmptyState
         icon={ShoppingCart}
         title={p.buyFor}
-        body={p.buyForSoon}
-        comingSoon={t.shell.comingSoon}
+        body={p.buyForBody}
+        action={<ButtonLink href="/courses">{t.dashboard.browseCourses}</ButtonLink>}
       />
     </div>
   );

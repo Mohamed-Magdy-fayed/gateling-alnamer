@@ -24,6 +24,7 @@ export type OrderView = {
   courseId: string;
   courseSlug: string;
   courseTitle: LocalizedText;
+  beneficiaryId: string;
   beneficiaryName: string;
   /** The buyer paid for someone else (a parent for a child). */
   forChild: boolean;
@@ -85,6 +86,7 @@ export async function getOrderViewForParty(
     courseId: row.courseId,
     courseSlug: row.courseSlug,
     courseTitle: row.courseTitle,
+    beneficiaryId: row.beneficiaryId,
     beneficiaryName: row.beneficiaryName,
     forChild: row.buyerId !== row.beneficiaryId,
     gatewayInvoiceId: row.gatewayInvoiceId,

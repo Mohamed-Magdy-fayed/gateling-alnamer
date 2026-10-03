@@ -21,7 +21,9 @@ import { getDictionary } from "@/i18n/server";
 import { requirePageUser } from "@/server/auth/page-guard";
 import { shouldPromptParentLink } from "@/server/auth/profile";
 import { listCoursesForDashboard } from "@/server/catalog/repository";
+import { clock } from "@/server/clock";
 import { serverEnv } from "@/server/env";
+import { listStudentCourses } from "@/server/orders/my-courses";
 import { loadParentDashboard } from "@/server/parents/dashboard";
 import { Alert, Container } from "@/ui";
 
@@ -36,10 +38,11 @@ export default async function DashboardPage({
   const mode = serverEnv().APP_MODE;
   // A sample preview (demo only) shows the W1 sample screens; otherwise the user's own landing.
   const sample = resolveView(mode, requested);
-  const [courses, promptParentLink, parentData] = await Promise.all([
+  const [courses, promptParentLink, parentData, myCourses] = await Promise.all([
     sample ? listCoursesForDashboard() : [],
     shouldPromptParentLink(user),
     !sample && user.role === "parent" ? loadParentDashboard(user.id) : null,
+    !sample && user.role === "student" ? listStudentCourses(user.id, clock.now()) : [],
   ]);
 
   return (
@@ -79,7 +82,9 @@ export default async function DashboardPage({
         {sample === "teacher" ? <TeacherView t={t} locale={locale} courses={courses} /> : null}
         {sample === "reviewer" ? <ReviewerView t={t} /> : null}
         {sample === "admin" ? <AdminView t={t} locale={locale} courses={courses} /> : null}
-        {sample === null && user.role === "student" ? <StudentLanding t={t} /> : null}
+        {sample === null && user.role === "student" ? (
+          <StudentLanding t={t} locale={locale} courses={myCourses} />
+        ) : null}
         {sample === null && user.role === "parent" && parentData ? (
           <>
             <ParentCards

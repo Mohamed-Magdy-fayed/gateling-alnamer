@@ -1,13 +1,18 @@
 import { ArrowRight, CalendarClock, FileText, ListChecks, Lock, PlayCircle } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BuyPanel } from "@/components/orders/buy-panel";
 import { format, formatDate, plural } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
 import { formatPrice } from "@/lib/money-format";
+import { getCurrentUser } from "@/server/auth/session";
 import { getPublishedCourseBySlug } from "@/server/catalog/repository";
 import type { CatalogCategory, CategoryType, LessonKind } from "@/server/catalog/types";
-import { Alert, Badge, Button, Card, Container, Ltr } from "@/ui";
+import { clock } from "@/server/clock";
+import { serverEnv } from "@/server/env";
+import { getBuyState } from "@/server/orders/buy-state";
+import { Badge, Card, Container, Ltr } from "@/ui";
 
 const kindIcon: Record<LessonKind, typeof PlayCircle> = {
   video: PlayCircle,
@@ -21,6 +26,8 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
   const course = await getPublishedCourseBySlug(slug);
   if (!course) notFound();
   const { t, locale } = await getDictionary();
+  const buyState = await getBuyState(await getCurrentUser(), course.id, clock.now());
+  const firstLessonId = course.sections[0]?.lessons[0]?.id ?? null;
 
   const categoryName = (categories: CatalogCategory[], type: CategoryType) => {
     const found = categories.find((category) => category.type === type);
@@ -124,12 +131,15 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
               <CalendarClock aria-hidden className="size-4" strokeWidth={1.75} />
               {access}
             </p>
-            <Button size="lg" disabled aria-describedby="buy-note">
-              {t.courses.buy}
-            </Button>
-            <div id="buy-note">
-              <Alert>{t.courses.buyNote}</Alert>
-            </div>
+            <BuyPanel
+              state={buyState}
+              courseId={course.id}
+              slug={course.slug}
+              firstLessonId={firstLessonId}
+              locale={locale}
+              t={t}
+              demo={serverEnv().APP_MODE === "demo"}
+            />
           </Card>
         </aside>
       </div>

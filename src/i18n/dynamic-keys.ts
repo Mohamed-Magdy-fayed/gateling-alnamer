@@ -9,4 +9,5 @@ export const DYNAMIC_KEY_ROOTS = [
   "auth.errors.field", // src/server/auth/actions.ts: t.auth.errors.field[field]
   "dashboard.admin.orderStatuses", // src/components/dashboard/admin-view.tsx: a.orderStatuses[order.status]
   "dashboard.teacher.statuses", // src/components/dashboard/teacher-view.tsx: d.statuses[status]
+  "courses.refusals", // src/components/orders/{buy-box,order-actions}.tsx: refusals[result.reason]
 ] as const;

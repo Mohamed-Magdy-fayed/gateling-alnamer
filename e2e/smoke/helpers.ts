@@ -1,4 +1,5 @@
 import { type Browser, expect, type Page } from "@playwright/test";
+import postgres from "postgres";
 import { nextClientIp } from "../helpers/client-ip";
 
 // Arabic is the default locale; labels below are the `ar` dictionary values.
@@ -142,3 +143,36 @@ export async function createStudent(
     await context.close();
   }
 }
+
+/** Runs one statement on the throwaway smoke database (the same one the app under test uses). */
+export async function withDb<T>(run: (sql: postgres.Sql) => Promise<T>): Promise<T> {
+  const sql = postgres(process.env.TEST_DATABASE_URL ?? "", { max: 1, onnotice: () => {} });
+  try {
+    return await run(sql);
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Marks an account's email as confirmed without the Mailpit round trip (purchases need it). */
+export async function markEmailVerified(address: string) {
+  await withDb((sql) =>
+    sql`update users set email_verified_at = now() where email = ${address}`.then(() => undefined),
+  );
+}
+
+// Purchase copy (ar).
+export const BUY = "شراء الدورة";
+export const PAID_TITLE = "تم استلام الدفع";
+export const START_LEARNING = "ابدأ التعلّم";
+export const CHILD_CAN_START = "يمكن لابنك أن يبدأ التعلّم الآن";
+export const FAILED_TITLE = "لم تتم عملية الدفع";
+export const TRY_AGAIN = "حاول مرة أخرى";
+export const PAY_BANNER = "صفحة دفع تجريبية (لا أموال حقيقية)";
+export const PAY = "ادفع";
+export const FAIL = "محاكاة فشل الدفع";
+export const INVOICE_INVALID = "هذه الفاتورة لم تعد صالحة";
+export const HAS_ACCESS = /لديك صلاحية الوصول حتى/;
+export const CHILD_ACCESS = /الوصول حتى/;
+export const BUY_FOR_CHILD = /شراء الدورة لـ/;
+export const NO_LESSON_ACCESS = "ليس لديك صلاحية الوصول إلى هذا الدرس";

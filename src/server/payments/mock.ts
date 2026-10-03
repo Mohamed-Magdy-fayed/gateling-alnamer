@@ -1,9 +1,9 @@
 import "server-only";
 import { randomBytes, randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
-import { mockGatewayInvoices, type mockInvoiceStatus } from "@/server/db/schema";
+import { mockGatewayInvoices, type mockInvoiceStatus, orders } from "@/server/db/schema";
 import { InvoiceNotFoundError } from "./errors";
 import type { PaymentGateway, PaymentStatus } from "./gateway";
 
@@ -78,6 +78,53 @@ export async function setMockInvoiceStatus(
       paymentId: paid ? `MOCKPAY-${randomUUID()}` : null,
     })
     .where(eq(mockGatewayInvoices.id, invoiceId))
+    .returning({ id: mockGatewayInvoices.id });
+  return rows.length > 0;
+}
+
+export type HostedInvoice = {
+  id: string;
+  status: MockStatus;
+  amountMinor: number;
+  currency: string;
+  /** The order the invoice belongs to (its number, without the dash), for the return redirect. */
+  orderNumber: string | null;
+};
+
+/** What the hosted `/dev/pay` page shows. Null for an unknown invoice. */
+export async function getHostedInvoice(invoiceId: string): Promise<HostedInvoice | null> {
+  const [row] = await db()
+    .select({
+      id: mockGatewayInvoices.id,
+      status: mockGatewayInvoices.status,
+      amountMinor: mockGatewayInvoices.amountMinor,
+      currency: mockGatewayInvoices.currency,
+      orderNumber: orders.number,
+    })
+    .from(mockGatewayInvoices)
+    .leftJoin(orders, sql`${orders.id}::text = ${mockGatewayInvoices.customerReference}`)
+    .where(eq(mockGatewayInvoices.id, invoiceId))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * The hosted page's "Pay" / "Fail": only a still-pending invoice moves, so a superseded (expired)
+ * or settled invoice cannot be paid from the page. Returns whether it moved.
+ */
+export async function settleHostedInvoice(
+  invoiceId: string,
+  outcome: "paid" | "failed",
+): Promise<boolean> {
+  const paid = outcome === "paid";
+  const rows = await db()
+    .update(mockGatewayInvoices)
+    .set({
+      status: outcome,
+      paidAt: paid ? clock.now() : null,
+      paymentId: paid ? `MOCKPAY-${randomUUID()}` : null,
+    })
+    .where(and(eq(mockGatewayInvoices.id, invoiceId), eq(mockGatewayInvoices.status, "pending")))
     .returning({ id: mockGatewayInvoices.id });
   return rows.length > 0;
 }

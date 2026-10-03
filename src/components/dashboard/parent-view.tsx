@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import type { Dictionary } from "@/i18n/ar";
 import { format, type Locale } from "@/i18n/config";
-import { Badge, Button, Card, Ltr, Progress } from "@/ui";
+import { Badge, Button, ButtonLink, Card, Ltr, Progress } from "@/ui";
 
 const children = [
   { name: { ar: "ابن تجريبي 1", en: "Sample child 1" }, courses: 3, progress: 58, quiz: 86 },
@@ -30,7 +30,7 @@ export function ParentView({ t, locale }: { t: Dictionary; locale: Locale }) {
         {t.common.comingInFullVersion}
       </p>
       <ul className="grid gap-4 md:grid-cols-2">
-        {children.map((child, index) => (
+        {children.map((child) => (
           <li key={child.name.en}>
             <Card className="flex flex-col gap-4 p-5">
               <div className="flex items-center gap-3">
@@ -58,17 +58,9 @@ export function ParentView({ t, locale }: { t: Dictionary; locale: Locale }) {
                 <span className="text-fg-2">{p.lastQuiz}</span>
                 <Ltr className="font-semibold text-success">{child.quiz}%</Ltr>
               </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled
-                aria-describedby={`buy-for-note-${index}`}
-              >
+              <ButtonLink href="/courses" variant="secondary" size="sm" className="min-h-11">
                 {p.buyFor}
-              </Button>
-              <p id={`buy-for-note-${index}`} className="text-xs text-fg-muted">
-                {p.buyForSoon}
-              </p>
+              </ButtonLink>
             </Card>
           </li>
         ))}

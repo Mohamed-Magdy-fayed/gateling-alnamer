@@ -1,7 +1,10 @@
 import "server-only";
 import { and, inArray, isNotNull } from "drizzle-orm";
+import type { LocalizedText } from "@/lib/localized-text";
+import { clock } from "@/server/clock";
 import { db } from "@/server/db";
 import { users } from "@/server/db/schema";
+import { listChildrenCourses } from "@/server/orders/my-courses";
 import { canParentSetPassword, listChildrenForParent } from "./service";
 import { listActiveInvites } from "./views";
 
@@ -17,6 +20,8 @@ export type ParentChild = {
   source: "created_child" | "invite";
   /** `direct` asks for a new password; `email` sends a code to the child's verified email. */
   resetMode: "direct" | "email";
+  /** Live courses (title and access end as an ISO string); no lesson links for parents. */
+  courses: { courseId: string; title: LocalizedText; endsAt: string }[];
 };
 
 export type ParentInvite = { id: string; expiresAt: string };
@@ -39,7 +44,11 @@ export async function loadParentDashboard(parentId: string): Promise<ParentDashb
     listChildrenForParent(parentId),
     listActiveInvites(parentId),
   ]);
-  const verified = await verifiedChildIds(cards.map((card) => card.childId));
+  const childIds = cards.map((card) => card.childId);
+  const [verified, courses] = await Promise.all([
+    verifiedChildIds(childIds),
+    listChildrenCourses(childIds, clock.now()),
+  ]);
   const children = await Promise.all(
     cards.map(async (card): Promise<ParentChild> => {
       const mode = await canParentSetPassword(parentId, card.childId);
@@ -52,6 +61,11 @@ export async function loadParentDashboard(parentId: string): Promise<ParentDashb
         emailVerified: verified.has(card.childId),
         source: card.source,
         resetMode: mode === "direct" ? "direct" : "email",
+        courses: (courses.get(card.childId) ?? []).map((course) => ({
+          courseId: course.courseId,
+          title: course.title,
+          endsAt: course.endsAt.toISOString(),
+        })),
       };
     }),
   );

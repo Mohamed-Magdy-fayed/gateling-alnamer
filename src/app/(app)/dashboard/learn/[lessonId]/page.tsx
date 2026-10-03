@@ -1,54 +1,64 @@
 import { ArrowRight, PlayCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { z } from "zod";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
+import { getLessonAccess } from "@/server/access/lesson-access";
 import { requirePageUser } from "@/server/auth/page-guard";
 import { getCurrentSession } from "@/server/auth/session";
 import { getPublishedLesson } from "@/server/catalog/repository";
-import { assertActiveDevice } from "@/server/devices/service";
-import { lessonDenial } from "@/server/parents/lesson-access";
-import { Alert, Badge, Container, Ltr } from "@/ui";
-
-const lessonIdSchema = z.uuid();
+import { clock } from "@/server/clock";
+import { Alert, Badge, ButtonLink, Container, Ltr } from "@/ui";
 
 export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
   const { lessonId } = await params;
   await requirePageUser(`/dashboard/learn/${encodeURIComponent(lessonId)}`);
-  // Same request-cached session the guard read; needed for the device binding.
+  // Same request-cached session the guard read; the access decision needs its device.
   const session = await getCurrentSession();
   if (!session) redirect("/sign-in"); // unreachable after the guard; narrows the type
-  // Parents never play paid content; deny before any lesson data is loaded. T1's getLessonAccess takes over.
-  if (lessonDenial(session.user.role) === "cannotPlay") {
+  // The single access decision (MASTER-PLAN 3.1): entitlement, device and role, before any lesson data.
+  const access = await getLessonAccess(
+    { id: session.user.id, role: session.user.role, deviceId: session.deviceId },
+    lessonId,
+    clock.now(),
+  );
+  if (!access.allowed) {
+    if (access.reason === "device_inactive") {
+      // A student with no active device (a session from before the limit, or a revoked device)
+      // goes through /devices/check, which registers this browser or blocks it.
+      redirect(`/devices/check?next=${encodeURIComponent(`/dashboard/learn/${lessonId}`)}`);
+    }
+    if (access.reason === "not_found" || access.reason === "not_published") notFound();
     const { t } = await getDictionary();
+    const lesson = access.reason === "parent" ? null : await getPublishedLesson(lessonId);
+    const message =
+      access.reason === "parent"
+        ? t.parents.cannotPlay
+        : access.reason === "expired"
+          ? t.orders.accessEnded
+          : access.reason === "revoked"
+            ? t.orders.accessStopped
+            : t.orders.noAccess;
     return (
       <Container className="py-8">
-        <Alert>{t.parents.cannotPlay}</Alert>
-        <Link
-          href="/dashboard"
-          className="mt-4 inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-sm)] text-sm text-fg-2 hover:text-fg"
-        >
-          <ArrowRight aria-hidden className="size-4 ltr:rotate-180" strokeWidth={1.75} />
-          {t.dashboard.player.back}
-        </Link>
+        <Alert>{message}</Alert>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {lesson ? (
+            <ButtonLink href={`/courses/${lesson.course.slug}`}>{t.orders.viewCourse}</ButtonLink>
+          ) : null}
+          <Link
+            href="/dashboard"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-sm)] text-sm text-fg-2 hover:text-fg"
+          >
+            <ArrowRight aria-hidden className="size-4 ltr:rotate-180" strokeWidth={1.75} />
+            {t.dashboard.player.back}
+          </Link>
+        </div>
       </Container>
     );
   }
-  // A malformed id would make Postgres throw (22P02); treat it as not found.
-  const lesson = lessonIdSchema.safeParse(lessonId).success
-    ? await getPublishedLesson(lessonId)
-    : null;
+  const lesson = await getPublishedLesson(lessonId);
   if (!lesson) notFound();
-  // Paid content needs an active device. A student with none (a session from before the limit, or a
-  // revoked device) goes through /devices/check, which registers this browser or blocks it.
-  const access = await assertActiveDevice({
-    role: session.user.role,
-    deviceId: session.deviceId,
-  });
-  if (!access.ok) {
-    redirect(`/devices/check?next=${encodeURIComponent(`/dashboard/learn/${lessonId}`)}`);
-  }
   const user = session.user;
   const { t, locale } = await getDictionary();
   const p = t.dashboard.player;
