@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   // Sample lesson media is served by a route (signed URLs), never from public/: ship the files with it.
   outputFileTracingIncludes: {
     "/api/media/sample/[assetId]": ["./media/sample/**/*"],
+    "/api/files/[lessonId]": ["./media/sample/**/*"],
   },
   async headers() {
     return [
@@ -19,6 +20,11 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
         ],
+      },
+      {
+        // Lesson PDFs are shown in an iframe on our own learn page; everything else stays DENY.
+        source: "/api/files/:path*",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
       },
     ];
   },

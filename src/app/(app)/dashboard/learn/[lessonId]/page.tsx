@@ -1,6 +1,7 @@
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { linkClass } from "@/components/auth-parts";
 import { VideoPlayer } from "@/components/player/video-player";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
@@ -70,7 +71,7 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
     <Container className="py-8">
       <Link
         href="/dashboard"
-        className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] text-sm text-fg-2 hover:text-fg"
+        className="inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-sm)] text-sm text-fg-2 hover:text-fg"
       >
         <ArrowRight aria-hidden className="size-4 ltr:rotate-180" strokeWidth={1.75} />
         {p.back}
@@ -85,24 +86,56 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
         <bdi>{pickText(lesson.course.title, locale)}</bdi>
       </p>
 
-      <div className="mt-6">
-        <VideoPlayer
-          lessonId={lessonId}
-          watermarkName={user.name}
-          watermarkNumber={accountNumber}
-          t={t.dashboard}
-        />
-      </div>
+      {lesson.kind === "video" ? (
+        <>
+          <div className="mt-6">
+            <VideoPlayer
+              lessonId={lessonId}
+              watermarkName={user.name}
+              watermarkNumber={accountNumber}
+              t={t.dashboard}
+            />
+          </div>
+          <div className="mt-4">
+            <Alert>
+              <span className="inline-flex items-center gap-1.5">
+                <ShieldCheck aria-hidden className="size-4" strokeWidth={1.75} />
+                {p.watermarkNote}
+              </span>{" "}
+              <Ltr>{accountNumber}</Ltr>
+            </Alert>
+          </div>
+        </>
+      ) : null}
 
-      <div className="mt-4">
-        <Alert>
-          <span className="inline-flex items-center gap-1.5">
-            <ShieldCheck aria-hidden className="size-4" strokeWidth={1.75} />
-            {p.watermarkNote}
-          </span>{" "}
-          <Ltr>{accountNumber}</Ltr>
-        </Alert>
-      </div>
+      {lesson.kind === "pdf" ? (
+        <div className="mt-6 flex flex-col gap-3">
+          <iframe
+            src={`/api/files/${lessonId}`}
+            title={p.fileTitle}
+            className="h-[min(80dvh,900px)] w-full rounded-[var(--radius-lg)] border border-line bg-raised shadow-e2"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-fg-muted">
+              {p.stampNote} <Ltr>{accountNumber}</Ltr>
+            </p>
+            <a
+              href={`/api/files/${lessonId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={linkClass}
+            >
+              {p.openFile}
+            </a>
+          </div>
+        </div>
+      ) : null}
+
+      {lesson.kind !== "video" && lesson.kind !== "pdf" ? (
+        <div className="mt-6">
+          <Alert>{p.notYet}</Alert>
+        </div>
+      ) : null}
     </Container>
   );
 }

@@ -457,6 +457,10 @@ export const en: Dictionary = {
       loadError: "The video could not load. Check your connection and try again.",
       retry: "Try again",
       noVideo: "This lesson has no video.",
+      fileTitle: "Lesson file",
+      openFile: "Open the file in a new tab",
+      stampNote: "This copy carries your account number and today's date on every page.",
+      notYet: "This kind of lesson opens in the full test version.",
     },
   },
   orders: {

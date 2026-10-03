@@ -63,3 +63,29 @@ export async function sampleFileName(assetId: string): Promise<string | null> {
   if (!row.storageKey || !/^[\w-]+\.webm$/.test(row.storageKey)) return null;
   return row.storageKey;
 }
+
+/**
+ * The bundled file of a lesson the caller may open (a PDF lesson's `file_asset_id`), behind an
+ * `AccessGranted`. Only ready sample PDFs resolve until D3 adds Firebase storage; the storage key
+ * must be a plain `<name>.pdf` file name.
+ */
+export async function loadLessonFile(grant: AccessGranted): Promise<string | null> {
+  const [row] = await db()
+    .select({
+      provider: mediaAssets.provider,
+      storageKey: mediaAssets.storageKey,
+      isSample: mediaAssets.isSample,
+      status: mediaAssets.status,
+      kind: mediaAssets.kind,
+    })
+    .from(lessons)
+    .innerJoin(lessonRevisions, eq(lessonRevisions.id, lessons.publishedRevisionId))
+    .innerJoin(mediaAssets, eq(mediaAssets.id, lessonRevisions.fileAssetId))
+    .where(eq(lessons.id, grant.lessonId))
+    .limit(1);
+  if (row?.provider !== "sample" || !row.isSample || row.status !== "ready" || row.kind !== "pdf") {
+    return null;
+  }
+  if (!row.storageKey || !/^[\w-]+\.pdf$/.test(row.storageKey)) return null;
+  return row.storageKey;
+}

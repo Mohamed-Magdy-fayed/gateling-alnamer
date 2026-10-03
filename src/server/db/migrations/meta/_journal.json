@@ -155,6 +155,13 @@
       "when": 1791067282626,
       "tag": "0021_sample_video_media",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1791068241036,
+      "tag": "0022_sample_pdf_media",
+      "breakpoints": true
     }
   ]
 }
