@@ -453,7 +453,10 @@ export const en: Dictionary = {
       back: "Back to the course",
       watermarkNote:
         "The watermark keeps moving and carries the student's name and account number.",
-      videoPlaceholder: "Protected video player area",
+      videoLabel: "Lesson video",
+      loadError: "The video could not load. Check your connection and try again.",
+      retry: "Try again",
+      noVideo: "This lesson has no video.",
     },
   },
   orders: {

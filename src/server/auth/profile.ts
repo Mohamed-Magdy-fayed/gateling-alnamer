@@ -25,3 +25,15 @@ export async function shouldPromptParentLink(user: { id: string; role: string })
   });
   return !link;
 }
+
+/**
+ * The account's public number, the readable id the video watermark carries next to the display
+ * name (MASTER-PLAN T23). Accounts made before public numbers existed fall back to an id prefix.
+ */
+export async function watermarkNumber(userId: string): Promise<string> {
+  const row = await db().query.users.findFirst({
+    columns: { publicNumber: true },
+    where: eq(users.id, userId),
+  });
+  return row?.publicNumber ?? `AN-${userId.slice(0, 6).toUpperCase()}`;
+}

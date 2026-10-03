@@ -45,6 +45,9 @@ vi.mock("@/i18n/server", () => ({
     locale: "en" as const,
   }),
 }));
+vi.mock("@/server/auth/profile", () => ({
+  watermarkNumber: async () => "AN-000123",
+}));
 vi.mock("@/server/access/lesson-access", () => ({
   getLessonAccess: async (...args: unknown[]) => {
     h.accessArgs.push(args.slice(0, 2));

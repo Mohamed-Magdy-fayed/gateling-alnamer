@@ -1,10 +1,12 @@
-import { ArrowRight, PlayCircle, ShieldCheck } from "lucide-react";
+import { ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { VideoPlayer } from "@/components/player/video-player";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
 import { getLessonAccess } from "@/server/access/lesson-access";
 import { requirePageUser } from "@/server/auth/page-guard";
+import { watermarkNumber } from "@/server/auth/profile";
 import { getCurrentSession } from "@/server/auth/session";
 import { getPublishedLesson } from "@/server/catalog/repository";
 import { clock } from "@/server/clock";
@@ -62,7 +64,7 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
   const user = session.user;
   const { t, locale } = await getDictionary();
   const p = t.dashboard.player;
-  const accountNumber = `AN-${user.id.slice(0, 6).toUpperCase()}`;
+  const accountNumber = await watermarkNumber(user.id);
 
   return (
     <Container className="py-8">
@@ -83,22 +85,13 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
         <bdi>{pickText(lesson.course.title, locale)}</bdi>
       </p>
 
-      {/* Media stays LTR by convention (DESIGN.md section 7). */}
-      <div
-        dir="ltr"
-        className="relative mt-6 aspect-video w-full overflow-hidden rounded-[var(--radius-lg)] bg-media shadow-e3"
-      >
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-media-fg">
-          <PlayCircle aria-hidden className="size-16" strokeWidth={1.25} />
-          <span className="text-sm" dir="auto">
-            {p.videoPlaceholder}
-          </span>
-        </div>
-        <div className="pointer-events-none absolute start-[10%] top-[8%] select-none">
-          <div className="watermark-walk rounded px-2 py-1 text-sm font-medium text-media-fg/55">
-            <bdi>{user.name}</bdi> · {accountNumber}
-          </div>
-        </div>
+      <div className="mt-6">
+        <VideoPlayer
+          lessonId={lessonId}
+          watermarkName={user.name}
+          watermarkNumber={accountNumber}
+          t={t.dashboard}
+        />
       </div>
 
       <div className="mt-4">
