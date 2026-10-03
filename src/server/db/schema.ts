@@ -495,6 +495,137 @@ export const lessonRevisions = pgTable(
   ],
 );
 
+// ---- Orders and access (T1) --------------------------------------------------------------
+// Money columns are integer minor units (bigint, mode "number"); P1 wraps them in the Money type.
+
+export const orderStatus = pgEnum("order_status", [
+  "pending",
+  "paid",
+  "paid_duplicate",
+  "expired",
+  "failed",
+  "refunded",
+  "cancelled",
+]);
+export const orderChannel = pgEnum("order_channel", ["online", "manual"]);
+export const orderCollector = pgEnum("order_collector", ["platform", "teacher"]);
+export const refundFlagReason = pgEnum("refund_flag_reason", [
+  "duplicate",
+  "paid_after_access_end",
+  "over_cap_coupon",
+]);
+export const entitlementSource = pgEnum("entitlement_source", ["order", "manual", "admin_grant"]);
+export const mockInvoiceStatus = pgEnum("mock_invoice_status", [
+  "pending",
+  "paid",
+  "failed",
+  "expired",
+]);
+
+export const orders = pgTable(
+  "orders",
+  {
+    id: uuid("id").primaryKey(),
+    /** 8 Crockford base32 characters, stored without the dash; shown as XXXX-XXXX. */
+    number: text("number").notNull().unique(),
+    buyerId: uuid("buyer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    beneficiaryStudentId: uuid("beneficiary_student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "restrict" }),
+    /** The terms bought; the access end is computed from this revision. */
+    courseRevisionId: uuid("course_revision_id")
+      .notNull()
+      .references(() => courseRevisions.id, { onDelete: "restrict" }),
+    status: orderStatus("status").notNull().default("pending"),
+    listPriceMinor: bigint("list_price_minor", { mode: "number" }).notNull(),
+    discountMinor: bigint("discount_minor", { mode: "number" }).notNull().default(0),
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    currency: text("currency").notNull(),
+    couponId: uuid("coupon_id"), // FK added in P6
+    teacherRateBp: integer("teacher_rate_bp").notNull(),
+    channel: orderChannel("channel").notNull().default("online"),
+    collectedBy: orderCollector("collected_by").notNull().default("platform"),
+    gatewayInvoiceId: text("gateway_invoice_id"),
+    gatewayPaymentId: text("gateway_payment_id"),
+    gatewayFeeMinor: bigint("gateway_fee_minor", { mode: "number" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    refundFlag: refundFlagReason("refund_flag"),
+    isSample,
+    createdAt,
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "orders_amounts_valid",
+      sql`${t.listPriceMinor} >= 0 and ${t.discountMinor} >= 0 and ${t.amountMinor} >= 0 and ${t.amountMinor} = ${t.listPriceMinor} - ${t.discountMinor}`,
+    ),
+    check("orders_currency_format", sql`${t.currency} ~ '^[A-Z]{3}$'`),
+    check(
+      "orders_paid_at_matches_status",
+      sql`(${t.paidAt} is not null) = (${t.status} in ('paid', 'paid_duplicate', 'refunded'))`,
+    ),
+    check("orders_teacher_rate_range", sql`${t.teacherRateBp} between 0 and 10000`),
+    uniqueIndex("orders_one_pending_idx")
+      .on(t.beneficiaryStudentId, t.courseId)
+      .where(sql`status = 'pending'`),
+    index("orders_buyer_idx").on(t.buyerId),
+    index("orders_beneficiary_idx").on(t.beneficiaryStudentId),
+    uniqueIndex("orders_gateway_invoice_uq")
+      .on(t.gatewayInvoiceId)
+      .where(sql`gateway_invoice_id is not null`),
+  ],
+);
+
+export const entitlements = pgTable(
+  "entitlements",
+  {
+    id: uuid("id").primaryKey(),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "restrict" }),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    source: entitlementSource("source").notNull(),
+    /** The grant upsert key: one entitlement per order. */
+    orderId: uuid("order_id")
+      .unique()
+      .references(() => orders.id, { onDelete: "restrict" }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokeReason: text("revoke_reason"),
+    isSample,
+    createdAt,
+  },
+  (t) => [
+    check("entitlements_window_valid", sql`${t.endsAt} > ${t.startsAt}`),
+    check(
+      "entitlements_order_source_has_order",
+      sql`${t.source} <> 'order' or ${t.orderId} is not null`,
+    ),
+    index("entitlements_student_course_idx").on(t.studentId, t.courseId),
+  ],
+);
+
+// Backs the mock gateway (demo and tests) so the hosted page and the status query share state.
+export const mockGatewayInvoices = pgTable("mock_gateway_invoices", {
+  id: text("id").primaryKey(),
+  customerReference: text("customer_reference").notNull(),
+  amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+  currency: text("currency").notNull(),
+  status: mockInvoiceStatus("status").notNull().default("pending"),
+  createdAt,
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  paymentId: text("payment_id"),
+});
+
 export const usersRelations = relations(users, ({ one }) => ({
   credentials: one(credentials, { fields: [users.id], references: [credentials.userId] }),
 }));
@@ -504,3 +635,6 @@ export type UserRole = (typeof userRole.enumValues)[number];
 export type PlatformSettings = typeof platformSettings.$inferSelect;
 export type AuditLogRow = typeof auditLog.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;
+export type OrderRow = typeof orders.$inferSelect;
+export type OrderStatus = (typeof orderStatus.enumValues)[number];
+export type RefundFlagReason = (typeof refundFlagReason.enumValues)[number];

@@ -141,6 +141,13 @@
       "when": 1791004388337,
       "tag": "0019_optimal_cannonball",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1791064653465,
+      "tag": "0020_lyrical_sunfire",
+      "breakpoints": true
     }
   ]
 }

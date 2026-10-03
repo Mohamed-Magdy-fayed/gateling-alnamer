@@ -15,7 +15,13 @@ const CONTENT_TABLES = [
   "teacherProfiles",
   "mediaAssets",
 ];
-const ALLOWED_DIRS = [path.join("server", "catalog"), path.join("server", "db")];
+const ALLOWED_DIRS = [
+  path.join("server", "catalog"),
+  path.join("server", "db"),
+  path.join("server", "orders"),
+  path.join("server", "access"),
+  path.join("server", "payments"),
+];
 const TEST_FILE = /\.(int\.)?test\.tsx?$/;
 
 function sourceFiles(dir: string): string[] {

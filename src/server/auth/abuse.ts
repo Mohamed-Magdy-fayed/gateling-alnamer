@@ -1,4 +1,10 @@
-import { AUTH_LIMITS, type AuthLimits, type LimitRule } from "@/server/config/policy";
+import {
+  AUTH_LIMITS,
+  type AuthLimits,
+  CHECKOUT_LIMIT,
+  type LimitRule,
+  ORDER_RECHECK_LIMIT,
+} from "@/server/config/policy";
 import { createRateLimiter, type RateLimiter } from "@/server/rate-limit";
 import { type CaptchaVerifier, verifyCaptcha } from "./captcha";
 import { authKey, keyedHash } from "./keys";
@@ -267,4 +273,28 @@ export async function clearPasswordChangeFailures(
   deps: AbuseDeps = {},
 ): Promise<void> {
   await limiterOf(deps).reset(passwordChangeKey(hasherOf(deps), input.userId));
+}
+
+/** Checkout starts: 10 per 10 minutes per user. */
+export async function guardCheckout(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:checkout:user:${hasherOf(deps).hash(input.userId)}`,
+    CHECKOUT_LIMIT,
+  );
+}
+
+/** "Check again" on the order page: 20 per 10 minutes per user. */
+export async function guardOrderRecheck(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:orderrecheck:user:${hasherOf(deps).hash(input.userId)}`,
+    ORDER_RECHECK_LIMIT,
+  );
 }
