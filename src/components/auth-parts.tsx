@@ -64,6 +64,14 @@ export function Message({ state, t }: { state: FormState; t: AuthText }) {
           </Link>
         </>
       ) : null}
+      {state.offerVerify ? (
+        <>
+          {" "}
+          <Link href="/verify-email" className={summaryLinkClass}>
+            {t.verify.bannerAction}
+          </Link>
+        </>
+      ) : null}
       {failing.length > 0 ? (
         <ul className="mt-1 list-disc ps-5">
           {failing.map(([field, message]) => (

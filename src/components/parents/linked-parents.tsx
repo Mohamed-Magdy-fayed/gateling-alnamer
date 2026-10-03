@@ -20,38 +20,42 @@ export function LinkedParents({ parents, t }: { parents: LinkedParent[]; t: Pare
       <h2 id="linked-parents" className="text-lg font-semibold">
         {text.linkedTitle}
       </h2>
-      {parents.length === 0 ? <p className="text-fg-muted">{text.linkedEmpty}</p> : null}
-      <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {parents.map((parent) => {
-          const headingId = `parent-${parent.parentId}`;
-          return (
-            <li key={parent.parentId}>
-              <section aria-labelledby={headingId} className="h-full">
-                <Card className="flex h-full flex-col gap-3 p-5">
-                  <h3 id={headingId} className="font-semibold break-words">
-                    <bdi>{parent.displayName}</bdi>
-                  </h3>
-                  {parent.maskedEmail ? (
-                    <p className="text-sm text-fg-muted">
-                      <Ltr>{parent.maskedEmail}</Ltr>
-                    </p>
-                  ) : null}
-                  {parent.source === "invite" ? (
-                    <div className="mt-auto">
-                      <UnlinkDialog
-                        t={t}
-                        description={text.unlinkStudentConfirm}
-                        run={() => unlink.mutateAsync({ parentId: parent.parentId })}
-                        onDone={() => router.refresh()}
-                      />
-                    </div>
-                  ) : null}
-                </Card>
-              </section>
-            </li>
-          );
-        })}
-      </ul>
+      {parents.length === 0 ? (
+        <p className="text-fg-muted">{text.linkedEmpty}</p>
+      ) : (
+        <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {parents.map((parent) => {
+            const headingId = `parent-${parent.parentId}`;
+            return (
+              <li key={parent.parentId}>
+                <section aria-labelledby={headingId} className="h-full">
+                  <Card className="flex h-full flex-col gap-3 p-5">
+                    <h3 id={headingId} className="font-semibold break-words">
+                      <bdi>{parent.displayName}</bdi>
+                    </h3>
+                    {parent.maskedEmail ? (
+                      <p className="text-sm text-fg-muted">
+                        <Ltr wrap>{parent.maskedEmail}</Ltr>
+                      </p>
+                    ) : null}
+                    {parent.source === "invite" ? (
+                      <div className="mt-auto">
+                        <UnlinkDialog
+                          t={t}
+                          name={parent.displayName}
+                          description={text.unlinkStudentConfirm}
+                          run={() => unlink.mutateAsync({ parentId: parent.parentId })}
+                          onDone={() => router.refresh()}
+                        />
+                      </div>
+                    ) : null}
+                  </Card>
+                </section>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

@@ -22,6 +22,8 @@ import { Alert, Button } from "@/ui";
 import { errorState, type ParentTexts } from "./error-state";
 import { IslandText } from "./island-text";
 
+const PASSWORD_FIELD_ID = "field-newPassword";
+
 type Done = "direct" | "email" | null;
 
 /**
@@ -74,24 +76,42 @@ export function ResetPasswordDialog({ child, t }: { child: ParentChild; t: Paren
           {parents.resetAction}
         </Button>
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      <AlertDialogContent
+        onOpenAutoFocus={(event) => {
+          // Direct mode: start in the password field instead of the Cancel button.
+          const field = direct ? document.getElementById(PASSWORD_FIELD_ID) : null;
+          if (!field) return;
+          event.preventDefault();
+          field.focus();
+        }}
+      >
         <AlertDialogHeader>
-          <AlertDialogTitle>{parents.resetAction}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {direct ? (
-              parents.resetDirectHint
-            ) : (
-              <IslandText template={parents.resetEmailConfirm} token="email">
-                {mask}
-              </IslandText>
-            )}
-          </AlertDialogDescription>
+          <AlertDialogTitle>
+            <IslandText template={parents.resetTitle} token="name" kind="name">
+              {child.displayName}
+            </IslandText>
+          </AlertDialogTitle>
+          {done === null ? (
+            <AlertDialogDescription>
+              {direct ? (
+                parents.resetDirectHint
+              ) : (
+                <IslandText template={parents.resetEmailConfirm} token="email" wrap>
+                  {mask}
+                </IslandText>
+              )}
+            </AlertDialogDescription>
+          ) : (
+            <AlertDialogDescription className="sr-only">
+              {parents.resetAction}
+            </AlertDialogDescription>
+          )}
         </AlertDialogHeader>
         <Message state={state} t={auth} />
         {done === "direct" ? <Alert tone="success">{parents.resetDone}</Alert> : null}
         {done === "email" ? (
           <Alert tone="success">
-            <IslandText template={parents.resetEmailSent} token="email">
+            <IslandText template={parents.resetEmailSent} token="email" wrap>
               {mask}
             </IslandText>
           </Alert>

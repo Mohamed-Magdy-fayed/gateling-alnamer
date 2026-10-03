@@ -96,10 +96,7 @@ export function ParentCards({ data, t, locale }: Props) {
           <h3 id="active-invites" className="text-sm font-semibold text-fg-2">
             {parents.inviteActiveTitle}
           </h3>
-          <ul
-            aria-labelledby="active-invites"
-            className="flex flex-col gap-1 text-sm text-fg-muted"
-          >
+          <ul className="flex flex-col gap-1 text-sm text-fg-muted">
             {data.invites.map((item) => (
               <li key={item.id}>
                 {format(parents.inviteExpires, {

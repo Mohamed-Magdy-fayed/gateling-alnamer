@@ -23,7 +23,7 @@ export function ChildCard({ child, t, locale, onChanged }: Props) {
   const parents = t.parents;
   const headingId = `child-${child.childId}`;
   // A reset by email needs an address; a parent-created child without one is reset directly.
-  const canReset = child.resetMode === "direct" || child.maskedEmail !== null;
+  const canReset = child.resetMode === "direct" || child.emailVerified;
   // Only an admin removes the link to a child the parent created: it is that child's only recovery path.
   const canUnlink = child.source === "invite";
 
@@ -43,16 +43,18 @@ export function ChildCard({ child, t, locale, onChanged }: Props) {
             {child.ageYears === null ? null : (
               <span>{plural(locale, parents.age, child.ageYears)}</span>
             )}
-            {child.maskedEmail ? <Ltr>{child.maskedEmail}</Ltr> : null}
+            {child.maskedEmail ? <Ltr wrap>{child.maskedEmail}</Ltr> : null}
           </p>
         </div>
         <p className="text-sm text-fg-muted">{parents.progressPlaceholder}</p>
+        {canReset ? null : <p className="text-sm text-fg-muted">{parents.resetUnavailable}</p>}
         {canReset || canUnlink ? (
           <div className="mt-auto flex flex-wrap gap-2">
             {canReset ? <ResetPasswordDialog child={child} t={t} /> : null}
             {canUnlink ? (
               <UnlinkDialog
                 t={t}
+                name={child.displayName}
                 description={parents.unlinkConfirm}
                 run={() => unlink.mutateAsync({ childId: child.childId })}
                 onDone={onChanged}

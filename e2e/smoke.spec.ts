@@ -40,7 +40,7 @@ const VERIFIED_TITLE = "تم تأكيد البريد";
 const EMAIL_DELAYED = "تأخّر وصول الرسالة. تحقق من مجلد الرسائل غير المرغوب فيها أو أعد الإرسال.";
 const LINK_PARENT = "اربط حساب ولي أمرك ليتابع تقدّمك.";
 const CARDS_TITLE = "أبناؤك";
-const PARENT_EMPTY = "لم تُضِف أي ابن بعد. أنشئ حسابًا لابنك أو أرسل له رمز ربط.";
+const PARENT_EMPTY = "لم تُضِف أيَّ ابن بعد. أنشئ حسابًا لابنك أو أرسل له رمز ربط.";
 const ADD_CHILD = "إنشاء حساب لابن";
 const INVITE_CREATE = "إنشاء رمز ربط";
 const INVITE_COPY = "نسخ الرمز";
@@ -56,6 +56,7 @@ const RESET_DIRECT = "تعيين كلمة مرور جديدة";
 const RESET_ACTION = "إعادة تعيين كلمة المرور";
 const RESET_DONE = "تم تعيين كلمة المرور الجديدة.";
 const UNLINK = "إلغاء الربط";
+const CANCEL = "تراجع";
 const CANNOT_PLAY = "حسابات أولياء الأمور لا تشغّل الدروس. يمكنك متابعة تقدم أبنائك من هنا.";
 
 const runId = Date.now().toString(36);
@@ -600,7 +601,12 @@ test("a parent creates a child, signs out, and the child signs in with the usern
   // A created child's password is set directly by the parent; only an admin can remove that link.
   await expect(card.getByRole("button", { name: UNLINK })).toHaveCount(0);
   await card.getByRole("button", { name: RESET_ACTION }).click();
-  const reset = page.getByRole("alertdialog");
+  // The dialog names the child it acts on, and focus starts in the password field.
+  const reset = page.getByRole("alertdialog", {
+    name: new RegExp(`${RESET_ACTION}.*${childName}`),
+  });
+  await expect(reset).toBeVisible();
+  await expect(reset.getByLabel(RESET_DIRECT)).toBeFocused();
   await reset.getByLabel(RESET_DIRECT).fill(childNewPassword);
   await reset.getByRole("button", { name: RESET_DIRECT }).click();
   await expect(reset.getByText(RESET_DONE)).toBeVisible();
@@ -626,7 +632,7 @@ test("a parent issues a code, an existing student redeems it, and the card appea
   await expect(shown).toHaveText(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
   const code = (await shown.innerText()).trim();
   // The active list shows expiry only, never the code.
-  await expect(page.getByRole("list", { name: INVITE_ACTIVE_TITLE })).not.toContainText(code);
+  await expect(page.getByRole("region", { name: INVITE_ACTIVE_TITLE })).not.toContainText(code);
   await page.getByRole("button", { name: INVITE_COPY }).click();
   await expect(page.getByText(INVITE_COPIED).first()).toBeVisible();
 
@@ -657,7 +663,13 @@ test("a parent issues a code, an existing student redeems it, and the card appea
   await page.reload();
   const card = page.getByRole("region", { name: "Smoke Student" });
   await expect(card).toBeVisible();
-  await expect(card.getByRole("button", { name: UNLINK })).toBeVisible();
+  await card.getByRole("button", { name: UNLINK }).click();
+  const unlinkDialog = page.getByRole("alertdialog", {
+    name: new RegExp(`${UNLINK}.*Smoke Student`),
+  });
+  await expect(unlinkDialog).toBeVisible();
+  await unlinkDialog.getByRole("button", { name: CANCEL }).click();
+  await expect(unlinkDialog).toHaveCount(0);
   await expect(page.getByTestId("invite-code")).toHaveCount(0);
 });
 

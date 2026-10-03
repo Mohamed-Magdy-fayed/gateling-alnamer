@@ -45,6 +45,8 @@ export type FormState = {
   fieldErrors?: Partial<Record<SignUpField, string>>;
   /** Set when the form-level error should offer the forgot-password link. */
   offerReset?: boolean;
+  /** Set when the form-level error should link to the email confirmation page. */
+  offerVerify?: boolean;
   /** Non-secret values echoed back so a failed submit does not clear the form. */
   values?: Record<string, string>;
   /** Epoch ms when a lockout or rate limit ends; the form keeps its submit button disabled until then. */

@@ -17,9 +17,12 @@ import {
 import type { FormState } from "@/server/auth/actions";
 import { Button } from "@/ui";
 import { errorState, type ParentTexts } from "./error-state";
+import { IslandText } from "./island-text";
 
 type Props = {
   t: ParentTexts;
+  /** Who is being unlinked; named in the dialog title. */
+  name: string;
   /** The confirm sentence: who loses what. */
   description: string;
   /** Calls the unlink procedure; a failure is shown inside the dialog. */
@@ -29,7 +32,7 @@ type Props = {
 };
 
 /** Confirm-then-unlink. The dialog stays open on a failure so the message can be read. */
-export function UnlinkDialog({ t, description, run, onDone }: Props) {
+export function UnlinkDialog({ t, name, description, run, onDone }: Props) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<FormState>(idle);
   const mutation = useMutation({ mutationFn: run });
@@ -50,7 +53,11 @@ export function UnlinkDialog({ t, description, run, onDone }: Props) {
       </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{parents.unlink}</AlertDialogTitle>
+          <AlertDialogTitle>
+            <IslandText template={parents.unlinkTitle} token="name" kind="name">
+              {name}
+            </IslandText>
+          </AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         <Message state={state} t={t.auth} />

@@ -6,13 +6,13 @@ import { cn } from "./cn";
 type FrameProps = {
   id: string;
   label: string;
-  hint?: string;
+  hint?: ReactNode;
   error?: string;
   children: ReactNode;
 };
 
 /** The `aria-describedby` value for a control inside a FieldFrame. */
-export function describedBy(id: string, { hint, error }: { hint?: string; error?: string }) {
+export function describedBy(id: string, { hint, error }: { hint?: ReactNode; error?: string }) {
   const ids = [error ? `${id}-error` : null, hint ? `${id}-hint` : null].filter(Boolean);
   return ids.length > 0 ? ids.join(" ") : undefined;
 }

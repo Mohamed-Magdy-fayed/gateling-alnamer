@@ -31,12 +31,13 @@ async function copyText(value: string): Promise<boolean> {
 /** A freshly issued code, shown once, with a copy button and a polite confirmation. */
 export function InvitePanel({ code, t }: { code: string; t: ParentTexts }) {
   const parents = t.parents;
-  const [copied, setCopied] = useState(false);
+  const [result, setResult] = useState<"copied" | "failed" | null>(null);
+  const copied = result === "copied";
   useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), COPIED_RESET_MS);
+    if (result === null) return;
+    const timer = setTimeout(() => setResult(null), COPIED_RESET_MS);
     return () => clearTimeout(timer);
-  }, [copied]);
+  }, [result]);
 
   return (
     <Card className="flex flex-col gap-3 p-5">
@@ -56,7 +57,7 @@ export function InvitePanel({ code, t }: { code: string; t: ParentTexts }) {
           size="sm"
           className="min-h-11"
           aria-label={parents.inviteCopy}
-          onClick={async () => setCopied(await copyText(code))}
+          onClick={async () => setResult((await copyText(code)) ? "copied" : "failed")}
         >
           {copied ? (
             <Check aria-hidden className="size-4" strokeWidth={1.75} />
@@ -65,8 +66,12 @@ export function InvitePanel({ code, t }: { code: string; t: ParentTexts }) {
           )}
           {parents.inviteCopy}
         </Button>
-        <span role="status" className="text-sm text-success">
+        <span
+          role="status"
+          className={result === "failed" ? "text-sm text-destructive" : "text-sm text-success"}
+        >
           {copied ? parents.inviteCopied : null}
+          {result === "failed" ? parents.inviteCopyFailed : null}
         </span>
       </div>
     </Card>

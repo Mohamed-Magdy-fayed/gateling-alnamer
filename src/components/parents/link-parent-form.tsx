@@ -10,6 +10,7 @@ import { useTRPC } from "@/lib/trpc/client";
 import type { FormState } from "@/server/auth/actions";
 import { Button } from "@/ui";
 import { errorState, type ParentTexts } from "./error-state";
+import { IslandText } from "./island-text";
 
 /** The student's side of linking: type the parent's code, see the result, the list below refreshes. */
 export function LinkParentForm({ t }: { t: ParentTexts }) {
@@ -39,7 +40,16 @@ export function LinkParentForm({ t }: { t: ParentTexts }) {
   return (
     <form onSubmit={submit} noValidate className="flex max-w-md flex-col gap-4">
       <Message state={state} t={t.auth} />
-      <InviteCodeInput name="code" label={parents.linkLabel} hint={parents.linkHint} required />
+      <InviteCodeInput
+        name="code"
+        label={parents.linkLabel}
+        hint={
+          <IslandText template={parents.linkHint} token="example">
+            ABCD-2345
+          </IslandText>
+        }
+        required
+      />
       <Button type="submit" size="lg" disabled={mutation.isPending} aria-busy={mutation.isPending}>
         {mutation.isPending ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null}
         {parents.linkSubmit}
