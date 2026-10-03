@@ -6,6 +6,7 @@ import { ordersRouter } from "./routers/orders";
 import { parentRouter } from "./routers/parent";
 import { quizRouter } from "./routers/quiz";
 import { studentRouter } from "./routers/student";
+import { teachRouter } from "./routers/teach";
 import { videoRouter } from "./routers/video";
 import { router } from "./trpc";
 
@@ -18,6 +19,7 @@ export const appRouter = router({
   parent: parentRouter,
   quiz: quizRouter,
   student: studentRouter,
+  teach: teachRouter,
   video: videoRouter,
 });
 
