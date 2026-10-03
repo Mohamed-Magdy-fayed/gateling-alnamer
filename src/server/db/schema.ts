@@ -482,7 +482,7 @@ export const lessonRevisions = pgTable(
     durationMinutes: integer("duration_minutes"),
     videoAssetId: uuid("video_asset_id").references(() => mediaAssets.id),
     fileAssetId: uuid("file_asset_id").references(() => mediaAssets.id),
-    quizId: uuid("quiz_id"), // FK added in T4
+    quizId: uuid("quiz_id").references((): AnyPgColumn => quizzes.id, { onDelete: "restrict" }),
     isSample,
     createdAt,
   },
@@ -614,6 +614,113 @@ export const entitlements = pgTable(
   ],
 );
 
+export const questionKind = pgEnum("question_kind", ["mcq", "true_false"]);
+
+/** One answer option; `true_false` questions use the ids `true` and `false`. */
+export type QuestionOption = { id: string; text: LocalizedText };
+
+export const questionBanks = pgTable("question_banks", {
+  id: uuid("id").primaryKey(),
+  teacherId: uuid("teacher_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  title: jsonb("title").$type<LocalizedText>().notNull(),
+  isSample,
+  createdAt,
+});
+
+export const questions = pgTable(
+  "questions",
+  {
+    id: uuid("id").primaryKey(),
+    bankId: uuid("bank_id")
+      .notNull()
+      .references(() => questionBanks.id, { onDelete: "restrict" }),
+    kind: questionKind("kind").notNull(),
+    body: jsonb("body").$type<LocalizedText>().notNull(),
+    options: jsonb("options").$type<QuestionOption[]>().notNull(),
+    // The correct option id. Read only in src/server/access/** (MASTER-PLAN 3.2, static test).
+    correct: text("correct").notNull(),
+    explanation: jsonb("explanation").$type<LocalizedText>(),
+    isSample,
+    createdAt,
+  },
+  (t) => [
+    check("questions_body_object", isTextObject(t.body)),
+    check("questions_options_array", sql`jsonb_typeof(${t.options}) = 'array'`),
+    index("questions_bank_idx").on(t.bankId),
+  ],
+);
+
+export const quizzes = pgTable(
+  "quizzes",
+  {
+    id: uuid("id").primaryKey(),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => courses.id, { onDelete: "restrict" }),
+    title: jsonb("title").$type<LocalizedText>().notNull(),
+    timeLimitS: integer("time_limit_s"),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    passPct: integer("pass_pct").notNull().default(60),
+    isSample,
+    createdAt,
+  },
+  (t) => [
+    check("quizzes_title_object", isTextObject(t.title)),
+    check("quizzes_max_attempts", sql`${t.maxAttempts} >= 1`),
+    check("quizzes_pass_pct", sql`${t.passPct} between 0 and 100`),
+    check("quizzes_time_limit", sql`${t.timeLimitS} is null or ${t.timeLimitS} > 0`),
+    index("quizzes_course_idx").on(t.courseId),
+  ],
+);
+
+export const quizQuestions = pgTable(
+  "quiz_questions",
+  {
+    quizId: uuid("quiz_id")
+      .notNull()
+      .references(() => quizzes.id, { onDelete: "cascade" }),
+    questionId: uuid("question_id")
+      .notNull()
+      .references(() => questions.id, { onDelete: "restrict" }),
+    sort: integer("sort").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.quizId, t.questionId] })],
+);
+
+export const quizAttempts = pgTable(
+  "quiz_attempts",
+  {
+    id: uuid("id").primaryKey(),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    quizId: uuid("quiz_id")
+      .notNull()
+      .references(() => quizzes.id, { onDelete: "restrict" }),
+    attemptNo: integer("attempt_no").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    scorePct: integer("score_pct"),
+    answers: jsonb("answers").$type<Record<string, string>>().notNull().default({}),
+    isSample,
+  },
+  (t) => [
+    unique("quiz_attempts_student_quiz_no_unique").on(t.studentId, t.quizId, t.attemptNo),
+    check(
+      "quiz_attempts_score_range",
+      sql`${t.scorePct} is null or ${t.scorePct} between 0 and 100`,
+    ),
+    check(
+      "quiz_attempts_score_when_submitted",
+      sql`(${t.scorePct} is null) = (${t.submittedAt} is null)`,
+    ),
+    index("quiz_attempts_student_quiz_idx").on(t.studentId, t.quizId),
+  ],
+);
+
 // Backs the mock gateway (demo and tests) so the hosted page and the status query share state.
 export const mockGatewayInvoices = pgTable("mock_gateway_invoices", {
   id: text("id").primaryKey(),
@@ -638,3 +745,4 @@ export type DeviceRow = typeof devices.$inferSelect;
 export type OrderRow = typeof orders.$inferSelect;
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
 export type RefundFlagReason = (typeof refundFlagReason.enumValues)[number];
+export type QuizAttemptRow = typeof quizAttempts.$inferSelect;

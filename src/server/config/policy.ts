@@ -113,3 +113,8 @@ export const ORDER_RECHECK_LIMIT: LimitRule = { max: 20, windowSec: 10 * 60 };
 export const VIDEO_TOKEN_TTL_S = 5 * 60;
 export const VIDEO_TOKEN_LEEWAY_S = 30;
 export const PLAYBACK_LIMIT: LimitRule = { max: 60, windowSec: 10 * 60 };
+
+/** T4: a late quiz submit within this grace is on time; later ones are still graded as-is. */
+export const QUIZ_GRACE_S = 10;
+/** T4: quiz starts and submits per user. */
+export const QUIZ_LIMIT: LimitRule = { max: 30, windowSec: 10 * 60 };

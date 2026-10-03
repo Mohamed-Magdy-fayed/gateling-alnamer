@@ -162,6 +162,20 @@
       "when": 1791068241036,
       "tag": "0022_sample_pdf_media",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791068681821,
+      "tag": "0023_slow_joshua_kane",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791068723703,
+      "tag": "0024_sample_quiz",
+      "breakpoints": true
     }
   ]
 }

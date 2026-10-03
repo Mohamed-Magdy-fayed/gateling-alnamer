@@ -14,7 +14,14 @@ const CONTENT_TABLES = [
   "courseCategories",
   "teacherProfiles",
   "mediaAssets",
+  "questionBanks",
+  "questions",
+  "quizzes",
+  "quizQuestions",
 ];
+// Correct answers (MASTER-PLAN 3.2): `questions` is read only behind AccessGranted.
+const ANSWER_TABLES = ["questions"];
+const ANSWER_DIRS = [path.join("server", "access"), path.join("server", "db")];
 const ALLOWED_DIRS = [
   path.join("server", "catalog"),
   path.join("server", "db"),
@@ -137,6 +144,28 @@ describe("content table access", () => {
       if (used.length > 0) {
         offenders.push(
           `src/${relative.split(path.sep).join("/")} ${used.join(", ")}; read content through src/server/catalog/repository.ts`,
+        );
+      }
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
+  it("keeps the questions table (correct answers) inside src/server/access", () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(SRC)) {
+      const relative = path.relative(SRC, file);
+      if (TEST_FILE.test(relative)) continue;
+      if (ANSWER_DIRS.some((dir) => relative.startsWith(dir + path.sep))) continue;
+      const source = readFileSync(file, "utf8");
+      const used = [
+        ...schemaImports(source).filter((name) => ANSWER_TABLES.includes(name)),
+        ...[...source.matchAll(/\.query\.(\w+)/g)]
+          .map((match) => match[1] ?? "")
+          .filter((name) => ANSWER_TABLES.includes(name)),
+      ];
+      if (used.length > 0) {
+        offenders.push(
+          `src/${relative.split(path.sep).join("/")} reads ${used.join(", ")}; grade through src/server/access/quiz.ts`,
         );
       }
     }

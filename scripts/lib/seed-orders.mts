@@ -9,6 +9,8 @@ import {
   entitlements,
   orders,
   platformSettings,
+  quizAttempts,
+  quizzes,
 } from "../../src/server/db/schema";
 import { computeAccessWindow } from "../../src/server/orders/access-window";
 
@@ -100,4 +102,38 @@ export async function seedSampleOrder(
       .onConflictDoNothing({ target: entitlements.orderId });
     return "created";
   });
+}
+
+/**
+ * One submitted sample attempt (75%) on the quiz of a sample course the student owns, so the
+ * landing's "Latest quiz results" has something to show. Idempotent on (student, quiz, attempt 1).
+ */
+export async function seedSampleAttempt(
+  db: PostgresJsDatabase,
+  studentId: string,
+): Promise<"created" | "exists" | "no_quiz"> {
+  const [quiz] = await db
+    .select({ id: quizzes.id })
+    .from(entitlements)
+    .innerJoin(quizzes, eq(quizzes.courseId, entitlements.courseId))
+    .where(and(eq(entitlements.studentId, studentId), eq(quizzes.isSample, true)))
+    .orderBy(asc(quizzes.id))
+    .limit(1);
+  if (!quiz) return "no_quiz";
+  const now = new Date();
+  const inserted = await db
+    .insert(quizAttempts)
+    .values({
+      id: uuidv7(),
+      studentId,
+      quizId: quiz.id,
+      attemptNo: 1,
+      startedAt: new Date(now.getTime() - 15 * 60 * 1000),
+      submittedAt: new Date(now.getTime() - 10 * 60 * 1000),
+      scorePct: 75,
+      isSample: true,
+    })
+    .onConflictDoNothing()
+    .returning({ id: quizAttempts.id });
+  return inserted.length > 0 ? "created" : "exists";
 }

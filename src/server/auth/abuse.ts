@@ -5,6 +5,7 @@ import {
   type LimitRule,
   ORDER_RECHECK_LIMIT,
   PLAYBACK_LIMIT,
+  QUIZ_LIMIT,
 } from "@/server/config/policy";
 import { createRateLimiter, type RateLimiter } from "@/server/rate-limit";
 import { type CaptchaVerifier, verifyCaptcha } from "./captcha";
@@ -310,4 +311,12 @@ export async function guardPlayback(
     `rl:playback:user:${hasherOf(deps).hash(input.userId)}`,
     PLAYBACK_LIMIT,
   );
+}
+
+/** T4: quiz starts and submits, 30 per 10 minutes per user. */
+export async function guardQuiz(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(limiterOf(deps), `rl:quiz:user:${hasherOf(deps).hash(input.userId)}`, QUIZ_LIMIT);
 }

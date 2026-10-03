@@ -4,6 +4,7 @@ import { authRouter } from "./routers/auth";
 import { healthRouter } from "./routers/health";
 import { ordersRouter } from "./routers/orders";
 import { parentRouter } from "./routers/parent";
+import { quizRouter } from "./routers/quiz";
 import { studentRouter } from "./routers/student";
 import { videoRouter } from "./routers/video";
 import { router } from "./trpc";
@@ -15,6 +16,7 @@ export const appRouter = router({
   health: healthRouter,
   orders: ordersRouter,
   parent: parentRouter,
+  quiz: quizRouter,
   student: studentRouter,
   video: videoRouter,
 });
