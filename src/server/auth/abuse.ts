@@ -4,6 +4,7 @@ import {
   CHECKOUT_LIMIT,
   type LimitRule,
   ORDER_RECHECK_LIMIT,
+  PLAYBACK_LIMIT,
 } from "@/server/config/policy";
 import { createRateLimiter, type RateLimiter } from "@/server/rate-limit";
 import { type CaptchaVerifier, verifyCaptcha } from "./captcha";
@@ -296,5 +297,17 @@ export async function guardOrderRecheck(
     limiterOf(deps),
     `rl:orderrecheck:user:${hasherOf(deps).hash(input.userId)}`,
     ORDER_RECHECK_LIMIT,
+  );
+}
+
+/** T2: playback URL requests, 60 per 10 minutes per user. */
+export async function guardPlayback(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:playback:user:${hasherOf(deps).hash(input.userId)}`,
+    PLAYBACK_LIMIT,
   );
 }

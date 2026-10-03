@@ -5,6 +5,10 @@ import { parseServerEnv } from "./src/server/env-schema";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Sample lesson media is served by a route (signed URLs), never from public/: ship the files with it.
+  outputFileTracingIncludes: {
+    "/api/media/sample/[assetId]": ["./media/sample/**/*"],
+  },
   async headers() {
     return [
       {

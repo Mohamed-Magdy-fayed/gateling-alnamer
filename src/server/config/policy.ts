@@ -108,3 +108,8 @@ export const TWO_FACTOR_ENFORCED = false;
 /** T1: checkout starts per user (10 per 10 minutes) and order status re-checks per user. */
 export const CHECKOUT_LIMIT: LimitRule = { max: 10, windowSec: 10 * 60 };
 export const ORDER_RECHECK_LIMIT: LimitRule = { max: 20, windowSec: 10 * 60 };
+
+/** T2: a playback URL lives 5 minutes (30 s clock leeway); playback URL requests per user. */
+export const VIDEO_TOKEN_TTL_S = 5 * 60;
+export const VIDEO_TOKEN_LEEWAY_S = 30;
+export const PLAYBACK_LIMIT: LimitRule = { max: 60, windowSec: 10 * 60 };
