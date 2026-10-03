@@ -15,3 +15,9 @@ export function uniqueClientIpPerTest(): void {
     });
   });
 }
+
+/** A fresh address for a context a test opens itself (`browser.newContext`), from the same counter. */
+export function nextClientIp(): string {
+  next += 1;
+  return `10.${runOctets[0]}.${runOctets[1]}.${next}`;
+}
