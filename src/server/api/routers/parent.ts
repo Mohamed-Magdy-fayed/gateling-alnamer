@@ -9,9 +9,9 @@ import {
   unlinkParent,
 } from "@/server/parents/service";
 import { listActiveInvites } from "@/server/parents/views";
-import { publicProcedure, requireRole, router } from "../trpc";
+import { roleProcedure, router } from "../trpc";
 
-const parentProcedure = publicProcedure.use(requireRole("parent"));
+const parentProcedure = roleProcedure("parent");
 
 const FIELD_KEY = "auth.errors.field";
 const VERIFY_FIRST_KEY = "parents.verifyFirst";

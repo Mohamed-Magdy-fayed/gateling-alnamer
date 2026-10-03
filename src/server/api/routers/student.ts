@@ -3,9 +3,9 @@ import { requestContext } from "@/server/auth/request-context";
 import { AppError } from "@/server/errors";
 import { redeemInvite, unlinkParent } from "@/server/parents/service";
 import { listParentsForStudent } from "@/server/parents/views";
-import { publicProcedure, requireRole, router } from "../trpc";
+import { roleProcedure, router } from "../trpc";
 
-const studentProcedure = publicProcedure.use(requireRole("student"));
+const studentProcedure = roleProcedure("student");
 
 export const studentRouter = router({
   parentLinks: router({

@@ -95,3 +95,6 @@ export const MAX_PARENTS_PER_STUDENT = 2;
 export const MAX_CHILDREN_PER_PARENT = 10;
 export const MAX_ACTIVE_INVITES_PER_PARENT = 5;
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Staff procedures require a two-factor-verified session once this is true; A7b flips it. */
+export const TWO_FACTOR_ENFORCED = false;

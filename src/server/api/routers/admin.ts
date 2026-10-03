@@ -4,10 +4,9 @@ import { db } from "@/server/db";
 import { users } from "@/server/db/schema";
 import { resetDevices } from "@/server/devices/service";
 import { AppError } from "@/server/errors";
-import { publicProcedure, requireRole, router } from "../trpc";
+import { router, staffProcedure } from "../trpc";
 
-/** Admin-only gate. A7a replaces it with the shared roleProcedure. */
-const adminProcedure = publicProcedure.use(requireRole("admin"));
+const adminProcedure = staffProcedure("admin");
 
 export const adminRouter = router({
   devices: router({

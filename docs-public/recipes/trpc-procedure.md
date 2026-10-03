@@ -41,3 +41,14 @@ export const appRouter = router({ health: healthRouter });
 - Use `.query` for reads and `.mutation` for writes.
 - Types flow from `AppRouter`; never hand-write response types.
 - Run `npm run verify` before pushing.
+
+## Guards (required)
+Every procedure is built from a guarded base in `src/server/api/trpc.ts`; `src/server/api/guards.test.ts` fails and names the procedure otherwise.
+
+| Base | Use for |
+|---|---|
+| `protectedProcedure` | any signed-in, active user |
+| `roleProcedure("parent")` | student, parent (and any non-staff role) |
+| `staffProcedure("admin")` | teacher / admin / reviewer; runs the two-factor check. Every `admin.*` procedure uses this |
+| `superAdminProcedure` | admin with `is_super_admin`; runs the two-factor check |
+| `publicProcedure` | no sign-in; add the path with a one-line reason to `src/server/api/public-procedures.ts` |
