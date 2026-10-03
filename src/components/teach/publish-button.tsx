@@ -2,7 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -14,11 +14,22 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { Dictionary } from "@/i18n/ar";
-import { format } from "@/i18n/config";
 import { useTRPC } from "@/lib/trpc/client";
 import { Alert, Button, LoadingSwap } from "@/ui";
 
 type TeachText = Dictionary["teach"];
+
+/** The dialog title with the course title isolated, so its text cannot reorder the sentence. */
+function withTitle(template: string, title: ReactNode): ReactNode {
+  const [before, after = ""] = template.split("{title}");
+  return (
+    <>
+      {before}
+      {title}
+      {after}
+    </>
+  );
+}
 
 /** "Publish" behind a confirm dialog that names the course (admin review card). */
 export function PublishButton({
@@ -64,7 +75,7 @@ export function PublishButton({
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{format(t.publishTitle, { title })}</AlertDialogTitle>
+            <AlertDialogTitle>{withTitle(t.publishTitle, <bdi>{title}</bdi>)}</AlertDialogTitle>
             <AlertDialogDescription>{t.publishBody}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

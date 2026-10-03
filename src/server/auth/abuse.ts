@@ -2,6 +2,7 @@ import {
   AUTH_LIMITS,
   type AuthLimits,
   CHECKOUT_LIMIT,
+  DRAFT_COURSE_LIMIT,
   type LimitRule,
   ORDER_RECHECK_LIMIT,
   PLAYBACK_LIMIT,
@@ -319,4 +320,16 @@ export async function guardQuiz(
   deps: AbuseDeps = {},
 ): Promise<GuardResult> {
   return within(limiterOf(deps), `rl:quiz:user:${hasherOf(deps).hash(input.userId)}`, QUIZ_LIMIT);
+}
+
+/** T5: draft courses, 20 per hour per teacher. */
+export async function guardDraftCourse(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:draftcourse:user:${hasherOf(deps).hash(input.userId)}`,
+    DRAFT_COURSE_LIMIT,
+  );
 }

@@ -209,7 +209,7 @@ export function TeacherLanding({
                     </Badge>
                   </div>
                   <Link href={`/dashboard/teach/${course.id}`} className={`${linkClass} mt-auto`}>
-                    {pickText(course.title, locale)}
+                    <bdi>{pickText(course.title, locale)}</bdi>
                   </Link>
                 </Card>
               </li>

@@ -118,3 +118,6 @@ export const PLAYBACK_LIMIT: LimitRule = { max: 60, windowSec: 10 * 60 };
 export const QUIZ_GRACE_S = 10;
 /** T4: quiz starts and submits per user. */
 export const QUIZ_LIMIT: LimitRule = { max: 30, windowSec: 10 * 60 };
+
+/** T5: draft courses created per teacher. */
+export const DRAFT_COURSE_LIMIT: LimitRule = { max: 20, windowSec: 60 * 60 };

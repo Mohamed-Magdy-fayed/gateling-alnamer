@@ -82,7 +82,7 @@ export function NewCourseForm({ t, currency }: Props) {
           return;
         }
         create.reset();
-        setFormError(t.notApproved);
+        setFormError(result.reason === "not_approved" ? t.notApproved : t.errorGeneric);
       },
       onError: () => setFormError(t.errorGeneric),
     });

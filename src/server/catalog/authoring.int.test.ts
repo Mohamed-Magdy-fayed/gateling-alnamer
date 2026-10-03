@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { setClockForTests } from "@/server/clock";
 import * as schema from "@/server/db/schema";
+import { MemoryLimiter } from "../../../test/fake-limiter";
 
 vi.mock("@/server/redis", () => ({ getRedis: () => null }));
 vi.mock("@/server/env", () => ({
@@ -138,5 +139,35 @@ describe("course authoring", () => {
       );
     expect(audit).toHaveLength(1);
     expect(audit[0]?.actorId).toBe(admin.id);
+  });
+
+  it("limits draft creation per teacher (20 per hour)", async () => {
+    const author = await teacher();
+    const deps = { limiter: new MemoryLimiter(), key: Buffer.alloc(32, 4) };
+    for (let i = 0; i < 20; i++) {
+      expect((await createDraftCourse(author.id, input, deps)).ok).toBe(true);
+    }
+    expect(await createDraftCourse(author.id, input, deps)).toEqual({
+      ok: false,
+      reason: "rate_limited",
+    });
+  });
+
+  it("a teacher suspended after drafting cannot submit, and the review list hides them", async () => {
+    const author = await teacher();
+    const created = await createDraftCourse(author.id, input);
+    if (!created.ok) throw new Error("create failed");
+    await submitForReview(author.id, created.courseId);
+    const second = await createDraftCourse(author.id, input);
+    if (!second.ok) throw new Error("create failed");
+    await conn
+      .update(schema.teacherProfiles)
+      .set({ status: "suspended" })
+      .where(eq(schema.teacherProfiles.userId, author.id));
+    expect(await submitForReview(author.id, second.courseId)).toEqual({
+      ok: false,
+      reason: "not_approved",
+    });
+    expect((await listPendingReview()).some((row) => row.id === created.courseId)).toBe(false);
   });
 });

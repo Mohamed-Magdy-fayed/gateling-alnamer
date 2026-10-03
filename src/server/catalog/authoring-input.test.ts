@@ -47,3 +47,13 @@ describe("priceToMinor", () => {
     expect(priceToMinor(150)).toBe(15_000);
   });
 });
+
+describe("bidi controls", () => {
+  it("strips override and isolate characters from titles", () => {
+    const result = draftCourseInput.safeParse({
+      ...valid,
+      titleAr: "‮مقدمة⁦ في الجبر⁩",
+    });
+    expect(result.success && result.data.titleAr).toBe("مقدمة في الجبر");
+  });
+});

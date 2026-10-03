@@ -4,6 +4,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import type { LocalizedText } from "@/lib/localized-text";
 import { writeAudit } from "@/server/audit/repository";
+import { type AbuseDeps, guardDraftCourse } from "@/server/auth/abuse";
 import { isUniqueViolation } from "@/server/auth/sign-up";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
@@ -36,7 +37,9 @@ function newSlug(): string {
 
 const localized = (ar: string, en = ""): LocalizedText => (en ? { ar, en } : { ar });
 
-export type CreateResult = { ok: true; courseId: string } | { ok: false; reason: "not_approved" };
+export type CreateResult =
+  | { ok: true; courseId: string }
+  | { ok: false; reason: "not_approved" | "rate_limited" };
 
 async function isApprovedTeacher(teacherId: string): Promise<boolean> {
   const [row] = await db()
@@ -92,8 +95,11 @@ async function insertDraft(tx: Tx, teacherId: string, input: DraftCourseInput): 
 export async function createDraftCourse(
   teacherId: string,
   input: DraftCourseInput,
+  deps: AbuseDeps = {},
 ): Promise<CreateResult> {
   if (!(await isApprovedTeacher(teacherId))) return { ok: false, reason: "not_approved" };
+  const guard = await guardDraftCourse({ userId: teacherId }, deps);
+  if (!("ok" in guard)) return { ok: false, reason: "rate_limited" };
   for (let attempt = 1; ; attempt++) {
     try {
       const courseId = await db().transaction((tx) => insertDraft(tx, teacherId, input));
@@ -214,7 +220,9 @@ export async function getTeacherCourse(
   };
 }
 
-export type StatusResult = { ok: true } | { ok: false; reason: "not_found" | "not_draft" };
+export type StatusResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "not_draft" | "not_approved" };
 
 /** The teacher sends their own draft for review. */
 export async function submitForReview(teacherId: string, courseId: string): Promise<StatusResult> {
@@ -224,6 +232,8 @@ export async function submitForReview(teacherId: string, courseId: string): Prom
     .where(and(eq(courses.id, courseId), eq(courses.teacherId, teacherId)))
     .limit(1);
   if (!course) return { ok: false, reason: "not_found" };
+  // A teacher suspended (or not yet approved) after drafting cannot send work for review.
+  if (!(await isApprovedTeacher(teacherId))) return { ok: false, reason: "not_approved" };
   const updated = await db()
     .update(courses)
     .set({ status: "in_review", updatedAt: clock.now() })
@@ -251,7 +261,7 @@ export async function listPendingReview(): Promise<PendingCourse[]> {
     .from(courses)
     .innerJoin(courseRevisions, eq(courseRevisions.id, courses.pendingRevisionId))
     .innerJoin(teacherProfiles, eq(teacherProfiles.userId, courses.teacherId))
-    .where(eq(courses.status, "in_review"))
+    .where(and(eq(courses.status, "in_review"), eq(teacherProfiles.status, "approved")))
     .orderBy(courses.updatedAt);
 }
 
@@ -303,7 +313,12 @@ export async function publishCourse(adminId: string, courseId: string): Promise<
       action: "course.publish",
       subjectType: "course",
       subjectId: courseId,
-      after: { revisionId: course.pendingRevisionId },
+      before: { status: course.status, publishedRevisionId: course.publishedRevisionId },
+      after: {
+        status: "published",
+        revisionId: course.pendingRevisionId,
+        teacherId: course.teacherId,
+      },
     });
     return { ok: true };
   });
