@@ -38,7 +38,11 @@ export async function serveLessonFile(
 ): Promise<FileResponse> {
   if (!viewer) return bare(401);
   const access = await getLessonAccess(viewer, lessonId, now);
-  if (!access.allowed) return access.reason === "not_found" ? bare(404) : bare(403);
+  if (!access.allowed) {
+    // Like the learn page: an unpublished lesson is "not found", so drafts do not reveal themselves.
+    const hidden = access.reason === "not_found" || access.reason === "not_published";
+    return bare(hidden ? 404 : 403);
+  }
   const fileName = await loadLessonFile(access.grant);
   if (!fileName) return bare(404);
   const source = await readFile(path.join(SAMPLE_FILES_DIR, fileName)).catch(() => null);
