@@ -8,13 +8,17 @@ import {
   UserCheck,
   Wallet,
 } from "lucide-react";
+import Link from "next/link";
 import { EmptyState } from "@/components/al/empty-state";
+import { linkClass } from "@/components/auth-parts";
+import { PublishButton } from "@/components/teach/publish-button";
 import type { Dictionary } from "@/i18n/ar";
 import { format, formatDate, type Locale } from "@/i18n/config";
 import { pickText } from "@/lib/localized-text";
 import type { RecentResult } from "@/server/access/quiz";
+import type { PendingCourse, TeacherCourseRow } from "@/server/catalog/authoring";
 import type { StudentCourse } from "@/server/orders/my-courses";
-import { Button, ButtonLink, Card } from "@/ui";
+import { Badge, ButtonLink, Card } from "@/ui";
 
 /**
  * Real-user landings (A7a screen map), built only from data that exists today. Anything not built
@@ -162,33 +166,117 @@ export function ParentLandingExtras({ t }: { t: Dictionary }) {
   );
 }
 
-export function TeacherLanding({ t }: { t: Dictionary }) {
+export function TeacherLanding({
+  t,
+  locale,
+  courses,
+}: {
+  t: Dictionary;
+  locale: Locale;
+  courses: TeacherCourseRow[];
+}) {
   const d = t.dashboard.teacher;
+  const newCourse = <ButtonLink href="/dashboard/teach/new">{d.newCourse}</ButtonLink>;
   return (
-    <div className={grid}>
-      <EmptyState
-        icon={BookOpen}
-        title={d.myCourses}
-        body={d.noCourses}
-        comingSoon={t.shell.comingSoon}
-        action={
-          <Button disabled className="min-h-11">
-            {d.newCourse}
-          </Button>
-        }
-      />
-      <EmptyState icon={Wallet} title={d.earnings} comingSoon={t.shell.comingSoon} />
+    <div className="flex flex-col gap-6">
+      {courses.length === 0 ? (
+        <div className={grid}>
+          <EmptyState
+            icon={BookOpen}
+            title={d.myCourses}
+            body={t.teach.noCourses}
+            action={newCourse}
+          />
+        </div>
+      ) : (
+        <section aria-labelledby="teacher-courses" className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="teacher-courses" className="text-lg font-semibold">
+              {d.myCourses}
+            </h2>
+            {newCourse}
+          </div>
+          <ul className={grid}>
+            {courses.map((course) => (
+              <li key={course.id}>
+                <Card className="flex h-full flex-col gap-3 p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-semibold">
+                      <bdi>{pickText(course.title, locale)}</bdi>
+                    </h3>
+                    <Badge tone={course.status === "published" ? "success" : "neutral"}>
+                      {t.teach.statuses[course.status]}
+                    </Badge>
+                  </div>
+                  <Link href={`/dashboard/teach/${course.id}`} className={`${linkClass} mt-auto`}>
+                    {pickText(course.title, locale)}
+                  </Link>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <div className={grid}>
+        <EmptyState icon={Wallet} title={d.earnings} comingSoon={t.shell.comingSoon} />
+      </div>
     </div>
   );
 }
 
-export function AdminLanding({ t }: { t: Dictionary }) {
+export function AdminLanding({
+  t,
+  locale,
+  pending,
+}: {
+  t: Dictionary;
+  locale: Locale;
+  pending: PendingCourse[];
+}) {
   const a = t.dashboard.admin;
   return (
-    <div className={grid}>
-      <EmptyState icon={UserCheck} title={a.teacherApplications} comingSoon={t.shell.comingSoon} />
-      <EmptyState icon={FileCheck} title={a.contentReview} comingSoon={t.shell.comingSoon} />
-      <EmptyState icon={ReceiptText} title={a.orders} comingSoon={t.shell.comingSoon} />
+    <div className="flex flex-col gap-6">
+      <section aria-labelledby="content-review">
+        <Card className="flex flex-col gap-4 p-6">
+          <h2 id="content-review" className="text-lg font-semibold">
+            {a.contentReview}
+          </h2>
+          {pending.length === 0 ? (
+            <p className="text-sm text-fg-muted">{t.teach.pendingEmpty}</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-line">
+              {pending.map((course) => (
+                <li
+                  key={course.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3"
+                >
+                  <div className="flex flex-col">
+                    <bdi className="font-medium">{pickText(course.title, locale)}</bdi>
+                    <span className="text-sm text-fg-muted">
+                      {format(t.teach.byTeacher, { name: pickText(course.teacherName, locale) })}
+                      {" · "}
+                      {formatDate(locale, course.submittedAt)}
+                    </span>
+                  </div>
+                  <PublishButton
+                    courseId={course.id}
+                    title={pickText(course.title, locale)}
+                    t={t.teach}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </section>
+      <div className={grid}>
+        <EmptyState
+          icon={UserCheck}
+          title={a.teacherApplications}
+          comingSoon={t.shell.comingSoon}
+        />
+        <EmptyState icon={ReceiptText} title={a.orders} comingSoon={t.shell.comingSoon} />
+      </div>
     </div>
   );
 }
