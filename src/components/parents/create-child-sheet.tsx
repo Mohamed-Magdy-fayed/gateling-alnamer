@@ -40,14 +40,12 @@ export function CreateChildSheet({ open, onOpenChange, onCreated, t, locale }: P
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const email = text(data, "email");
     mutation.mutate(
       {
         name: text(data, "name"),
         username: text(data, "username"),
         password: String(data.get("password") ?? ""),
         dateOfBirth: text(data, "date_of_birth"),
-        email: email === "" ? undefined : email,
       },
       {
         onSuccess: () => {
@@ -117,14 +115,6 @@ export function CreateChildSheet({ open, onOpenChange, onCreated, t, locale }: P
               dir={locale === "ar" ? "rtl" : "ltr"}
               error={errors.date_of_birth}
               required
-            />
-            <Field
-              name="email"
-              type="email"
-              label={parents.fieldEmail}
-              autoComplete="off"
-              ltr
-              error={errors.email}
             />
           </form>
         </div>

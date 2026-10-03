@@ -13,7 +13,7 @@ import { ageOn, isUnder18 } from "@/server/auth/age";
 import { hashPassword } from "@/server/auth/password";
 import { nextPublicNumber } from "@/server/auth/public-number";
 import { sendCode as defaultSendCode } from "@/server/auth/send-code";
-import { invalidateUserSessionsCore } from "@/server/auth/session-invalidate";
+import { deleteUserSessionsIn, purgeSessionCache } from "@/server/auth/session-invalidate";
 import {
   isUniqueViolation,
   PASSWORD_MAX_LENGTH,
@@ -51,13 +51,17 @@ async function lock(tx: Tx, scope: "parent" | "student", id: string): Promise<vo
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${scope}-links:${id}`}))`);
 }
 
-async function isActiveParent(tx: Tx, parentId: string): Promise<boolean> {
+type ParentState = "ok" | "forbidden" | "verifyFirst";
+
+/** A parent acts only while active and with a verified email (D35). */
+async function parentState(tx: Tx, parentId: string): Promise<ParentState> {
   const [row] = await tx
-    .select({ id: users.id })
+    .select({ emailVerifiedAt: users.emailVerifiedAt })
     .from(users)
     .where(and(eq(users.id, parentId), eq(users.role, "parent"), eq(users.status, "active")))
     .limit(1);
-  return Boolean(row);
+  if (!row) return "forbidden";
+  return row.emailVerifiedAt ? "ok" : "verifyFirst";
 }
 
 async function countChildren(tx: Tx, parentId: string): Promise<number> {
@@ -77,32 +81,23 @@ export function maskEmail(email: string): string {
 
 // ---- Child creation ----
 
-export type CreateChildField = "name" | "email" | "username" | "password" | "date_of_birth";
+export type CreateChildField = "name" | "username" | "password" | "date_of_birth";
 export type CreateChildResult =
   | { ok: true; childId: string }
   | { ok: false; code: "invalid"; fields: CreateChildField[] }
-  | { ok: false; code: "duplicate" | "forbidden" | "rateLimited" | "limitChildren" };
-
-const emptyToUndefined = (value: unknown) => (value === "" || value === null ? undefined : value);
+  | {
+      ok: false;
+      code: "duplicate" | "forbidden" | "verifyFirst" | "rateLimited" | "limitChildren";
+    };
 
 const createChildSchema = z.object({
   name: z.string().trim().min(2).max(80),
   username: usernameSchema,
   password: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
   date_of_birth: z.string(),
-  email: z.preprocess(
-    emptyToUndefined,
-    z.string().trim().pipe(z.email()).pipe(z.string().max(254)).optional(),
-  ),
 });
 
-const KNOWN_FIELDS: readonly CreateChildField[] = [
-  "name",
-  "email",
-  "username",
-  "password",
-  "date_of_birth",
-];
+const KNOWN_FIELDS: readonly CreateChildField[] = ["name", "username", "password", "date_of_birth"];
 
 function invalid(fields: CreateChildField[]): CreateChildResult {
   return { ok: false, code: "invalid", fields };
@@ -111,8 +106,9 @@ function invalid(fields: CreateChildField[]): CreateChildResult {
 /**
  * A parent creates a child account: validation (the sign-up rules, the child must be under 18),
  * then user + credential + public number + link + audit in one transaction. The parent is the
- * guardian, so consent is recorded now and in the `parent.create_child` audit entry. An optional
- * email gets an `email_verify` code. At most 10 children per parent and 10 creations a day.
+ * guardian, so consent is recorded now and in the `parent.create_child` audit entry. The child
+ * has no email (it adds one later from its account page). The parent must have a verified email.
+ * At most 10 children per parent and 10 creations a day.
  */
 export async function createChild(
   parentId: string,
@@ -143,7 +139,8 @@ export async function createChild(
   try {
     const outcome = await db().transaction(async (tx) => {
       await lock(tx, "parent", parentId);
-      if (!(await isActiveParent(tx, parentId))) return { ok: false, code: "forbidden" } as const;
+      const state = await parentState(tx, parentId);
+      if (state !== "ok") return { ok: false, code: state } as const;
       if ((await countChildren(tx, parentId)) >= MAX_CHILDREN_PER_PARENT) {
         return { ok: false, code: "limitChildren" } as const;
       }
@@ -151,7 +148,6 @@ export async function createChild(
         .insert(users)
         .values({
           name: input.name,
-          email: input.email ?? null,
           username: input.username,
           role: "student",
           dateOfBirth,
@@ -171,20 +167,10 @@ export async function createChild(
         action: "parent.create_child",
         subjectType: "user",
         subjectId: child.id,
-        after: { consent: "guardian", hasEmail: Boolean(input.email) },
+        after: { consent: "guardian" },
       });
       return { ok: true, childId: child.id } as const;
     });
-    if (!outcome.ok) return outcome;
-
-    if (input.email) {
-      const send = deps.sendCode ?? defaultSendCode;
-      await send(
-        { id: outcome.childId, name: input.name, email: input.email, locale: ctx.locale },
-        "email_verify",
-        ctx.locale,
-      );
-    }
     return outcome;
   } catch (error) {
     if (isUniqueViolation(error)) return { ok: false, code: "duplicate" };
@@ -196,7 +182,7 @@ export async function createChild(
 
 export type IssueInviteResult =
   | { ok: true; code: string; expiresAt: Date }
-  | { ok: false; code: "forbidden" | "limitInvites" };
+  | { ok: false; code: "forbidden" | "verifyFirst" | "limitInvites" };
 
 /** Issues a link code (`XXXX-XXXX`, 7 days). Only a keyed hash is stored; at most 5 are live at once. */
 export async function issueInvite(parentId: string): Promise<IssueInviteResult> {
@@ -204,7 +190,8 @@ export async function issueInvite(parentId: string): Promise<IssueInviteResult> 
   const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
   return db().transaction(async (tx) => {
     await lock(tx, "parent", parentId);
-    if (!(await isActiveParent(tx, parentId))) return { ok: false, code: "forbidden" } as const;
+    const state = await parentState(tx, parentId);
+    if (state !== "ok") return { ok: false, code: state } as const;
     const [live] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(linkInvites)
@@ -273,7 +260,7 @@ export async function redeemInvite(
     if (!invite) return INVALID_INVITE;
 
     await lock(tx, "parent", invite.parentId);
-    if (!(await isActiveParent(tx, invite.parentId))) return INVALID_INVITE;
+    if ((await parentState(tx, invite.parentId)) !== "ok") return INVALID_INVITE;
     const [existing] = await tx
       .select({ id: parentLinks.id })
       .from(parentLinks)
@@ -315,11 +302,24 @@ export async function redeemInvite(
 
 // ---- Unlink ----
 
+/** A created child may unlink once 18 or once it has a verified email of its own. */
+async function studentCanLeave(tx: Tx, studentId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ dateOfBirth: users.dateOfBirth, emailVerifiedAt: users.emailVerifiedAt })
+    .from(users)
+    .where(eq(users.id, studentId))
+    .limit(1);
+  if (!row) return false;
+  if (row.emailVerifiedAt) return true;
+  return row.dateOfBirth ? !isUnder18(row.dateOfBirth, clock.now()) : false;
+}
+
 export type UnlinkResult = { ok: true } | { ok: false; reason: "not_found" | "forbidden" };
 
 /**
- * Unlink rules: an `invite` link can be removed by its parent, its student or an admin; a
- * `created_child` link only by an admin (a child with no other recovery path must not lose its parent).
+ * Unlink rules: an `invite` link can be removed by its parent, its student or an admin. A
+ * `created_child` link by an admin, or by the student once they are 18 or have a verified email (so
+ * they have their own recovery path); never by the parent.
  */
 export async function unlinkParent(input: {
   actor: { id: string; role: UserRole };
@@ -339,7 +339,11 @@ export async function unlinkParent(input: {
     const isParty =
       (actor.role === "parent" && actor.id === parentId) ||
       (actor.role === "student" && actor.id === studentId);
-    const allowed = row.source === "invite" ? isAdmin || isParty : isAdmin;
+    let allowed = isAdmin;
+    if (!allowed && row.source === "invite") allowed = isParty;
+    if (!allowed && row.source === "created_child" && actor.role === "student") {
+      allowed = actor.id === studentId && (await studentCanLeave(tx, studentId));
+    }
     if (!allowed) return { ok: false, reason: "forbidden" };
 
     await tx.delete(parentLinks).where(eq(parentLinks.id, row.id));
@@ -358,9 +362,13 @@ export async function unlinkParent(input: {
 
 export type ResetMode = "forbidden" | "direct" | "email";
 
-/** The matrix: no link forbids; own-created or under-18-without-verified-email is direct; else email. */
+/**
+ * The matrix (D35): no link forbids. Direct only for a linked child (created by this parent or
+ * linked by invite) who is under 18 (Cairo date) and has no verified email; everything else is email.
+ */
 export function resetMode(input: {
   linked: boolean;
+  source: LinkSource | null;
   parentId: string;
   createdByParentId: string | null;
   dateOfBirth: string | null;
@@ -368,9 +376,9 @@ export function resetMode(input: {
   now: Date;
 }): ResetMode {
   if (!input.linked) return "forbidden";
-  if (input.createdByParentId === input.parentId) return "direct";
+  const ownLink = input.createdByParentId === input.parentId || input.source === "invite";
   const minor = input.dateOfBirth ? isUnder18(input.dateOfBirth, input.now) : false;
-  return minor && !input.emailVerifiedAt ? "direct" : "email";
+  return ownLink && minor && !input.emailVerifiedAt ? "direct" : "email";
 }
 
 type ChildFacts = {
@@ -381,10 +389,15 @@ type ChildFacts = {
   locale: string | null;
 };
 
-async function childFacts(parentId: string, childId: string): Promise<ChildFacts> {
-  const [row] = await db()
+async function childFacts(
+  executor: Database | Tx,
+  parentId: string,
+  childId: string,
+): Promise<ChildFacts> {
+  const [row] = await executor
     .select({
       linkId: parentLinks.id,
+      source: parentLinks.source,
       createdByParentId: users.createdByParentId,
       dateOfBirth: users.dateOfBirth,
       emailVerifiedAt: users.emailVerifiedAt,
@@ -402,6 +415,7 @@ async function childFacts(parentId: string, childId: string): Promise<ChildFacts
   const mode = row
     ? resetMode({
         linked: row.linkId !== null,
+        source: row.source,
         parentId,
         createdByParentId: row.createdByParentId,
         dateOfBirth: row.dateOfBirth,
@@ -419,18 +433,28 @@ async function childFacts(parentId: string, childId: string): Promise<ChildFacts
 }
 
 export async function canParentSetPassword(parentId: string, childId: string): Promise<ResetMode> {
-  return (await childFacts(parentId, childId)).mode;
+  return (await childFacts(db(), parentId, childId)).mode;
 }
 
 export type ResetChildPasswordResult =
   | { ok: true; mode: "direct" }
   | { ok: true; mode: "email"; maskedEmail: string }
-  | { ok: false; reason: "forbidden" | "invalid" | "no_verified_email" | "rateLimited" };
+  | {
+      ok: false;
+      reason: "forbidden" | "verifyFirst" | "invalid" | "no_verified_email" | "rateLimited";
+    };
+
+type ResetDecision =
+  | { kind: "done"; result: ResetChildPasswordResult; sessionHashes: string[] }
+  | { kind: "email"; facts: ChildFacts; email: string };
 
 /**
  * Applies the matrix. Direct: argon2id hash, the child's sessions end, audit `{mode:"direct"}`
- * (the password itself is never audited). Email: a `password_reset` code goes to the child's
- * verified email through the normal send path, audit `{mode:"email"}`; the caller only gets a mask.
+ * (the password itself is never audited). The facts read, the eligibility check, the credential
+ * write and the session deletion are ONE transaction under the child's lock, so a child who
+ * verifies an email or turns 18 meanwhile cannot be reset on stale facts. Email: a
+ * `password_reset` code goes to the child's verified email through the normal send path, audit
+ * `{mode:"email"}`; the caller only gets a mask.
  */
 export async function resetChildPassword(
   input: { parentId: string; childId: string; newPassword?: string },
@@ -438,16 +462,23 @@ export async function resetChildPassword(
   deps: ParentDeps = {},
 ): Promise<ResetChildPasswordResult> {
   const { parentId, childId } = input;
-  const facts = await childFacts(parentId, childId);
-  if (facts.mode === "forbidden") return { ok: false, reason: "forbidden" };
+  const password = input.newPassword ?? "";
+  const passwordValid =
+    password.length >= PASSWORD_MIN_LENGTH && password.length <= PASSWORD_MAX_LENGTH;
+  const passwordHash = passwordValid ? await hashPassword(password) : null;
 
-  if (facts.mode === "direct") {
-    const password = input.newPassword ?? "";
-    if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
-      return { ok: false, reason: "invalid" };
-    }
-    const passwordHash = await hashPassword(password);
-    await db().transaction(async (tx) => {
+  const decision = await db().transaction(async (tx): Promise<ResetDecision> => {
+    const refuse = (
+      reason: "forbidden" | "verifyFirst" | "invalid" | "no_verified_email",
+    ): ResetDecision => ({ kind: "done", result: { ok: false, reason }, sessionHashes: [] });
+    await lock(tx, "student", childId);
+    const state = await parentState(tx, parentId);
+    if (state !== "ok") return refuse(state);
+    const facts = await childFacts(tx, parentId, childId);
+    if (facts.mode === "forbidden") return refuse("forbidden");
+
+    if (facts.mode === "direct") {
+      if (!passwordHash) return refuse("invalid");
       await tx
         .insert(credentials)
         .values({ userId: childId, passwordHash, passwordSalt: null })
@@ -462,13 +493,22 @@ export async function resetChildPassword(
         subjectId: childId,
         after: { mode: "direct" },
       });
-    });
-    await invalidateUserSessionsCore(childId);
-    return { ok: true, mode: "direct" };
+      const sessionHashes = await deleteUserSessionsIn(tx, childId);
+      return { kind: "done", result: { ok: true, mode: "direct" }, sessionHashes };
+    }
+
+    if (!facts.email || !facts.emailVerified) return refuse("no_verified_email");
+    return { kind: "email", facts, email: facts.email };
+  });
+
+  if (decision.kind === "done") {
+    // The cache is purged only after the commit; a rolled-back reset leaves the sessions alone.
+    await purgeSessionCache(childId, decision.sessionHashes);
+    return decision.result;
   }
 
-  if (!facts.email || !facts.emailVerified) return { ok: false, reason: "no_verified_email" };
-  const guard = await guardCodeSend({ identifier: facts.email, ip: `parent:${parentId}` }, deps);
+  const { facts, email } = decision;
+  const guard = await guardCodeSend({ identifier: email, ip: `parent:${parentId}` }, deps);
   if (!("ok" in guard)) return { ok: false, reason: "rateLimited" };
   await db().transaction(async (tx) => {
     await writeAudit(tx, {
@@ -481,11 +521,11 @@ export async function resetChildPassword(
   });
   const send = deps.sendCode ?? defaultSendCode;
   await send(
-    { id: childId, name: facts.name, email: facts.email, locale: facts.locale },
+    { id: childId, name: facts.name, email, locale: facts.locale },
     "password_reset",
     ctx.locale,
   );
-  return { ok: true, mode: "email", maskedEmail: maskEmail(facts.email) };
+  return { ok: true, mode: "email", maskedEmail: maskEmail(email) };
 }
 
 // ---- Parent view ----

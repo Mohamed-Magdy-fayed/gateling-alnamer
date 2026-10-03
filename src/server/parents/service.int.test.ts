@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { deriveKey } from "@/server/auth/keys";
 import { verifyPassword } from "@/server/auth/password";
@@ -137,19 +137,39 @@ describe("createChild", () => {
     expect(sendCode).not.toHaveBeenCalled();
   });
 
-  it("with an email sends an email_verify code and leaves it unverified", async () => {
+  it("takes no email: an email in the input is ignored and no code is sent", async () => {
     const parent = await makeUser("parent");
-    const email = `kid-${crypto.randomUUID()}@example.test`;
-    const childId = await createOk(parent, { email });
+    const childId = await createOk(parent, { email: `kid-${crypto.randomUUID()}@example.test` });
     const [child] = await db().select().from(users).where(eq(users.id, childId));
-    expect(child?.email).toBe(email);
+    expect(child?.email).toBeNull();
     expect(child?.emailVerifiedAt).toBeNull();
-    expect(sendCode).toHaveBeenCalledTimes(1);
-    expect(sendCode).toHaveBeenCalledWith(
-      expect.objectContaining({ id: childId, email }),
-      "email_verify",
-      "en",
-    );
+    expect(sendCode).not.toHaveBeenCalled();
+  });
+
+  it("an unverified parent gets verifyFirst and nothing is created", async () => {
+    const parent = await makeUser("parent", { emailVerifiedAt: null });
+    const result = await svc.createChild(parent, childInput(), ctx, deps());
+    expect(result).toEqual({ ok: false, code: "verifyFirst" });
+    expect(
+      await db().select().from(parentLinks).where(eq(parentLinks.parentId, parent)),
+    ).toHaveLength(0);
+  });
+
+  it("three concurrent creations at 9 children let only one through", async () => {
+    const parent = await makeUser("parent");
+    for (let i = 0; i < 9; i += 1) {
+      await link(parent, await makeUser("student"), "invite");
+    }
+    const results = await Promise.all([
+      svc.createChild(parent, childInput(), ctx, deps()),
+      svc.createChild(parent, childInput(), ctx, deps()),
+      svc.createChild(parent, childInput(), ctx, deps()),
+    ]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok && r.code === "limitChildren")).toHaveLength(2);
+    expect(
+      await db().select().from(parentLinks).where(eq(parentLinks.parentId, parent)),
+    ).toHaveLength(10);
   });
 
   it("rejects an adult, a future date, a weak password and a bad username", async () => {
@@ -228,6 +248,26 @@ describe("invites", () => {
     expect(await svc.issueInvite(parent)).toMatchObject({ ok: false, code: "limitInvites" });
     setClockForTests(new Date(NOW.getTime() + 8 * DAY));
     expect((await svc.issueInvite(parent)).ok).toBe(true);
+  });
+
+  it("an unverified parent gets verifyFirst", async () => {
+    const parent = await makeUser("parent", { emailVerifiedAt: null });
+    expect(await svc.issueInvite(parent)).toEqual({ ok: false, code: "verifyFirst" });
+  });
+
+  it("three concurrent issues at 4 live codes let only one through", async () => {
+    const parent = await makeUser("parent");
+    for (let i = 0; i < 4; i += 1) await issueOk(parent);
+    const results = await Promise.all([
+      svc.issueInvite(parent),
+      svc.issueInvite(parent),
+      svc.issueInvite(parent),
+    ]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok && r.code === "limitInvites")).toHaveLength(2);
+    expect(
+      await db().select().from(linkInvites).where(eq(linkInvites.parentId, parent)),
+    ).toHaveLength(5);
   });
 
   it("refuses a non-parent issuer", async () => {
@@ -326,6 +366,35 @@ describe("invites", () => {
     expect(sixth).toEqual({ ok: false, code: "rateLimited" });
   });
 
+  it("a code from a parent who is no longer verified is just invalid", async () => {
+    const parent = await makeUser("parent");
+    const student = await makeUser("student");
+    const issued = await issueOk(parent);
+    await db().update(users).set({ emailVerifiedAt: null }).where(eq(users.id, parent));
+    expect(
+      await svc.redeemInvite({ studentId: student, code: issued.code, ip: "6.6.6.9" }, deps()),
+    ).toEqual({ ok: false, code: "invalid" });
+  });
+
+  it("one student redeeming two different codes in parallel never reaches 3 parents", async () => {
+    const first = await makeUser("parent");
+    const second = await makeUser("parent");
+    const third = await makeUser("parent");
+    const student = await makeUser("student");
+    await link(first, student, "invite");
+    const codes = [await issueOk(second), await issueOk(third)];
+    const results = await Promise.all(
+      codes.map((issued, i) =>
+        svc.redeemInvite({ studentId: student, code: issued.code, ip: `6.6.7.${i}` }, deps()),
+      ),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok && r.code === "limitParents")).toHaveLength(1);
+    expect(
+      await db().select().from(parentLinks).where(eq(parentLinks.studentId, student)),
+    ).toHaveLength(2);
+  });
+
   it("lets only one of two concurrent redeemers win", async () => {
     const parent = await makeUser("parent");
     const a = await makeUser("student");
@@ -362,10 +431,10 @@ describe("unlinkParent", () => {
     }
   });
 
-  it("lets only an admin unlink a created_child link", async () => {
+  it("never lets the parent, and lets the student only once 18 or verified, unlink a created_child link", async () => {
     const parent = await makeUser("parent");
     const admin = await makeUser("admin");
-    const student = await makeUser("student");
+    const student = await makeUser("student", { emailVerifiedAt: null });
     await link(parent, student, "created_child");
     for (const actor of [
       { id: parent, role: "parent" as const },
@@ -383,6 +452,36 @@ describe("unlinkParent", () => {
         studentId: student,
       }),
     ).toEqual({ ok: true });
+  });
+
+  it("a created child who is 18 or has a verified email may unlink; the audit actor is the student", async () => {
+    const parent = await makeUser("parent");
+    const adult = await makeUser("student", { emailVerifiedAt: null, dateOfBirth: "2000-01-01" });
+    const verified = await makeUser("student", { dateOfBirth: "2015-01-01" });
+    const stillMinor = await makeUser("student", { emailVerifiedAt: null });
+    for (const child of [adult, verified, stillMinor]) {
+      await db().update(users).set({ createdByParentId: parent }).where(eq(users.id, child));
+      await link(parent, child, "created_child");
+    }
+    for (const child of [adult, verified]) {
+      expect(
+        await svc.unlinkParent({
+          actor: { id: child, role: "student" },
+          parentId: parent,
+          studentId: child,
+        }),
+      ).toEqual({ ok: true });
+      const audit = await auditFor("parent.unlink", child);
+      expect(audit).toHaveLength(1);
+      expect(audit[0]?.actorId).toBe(child);
+    }
+    expect(
+      await svc.unlinkParent({
+        actor: { id: stillMinor, role: "student" },
+        parentId: parent,
+        studentId: stillMinor,
+      }),
+    ).toEqual({ ok: false, reason: "forbidden" });
   });
 
   it("refuses a stranger and reports a missing link", async () => {
@@ -407,37 +506,55 @@ describe("unlinkParent", () => {
   });
 });
 
-describe("canParentSetPassword matrix", () => {
+describe("canParentSetPassword matrix (D35)", () => {
   it("no link -> forbidden", async () => {
     const parent = await makeUser("parent");
     const child = await makeUser("student");
     expect(await svc.canParentSetPassword(parent, child)).toBe("forbidden");
   });
 
-  it("child created by this parent -> direct, even with a verified email", async () => {
+  it("created by this parent, under 18, no verified email -> direct", async () => {
     const parent = await makeUser("parent");
-    const child = await makeUser("student", { createdByParentId: parent });
+    const child = await makeUser("student", { createdByParentId: parent, emailVerifiedAt: null });
     await link(parent, child, "created_child");
     expect(await svc.canParentSetPassword(parent, child)).toBe("direct");
   });
 
-  it("under 18 without a verified email -> direct", async () => {
+  it("created by this parent but now 18 -> email", async () => {
+    const parent = await makeUser("parent");
+    const child = await makeUser("student", {
+      createdByParentId: parent,
+      emailVerifiedAt: null,
+      dateOfBirth: "2000-01-01",
+    });
+    await link(parent, child, "created_child");
+    expect(await svc.canParentSetPassword(parent, child)).toBe("email");
+  });
+
+  it("created by this parent but the child verified an email -> email", async () => {
+    const parent = await makeUser("parent");
+    const child = await makeUser("student", { createdByParentId: parent });
+    await link(parent, child, "created_child");
+    expect(await svc.canParentSetPassword(parent, child)).toBe("email");
+  });
+
+  it("invite link, under 18, no verified email -> direct", async () => {
     const parent = await makeUser("parent");
     const child = await makeUser("student", { emailVerifiedAt: null });
     await link(parent, child, "invite");
     expect(await svc.canParentSetPassword(parent, child)).toBe("direct");
   });
 
-  it("under 18 with a verified email -> email", async () => {
+  it("invite link, under 18, verified email -> email", async () => {
     const parent = await makeUser("parent");
     const child = await makeUser("student");
     await link(parent, child, "invite");
     expect(await svc.canParentSetPassword(parent, child)).toBe("email");
   });
 
-  it("an adult student -> email", async () => {
+  it("invite link, an adult -> email", async () => {
     const parent = await makeUser("parent");
-    const child = await makeUser("student", { dateOfBirth: "2000-01-01" });
+    const child = await makeUser("student", { dateOfBirth: "2000-01-01", emailVerifiedAt: null });
     await link(parent, child, "invite");
     expect(await svc.canParentSetPassword(parent, child)).toBe("email");
   });
@@ -497,6 +614,83 @@ describe("resetChildPassword", () => {
     );
     const audit = await auditFor("parent.reset_password", child);
     expect(JSON.stringify(audit[0]?.after)).toContain("email");
+  });
+
+  it("an adult created child gets no_verified_email, never a direct write", async () => {
+    const parent = await makeUser("parent");
+    const child = await makeUser("student", {
+      createdByParentId: parent,
+      emailVerifiedAt: null,
+      dateOfBirth: "2000-01-01",
+    });
+    await link(parent, child, "created_child");
+    const before = await db().select().from(credentials).where(eq(credentials.userId, child));
+    const result = await svc.resetChildPassword(
+      { parentId: parent, childId: child, newPassword: "Brand-new-pass-9" },
+      ctx,
+      deps(),
+    );
+    expect(result).toEqual({ ok: false, reason: "no_verified_email" });
+    expect(await db().select().from(credentials).where(eq(credentials.userId, child))).toEqual(
+      before,
+    );
+  });
+
+  it("an unverified parent gets verifyFirst", async () => {
+    const parent = await makeUser("parent", { emailVerifiedAt: null });
+    const childId = await createOk(await makeUser("parent"));
+    await link(parent, childId, "invite");
+    const result = await svc.resetChildPassword(
+      { parentId: parent, childId, newPassword: "Brand-new-pass-9" },
+      ctx,
+      deps(),
+    );
+    expect(result).toEqual({ ok: false, reason: "verifyFirst" });
+  });
+
+  it("re-reads the facts under the student lock: a child who verified meanwhile is not reset directly", async () => {
+    const parent = await makeUser("parent");
+    const childId = await createOk(parent);
+    await db()
+      .update(users)
+      .set({ email: `late-${crypto.randomUUID()}@example.test` })
+      .where(eq(users.id, childId));
+    const before = await db().select().from(credentials).where(eq(credentials.userId, childId));
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let held: () => void = () => {};
+    const holding = new Promise<void>((resolve) => {
+      held = resolve;
+    });
+    const verifier = db().transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`student-links:${childId}`}))`);
+      await tx.update(users).set({ emailVerifiedAt: NOW }).where(eq(users.id, childId));
+      held();
+      await gate;
+    });
+    await holding;
+    let settled = false;
+    const reset = svc
+      .resetChildPassword(
+        { parentId: parent, childId, newPassword: "Brand-new-pass-9" },
+        ctx,
+        deps(),
+      )
+      .then((r) => {
+        settled = true;
+        return r;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(settled).toBe(false);
+    release();
+    await verifier;
+    const result = await reset;
+    expect(result).toMatchObject({ ok: true, mode: "email" });
+    expect(await db().select().from(credentials).where(eq(credentials.userId, childId))).toEqual(
+      before,
+    );
   });
 
   it("forbidden without a link, and nothing is audited", async () => {

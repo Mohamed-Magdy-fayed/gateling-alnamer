@@ -77,11 +77,12 @@ export async function deleteSession(tokenHash: string): Promise<void> {
 export async function deleteUserSessions(
   userId: string,
   exceptTokenHash?: string,
+  tx?: Pick<ReturnType<typeof db>, "delete">,
 ): Promise<string[]> {
   const where = exceptTokenHash
     ? and(eq(sessions.userId, userId), ne(sessions.tokenHash, exceptTokenHash))
     : eq(sessions.userId, userId);
-  const rows = await db()
+  const rows = await (tx ?? db())
     .delete(sessions)
     .where(where)
     .returning({ tokenHash: sessions.tokenHash });

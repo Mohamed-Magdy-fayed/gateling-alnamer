@@ -100,7 +100,6 @@ describe("parent and student link procedures", () => {
       username: `sara_${Math.floor(Math.random() * 1e6)}`,
       password: "a-long-password-1",
       dateOfBirth: "2015-03-04",
-      email: `kid-${crypto.randomUUID()}@example.test`,
     });
     expect(Object.keys(out)).toEqual(["childId"]);
     const [card] = await as(parent).parent.children.list();
@@ -113,7 +112,7 @@ describe("parent and student link procedures", () => {
       "source",
       "username",
     ]);
-    expect(card?.maskedEmail).toMatch(/^k\*\*\*@example\.test$/);
+    expect(card?.maskedEmail).toBeNull();
   });
 
   it("redeem links a student; list shows the parent masked; unlink removes it", async () => {

@@ -323,7 +323,13 @@ test("a parent needs a date of birth, then signs up as an adult", async ({ page 
   await startParentSignUp(page);
   await pickDate(page, 35, 2, 9);
   await page.getByRole("button", { name: SIGN_UP, exact: true }).click();
-  await finishSignUp(page);
+  // Parent actions need a verified email: confirm it with the Mailpit code.
+  await page.waitForURL("**/verify-email");
+  const code = extractCode(await waitForMailText(parentEmail));
+  await page.getByLabel(FIELD_CODE, { exact: true }).fill(code);
+  await page.getByRole("button", { name: VERIFY, exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: VERIFIED_TITLE })).toBeVisible();
+  await page.goto("/dashboard");
 });
 
 test("each dashboard view renders", async ({ page }) => {

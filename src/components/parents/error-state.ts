@@ -46,6 +46,8 @@ export function errorState(error: unknown, t: ParentTexts): FormState {
       return { status: "error", message: t.parents.limitChildren };
     case "parents.limitInvites":
       return { status: "error", message: t.parents.limitInvites };
+    case "parents.verifyFirst":
+      return { status: "error", message: t.parents.verifyFirst };
     case "parents.limitParents":
       return { status: "error", message: t.parents.limitParents };
     case "parents.linkInvalid":

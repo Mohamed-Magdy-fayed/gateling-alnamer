@@ -57,3 +57,21 @@ describe("upsertAccount with refresh", () => {
     expect(left).toHaveLength(1);
   });
 });
+
+describe("upsertAccount email verification", () => {
+  it("creates accounts with a verified email", async () => {
+    const fresh = { ...account, email: "seed-int-verified@demo.alnamer.invalid", role: "parent" };
+    const result = await upsertAccount(db(), fresh, { ...options, refresh: false });
+    const [user] = await db().select().from(users).where(eq(users.id, result.userId));
+    expect(user?.emailVerifiedAt).toBeInstanceOf(Date);
+  });
+
+  it("verifies an existing unverified account even when refresh is off", async () => {
+    const old = { ...account, email: "seed-int-old@demo.alnamer.invalid", role: "parent" };
+    const first = await upsertAccount(db(), old, { ...options, refresh: false });
+    await db().update(users).set({ emailVerifiedAt: null }).where(eq(users.id, first.userId));
+    await upsertAccount(db(), old, { ...options, refresh: false });
+    const [user] = await db().select().from(users).where(eq(users.id, first.userId));
+    expect(user?.emailVerifiedAt).toBeInstanceOf(Date);
+  });
+});

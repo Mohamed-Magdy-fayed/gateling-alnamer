@@ -14,6 +14,7 @@ import { publicProcedure, requireRole, router } from "../trpc";
 const parentProcedure = publicProcedure.use(requireRole("parent"));
 
 const FIELD_KEY = "auth.errors.field";
+const VERIFY_FIRST_KEY = "parents.verifyFirst";
 const childIdInput = z.object({
   childId: z.uuid({ error: "errors.invalidInput" }),
 });
@@ -24,7 +25,6 @@ const createChildInput = z.object({
   dateOfBirth: z
     .string({ error: `${FIELD_KEY}.date_of_birth` })
     .max(32, `${FIELD_KEY}.date_of_birth`),
-  email: z.string().max(320, `${FIELD_KEY}.email`).optional(),
 });
 const resetInput = childIdInput.extend({
   newPassword: z.string().max(1024, `${FIELD_KEY}.password`).optional(),
@@ -53,6 +53,8 @@ export const parentRouter = router({
           });
         case "forbidden":
           throw new AppError("forbidden");
+        case "verifyFirst":
+          throw new AppError("invalid_input", { i18nKey: VERIFY_FIRST_KEY });
         case "rateLimited":
           throw new AppError("rate_limited");
         case "limitChildren":
@@ -75,6 +77,8 @@ export const parentRouter = router({
       switch (result.reason) {
         case "forbidden":
           throw new AppError("forbidden");
+        case "verifyFirst":
+          throw new AppError("invalid_input", { i18nKey: VERIFY_FIRST_KEY });
         case "rateLimited":
           throw new AppError("rate_limited");
         case "invalid":
@@ -105,6 +109,9 @@ export const parentRouter = router({
       const result = await issueInvite(ctx.user.id);
       if (result.ok) return { code: result.code, expiresAt: result.expiresAt };
       if (result.code === "forbidden") throw new AppError("forbidden");
+      if (result.code === "verifyFirst") {
+        throw new AppError("invalid_input", { i18nKey: VERIFY_FIRST_KEY });
+      }
       throw new AppError("invalid_input", { i18nKey: "parents.limitInvites" });
     }),
 

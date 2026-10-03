@@ -297,7 +297,6 @@ export const en: Dictionary = {
     childCreated:
       "Your child's account is ready. They sign in with the username and password you chose.",
     fieldUsername: "Username",
-    fieldEmail: "Email (optional)",
     age: {
       one: "{count} year old",
       other: "{count} years old",
@@ -332,6 +331,7 @@ export const en: Dictionary = {
     limitParents: "This account is already linked to two parents.",
     limitChildren: "You've reached the maximum number of children.",
     limitInvites: "You have reached the limit of active link codes.",
+    verifyFirst: "Confirm your email first to manage your children's accounts.",
     cannotPlay: "Parent accounts can't play lessons. You can follow your children's progress here.",
   },
   email: {

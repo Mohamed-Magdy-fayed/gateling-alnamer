@@ -1,5 +1,5 @@
 // Shared by db:seed and db:seed:demo. Import dynamically, after the guards: it loads server modules.
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { hashPassword } from "../../src/server/auth/password";
 import { nextPublicNumber } from "../../src/server/auth/public-number";
@@ -42,6 +42,7 @@ export async function upsertAccount(
       status: "active" as const,
       dateOfBirth: ADULT_DATE_OF_BIRTH,
     };
+    const verifiedNow = new Date();
     const [existing] = await tx
       .select({ id: users.id, publicNumber: users.publicNumber })
       .from(users)
@@ -52,12 +53,21 @@ export async function upsertAccount(
       const publicNumber = existing.publicNumber ?? (await nextPublicNumber(tx));
       await tx
         .update(users)
-        .set(options.refresh ? { ...fields, publicNumber } : { publicNumber })
+        .set({
+          ...(options.refresh ? { ...fields, publicNumber } : { publicNumber }),
+          // Seeded accounts are confirmed (parents need it to manage children); never un-verified here.
+          emailVerifiedAt: sql`coalesce(${users.emailVerifiedAt}, now())`,
+        })
         .where(eq(users.id, userId));
     } else {
       const [created] = await tx
         .insert(users)
-        .values({ ...fields, email: account.email, publicNumber: await nextPublicNumber(tx) })
+        .values({
+          ...fields,
+          email: account.email,
+          emailVerifiedAt: verifiedNow,
+          publicNumber: await nextPublicNumber(tx),
+        })
         .returning({ id: users.id });
       if (!created) throw new Error("user insert returned no row");
       userId = created.id;
