@@ -255,7 +255,7 @@ export const en: Dictionary = {
     states: {
       under18Consent:
         "Because you're under 18, a parent or guardian must agree before you create an account.",
-      linkParent: "Parent account linking is coming soon, so a parent can follow your progress.",
+      linkParent: "Link a parent account so they can follow your progress.",
       lockout:
         "Sign-in from this device is paused after too many attempts. You can try again after {time}.",
       rateLimited: "Too many requests in a short time. Wait a moment and try again.",
@@ -289,6 +289,49 @@ export const en: Dictionary = {
     },
   },
   parents: {
+    cardsTitle: "Your children",
+    empty:
+      "You haven't added a child yet. Create an account for your child or send them a link code.",
+    progressPlaceholder: "Progress shows after your child's first course.",
+    addChild: "Create a child account",
+    childCreated:
+      "Your child's account is ready. They sign in with the username and password you chose.",
+    fieldUsername: "Username",
+    fieldEmail: "Email (optional)",
+    age: {
+      one: "{count} year old",
+      other: "{count} years old",
+    },
+    inviteCreate: "Create a link code",
+    inviteShow: "Ask your child to enter this code on their dashboard within 7 days: {code}",
+    inviteCopy: "Copy code",
+    inviteCopied: "Code copied.",
+    inviteActiveTitle: "Active link codes",
+    inviteExpires: "Expires on {date}",
+    linkEnter: "Enter the link code from your parent",
+    linkLabel: "Link code",
+    linkHint: "8 letters and numbers, like ABCD-2345.",
+    linkSubmit: "Link account",
+    linkAction: "Link a parent account",
+    linkInvalid: "This code is wrong or has expired. Ask your parent for a new one.",
+    linked: "Your account is now linked to your parent.",
+    linkedTitle: "Your parents",
+    linkedEmpty: "You haven't linked a parent yet.",
+    resetAction: "Reset password",
+    resetDirect: "Set a new password",
+    resetDirectHint:
+      "Your child will be signed out everywhere and will sign in with the new password.",
+    resetEmailConfirm: "We'll send a reset code to your child's email ({email}).",
+    resetEmailSent: "We sent a reset code to your child's email ({email}).",
+    resetDone: "The new password is set.",
+    unlink: "Unlink",
+    unlinkConfirm: "This account will leave your dashboard. You can link it again with a new code.",
+    unlinkStudentConfirm: "Your parent will no longer be able to follow your progress.",
+    cancel: "Cancel",
+    close: "Close",
+    limitParents: "This account is already linked to two parents.",
+    limitChildren: "You've reached the maximum number of children.",
+    limitInvites: "You have reached the limit of active link codes.",
     cannotPlay: "Parent accounts can't play lessons. You can follow your children's progress here.",
   },
   email: {

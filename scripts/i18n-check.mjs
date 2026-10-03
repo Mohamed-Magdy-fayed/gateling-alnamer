@@ -70,7 +70,7 @@ export function stripNonCode(source) {
 }
 
 /** Dictionary sub-tree types that components import instead of redeclaring. */
-const SHARED_TEXT_TYPES = { AuthText: "auth" };
+const SHARED_TEXT_TYPES = { AuthText: "auth", ParentTexts: "" };
 
 function join(base, rest) {
   return base ? `${base}.${rest}` : rest;

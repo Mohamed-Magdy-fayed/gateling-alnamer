@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { onlyLatinDigits } from "./digits";
+import { onlyLatinDigits, toLatinDigits } from "./digits";
 
 describe("onlyLatinDigits", () => {
   it("keeps Latin digits and drops everything else", () => {
@@ -16,5 +16,11 @@ describe("onlyLatinDigits", () => {
 
   it("handles a mixed paste and strips separators", () => {
     expect(onlyLatinDigits("١٢٣ 456")).toBe("123456");
+  });
+});
+
+describe("toLatinDigits", () => {
+  it("maps both Arabic digit sets and keeps letters and separators", () => {
+    expect(toLatinDigits("ab-٢٣ ۴۵")).toBe("ab-23 45");
   });
 });

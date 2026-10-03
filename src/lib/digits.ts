@@ -14,3 +14,8 @@ function latinDigit(char: string): string {
 export function onlyLatinDigits(value: string): string {
   return Array.from(value, latinDigit).join("").replace(/\D/g, "");
 }
+
+/** Arabic-Indic and Extended Arabic-Indic digits become 0-9; every other character is kept. */
+export function toLatinDigits(value: string): string {
+  return Array.from(value, latinDigit).join("");
+}

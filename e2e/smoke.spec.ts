@@ -38,7 +38,25 @@ const CODE_SENT = "إذا كان هناك حساب بهذا البريد، فس�
 const VERIFY_TITLE = "تأكيد بريدك الإلكتروني";
 const VERIFIED_TITLE = "تم تأكيد البريد";
 const EMAIL_DELAYED = "تأخّر وصول الرسالة. تحقق من مجلد الرسائل غير المرغوب فيها أو أعد الإرسال.";
-const LINK_PARENT = "ربط حساب ولي الأمر قادم قريبًا ليتمكن من متابعة تقدّمك.";
+const LINK_PARENT = "اربط حساب ولي أمرك ليتابع تقدّمك.";
+const CARDS_TITLE = "أبناؤك";
+const PARENT_EMPTY = "لم تُضِف أي ابن بعد. أنشئ حسابًا لابنك أو أرسل له رمز ربط.";
+const ADD_CHILD = "إنشاء حساب لابن";
+const INVITE_CREATE = "إنشاء رمز ربط";
+const INVITE_COPY = "نسخ الرمز";
+const INVITE_COPIED = "تم نسخ الرمز.";
+const INVITE_ACTIVE_TITLE = "رموز الربط النشطة";
+const FIELD_CHILD_USERNAME = "اسم المستخدم";
+const PROGRESS_PLACEHOLDER = "سيظهر التقدم بعد أول دورة لابنك.";
+const LINK_LABEL = "رمز الربط";
+const LINK_SUBMIT = "ربط الحساب";
+const LINKED = "تم ربط حسابك بولي أمرك.";
+const LINK_INVALID = "هذا الرمز غير صحيح أو انتهت صلاحيته. اطلب رمزًا جديدًا من ولي أمرك.";
+const RESET_DIRECT = "تعيين كلمة مرور جديدة";
+const RESET_ACTION = "إعادة تعيين كلمة المرور";
+const RESET_DONE = "تم تعيين كلمة المرور الجديدة.";
+const UNLINK = "إلغاء الربط";
+const CANNOT_PLAY = "حسابات أولياء الأمور لا تشغّل الدروس. يمكنك متابعة تقدم أبنائك من هنا.";
 
 const runId = Date.now().toString(36);
 const email = `smoke-${runId}@alnamer.local`;
@@ -64,6 +82,14 @@ async function pickDate(page: Page, yearsAgo: number, monthIndex: number, dayInd
 async function finishSignUp(page: Page) {
   await page.waitForURL("**/verify-email");
   await page.goto("/dashboard");
+}
+
+async function signInAs(page: Page, identifier: string, withPassword: string) {
+  await page.goto("/sign-in");
+  await page.getByLabel(FIELD_IDENTIFIER).fill(identifier);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(withPassword);
+  await page.getByRole("button", { name: SIGN_IN, exact: true }).click();
+  await page.waitForURL("**/dashboard");
 }
 
 async function signIn(page: Page, withPassword: string) {
@@ -536,6 +562,108 @@ async function setDeviceLimit(limit: number) {
     await sql.end();
   }
 }
+
+const childUsername = `kid_${runId}`;
+const childPassword = "Kid-pass-1";
+const childNewPassword = "Kid-pass-2";
+const childName = "Smoke Child";
+
+test("a parent creates a child, signs out, and the child signs in with the username", async ({
+  page,
+}) => {
+  await signInAs(page, parentEmail, password);
+  await expect(page.getByRole("heading", { name: CARDS_TITLE })).toBeVisible();
+  await expect(page.getByText(PARENT_EMPTY)).toBeVisible();
+
+  await page.getByRole("button", { name: ADD_CHILD }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel(FIELD_NAME).fill(childName);
+  await sheet.getByLabel(FIELD_CHILD_USERNAME, { exact: true }).fill(childUsername);
+  await sheet.getByLabel(FIELD_PASSWORD, { exact: true }).fill(childPassword);
+  await pickDate(page, 10, 3, 5);
+  await sheet.getByRole("button", { name: ADD_CHILD }).click();
+
+  const card = page.getByRole("region", { name: childName });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText(childUsername);
+  await expect(card).toContainText("10 سنوات");
+  await expect(card).toContainText(PROGRESS_PLACEHOLDER);
+  await expect(card.locator('[dir="ltr"]').filter({ hasText: childUsername })).toHaveCount(1);
+  await expect(page.getByText(PARENT_EMPTY)).toHaveCount(0);
+
+  // A created child's password is set directly by the parent; only an admin can remove that link.
+  await expect(card.getByRole("button", { name: UNLINK })).toHaveCount(0);
+  await card.getByRole("button", { name: RESET_ACTION }).click();
+  const reset = page.getByRole("alertdialog");
+  await reset.getByLabel(RESET_DIRECT).fill(childNewPassword);
+  await reset.getByRole("button", { name: RESET_DIRECT }).click();
+  await expect(reset.getByText(RESET_DONE)).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: SIGN_OUT }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+
+  await signInAs(page, childUsername, childNewPassword);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(childName);
+  await expect(page.getByText(LINK_PARENT)).toHaveCount(0);
+});
+
+test("a parent issues a code, an existing student redeems it, and the card appears", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  await signInAs(page, parentEmail, password);
+  await page.getByRole("button", { name: INVITE_CREATE }).click();
+  const shown = page.getByTestId("invite-code");
+  await expect(shown).toBeVisible();
+  await expect(shown).toHaveText(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  const code = (await shown.innerText()).trim();
+  // The active list shows expiry only, never the code.
+  await expect(page.getByRole("list", { name: INVITE_ACTIVE_TITLE })).not.toContainText(code);
+  await page.getByRole("button", { name: INVITE_COPY }).click();
+  await expect(page.getByText(INVITE_COPIED).first()).toBeVisible();
+
+  const octet = () => Math.floor(Math.random() * 250);
+  const other = await browser.newContext({
+    baseURL: baseURL as string,
+    extraHTTPHeaders: { "x-real-ip": `10.${octet()}.${octet()}.202` },
+  });
+  const studentPage = await other.newPage();
+  await signInAs(studentPage, email, newPassword);
+  await studentPage.goto("/dashboard/link-parent");
+
+  // A wrong code gives the one generic message.
+  await studentPage.getByLabel(LINK_LABEL).fill("AAAA-AAAA");
+  await studentPage.getByRole("button", { name: LINK_SUBMIT }).click();
+  await expect(studentPage.getByText(LINK_INVALID)).toBeVisible();
+
+  // Lower case and spaces are accepted and shown as XXXX-XXXX.
+  await studentPage
+    .getByLabel(LINK_LABEL)
+    .fill(`${code.slice(0, 4)} ${code.slice(5)}`.toLowerCase());
+  await expect(studentPage.getByLabel(LINK_LABEL)).toHaveValue(code);
+  await studentPage.getByRole("button", { name: LINK_SUBMIT }).click();
+  await expect(studentPage.getByText(LINKED)).toBeVisible();
+  await expect(studentPage.getByRole("region", { name: "Smoke Parent" })).toBeVisible();
+  await other.close();
+
+  await page.reload();
+  const card = page.getByRole("region", { name: "Smoke Student" });
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("button", { name: UNLINK })).toBeVisible();
+  await expect(page.getByTestId("invite-code")).toHaveCount(0);
+});
+
+test("a parent opening a lesson sees the cannot-play notice", async ({ page }) => {
+  await signInAs(page, parentEmail, password);
+  await page.goto("/dashboard?view=student");
+  const link = page.locator('main a[href^="/dashboard/learn/"]').first();
+  const href = await link.getAttribute("href");
+  expect(href).toBeTruthy();
+  await page.goto(href as string);
+  await expect(page.getByText(CANNOT_PLAY)).toBeVisible();
+});
 
 test.describe("device limit of 2", () => {
   const studentEmail = `smoke-dev-${runId}@alnamer.local`;
