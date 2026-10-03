@@ -44,7 +44,7 @@ type RowProps = {
 const THROTTLE_ID = "device-throttle";
 
 /** Rendered only while the dialog is open, so its date is today's, never the page-load day's. */
-function ConfirmText({ t, locale }: { t: DeviceText; locale: Locale }) {
+export function ConfirmText({ t, locale }: { t: DeviceText; locale: Locale }) {
   const date = formatDate(locale, new Date(Date.now() + SELF_REMOVAL_INTERVAL_MS));
   return <>{format(t.removeConfirm, { date })}</>;
 }

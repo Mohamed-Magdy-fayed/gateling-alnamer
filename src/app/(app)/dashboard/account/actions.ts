@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getDictionary } from "@/i18n/server";
 import type { FormState } from "@/server/auth/actions";
@@ -10,6 +11,7 @@ export async function signOutOthersAction(): Promise<FormState> {
   const session = await getCurrentSession();
   if (!session) redirect("/sign-in");
   await invalidateUserSessions(session.user.id, { exceptTokenHash: session.tokenHash });
+  revalidatePath("/dashboard/account");
   const { t } = await getDictionary();
   const message =
     session.user.role === "student"
