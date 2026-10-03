@@ -1,15 +1,26 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { resetTwoFactor } from "@/server/auth/two-factor";
 import { listPendingReview, publishCourse } from "@/server/catalog/authoring";
 import { db } from "@/server/db";
 import { users } from "@/server/db/schema";
 import { resetDevices } from "@/server/devices/service";
 import { AppError } from "@/server/errors";
-import { router, staffProcedure } from "../trpc";
+import { router, staffProcedure, superAdminProcedure } from "../trpc";
 
 const adminProcedure = staffProcedure("admin");
 
 export const adminRouter = router({
+  twoFactor: router({
+    /** Lost phone: removes the user's factors and sessions (audit-logged). Super admin only. */
+    reset: superAdminProcedure
+      .input(z.object({ userId: z.uuid({ error: "errors.invalidInput" }) }))
+      .mutation(async ({ ctx, input }) => {
+        if (input.userId === ctx.user.id) throw new AppError("forbidden");
+        await resetTwoFactor(ctx.user.id, input.userId);
+        return { ok: true as const };
+      }),
+  }),
   content: router({
     /** Courses waiting to be published. */
     pending: adminProcedure.query(async () => listPendingReview()),

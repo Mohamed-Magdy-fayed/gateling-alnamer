@@ -7,6 +7,7 @@ import {
   ORDER_RECHECK_LIMIT,
   PLAYBACK_LIMIT,
   QUIZ_LIMIT,
+  TWO_FACTOR_LIMIT,
 } from "@/server/config/policy";
 import { createRateLimiter, type RateLimiter } from "@/server/rate-limit";
 import { type CaptchaVerifier, verifyCaptcha } from "./captcha";
@@ -332,4 +333,25 @@ export async function guardDraftCourse(
     `rl:draftcourse:user:${hasherOf(deps).hash(input.userId)}`,
     DRAFT_COURSE_LIMIT,
   );
+}
+
+const twoFactorKey = (hasher: Hasher, userId: string) => `rl:twofactor:user:${hasher.hash(userId)}`;
+
+/** A4: two-factor code attempts; 5 per 15 minutes per user, cleared by a success. */
+export async function guardTwoFactor(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  const lock = await limiterOf(deps).limit(
+    twoFactorKey(hasherOf(deps), input.userId),
+    TWO_FACTOR_LIMIT,
+  );
+  return lock.allowed ? OK : { blocked: "locked", until: lock.resetAt };
+}
+
+export async function clearTwoFactorFailures(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<void> {
+  await limiterOf(deps).reset(twoFactorKey(hasherOf(deps), input.userId));
 }

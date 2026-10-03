@@ -5,7 +5,7 @@ import { createHmac, randomBytes } from "node:crypto";
  * one place (a cookie MAC, a limiter key) is no use in another and none of them is a bare hash.
  * env-schema requires the secret when APP_MODE=live or on Vercel.
  */
-export type KeyPurpose = "codes" | "rl" | "rp" | "did" | "invite" | "media";
+export type KeyPurpose = "codes" | "rl" | "rp" | "did" | "invite" | "media" | "totp" | "recovery";
 
 const MIN_SECRET_LENGTH = 32;
 

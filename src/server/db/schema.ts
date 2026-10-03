@@ -614,6 +614,51 @@ export const entitlements = pgTable(
   ],
 );
 
+// Two-factor sign-in for staff (A4). The TOTP seed is sealed (AES-256-GCM, sub-key "totp").
+export const totpSecrets = pgTable("totp_secrets", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  secretEnc: text("secret_enc").notNull(),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  /** The last accepted 30-second step: a code is never accepted twice. */
+  lastStep: bigint("last_step", { mode: "number" }),
+  createdAt,
+});
+
+export const recoveryCodes = pgTable(
+  "recovery_codes",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** HMAC of the normalised code under the "recovery" sub-key. */
+    codeHash: text("code_hash").notNull().unique(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt,
+  },
+  (t) => [index("recovery_codes_user_idx").on(t.userId)],
+);
+
+export const passkeys = pgTable(
+  "passkeys",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    credentialId: text("credential_id").notNull().unique(),
+    publicKey: text("public_key").notNull(),
+    counter: bigint("counter", { mode: "number" }).notNull().default(0),
+    transports: text("transports").array(),
+    name: text("name"),
+    createdAt,
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  },
+  (t) => [index("passkeys_user_idx").on(t.userId)],
+);
+
 export const questionKind = pgEnum("question_kind", ["mcq", "true_false"]);
 
 /** One answer option; `true_false` questions use the ids `true` and `false`. */

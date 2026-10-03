@@ -37,3 +37,33 @@ export async function rotateAndRevokeIn(
   const deletedHashes = await deleteUserSessionsIn(tx, userId, tokenHash);
   return { rotated: { token, expiresAt: current.expiresAt }, deletedHashes };
 }
+
+/**
+ * Privilege step-up (two-factor passed): the calling session gets a fresh token with
+ * `two_factor_verified = true`; the old row is deleted, the user's other sessions are kept.
+ * Returns the new token for the cookie and the old hash for the post-commit cache purge, or null
+ * when the calling session is gone.
+ */
+export async function elevateSessionIn(
+  tx: SessionTx,
+  userId: string,
+  currentTokenHash: string,
+): Promise<{ rotated: RotatedSession; oldHash: string } | null> {
+  const [current] = await tx
+    .select()
+    .from(sessions)
+    .where(eq(sessions.tokenHash, currentTokenHash))
+    .limit(1);
+  if (!current || current.userId !== userId) return null;
+  const token = randomToken();
+  await tx.insert(sessions).values({
+    tokenHash: sha256(token),
+    userId,
+    deviceId: current.deviceId,
+    twoFactorVerified: true,
+    lastSeenAt: current.lastSeenAt,
+    expiresAt: current.expiresAt,
+  });
+  await tx.delete(sessions).where(eq(sessions.tokenHash, currentTokenHash));
+  return { rotated: { token, expiresAt: current.expiresAt }, oldHash: currentTokenHash };
+}
