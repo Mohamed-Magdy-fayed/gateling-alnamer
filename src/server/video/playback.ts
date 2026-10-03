@@ -7,7 +7,7 @@ import {
 import { loadLessonVideo } from "@/server/access/lesson-media";
 import { type AbuseDeps, guardPlayback } from "@/server/auth/abuse";
 import { clock } from "@/server/clock";
-import { issuePlayback } from "./provider";
+import { canPlay, issuePlayback } from "./provider";
 
 export type PlaybackResult =
   | { ok: true; url: string; expiresAt: Date }
@@ -28,7 +28,8 @@ export async function requestPlayback(
   const access = await getLessonAccess(user, lessonId, now);
   if (!access.allowed) return { ok: false, reason: access.reason };
   const video = await loadLessonVideo(access.grant);
-  if (!video) return { ok: false, reason: "no_video" };
+  // A provider this build cannot play yet (Bunny arrives with D2) reads as no video, not an error.
+  if (!video || !canPlay(video)) return { ok: false, reason: "no_video" };
   const playback = issuePlayback(access.grant, video, { deviceId: user.deviceId }, now, deps.key);
   return { ok: true, url: playback.url, expiresAt: playback.expiresAt };
 }

@@ -46,7 +46,7 @@ export async function loadLessonVideo(grant: AccessGranted): Promise<LessonVideo
 /**
  * The bundled file behind a sample asset, for the media route after it verified a signed playback
  * URL (the URL was issued behind `AccessGranted`). Only `sample` provider rows marked `is_sample`
- * resolve; the storage key must be a plain file name.
+ * resolve; the storage key must be a plain `<name>.webm` file name (no `.` or `..`).
  */
 export async function sampleFileName(assetId: string): Promise<string | null> {
   const [row] = await db()
@@ -60,6 +60,6 @@ export async function sampleFileName(assetId: string): Promise<string | null> {
     .where(eq(mediaAssets.id, assetId))
     .limit(1);
   if (row?.provider !== "sample" || !row.isSample || row.status !== "ready") return null;
-  if (!row.storageKey || !/^[\w.-]+$/.test(row.storageKey)) return null;
+  if (!row.storageKey || !/^[\w-]+\.webm$/.test(row.storageKey)) return null;
   return row.storageKey;
 }

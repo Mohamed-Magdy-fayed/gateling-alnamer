@@ -12,6 +12,16 @@ export const SAMPLE_MEDIA_DIR = path.join(process.cwd(), "media", "sample");
 
 export type MediaViewer = { userId: string; deviceId: string | null } | null;
 
+/** The signature and expiry check alone, so the route can refuse junk before reading the session. */
+export function isSignedForAsset(
+  assetId: string,
+  params: Readonly<Record<string, string | undefined>>,
+  nowS: number,
+  key: Buffer = authKey("media"),
+): boolean {
+  return verifyPlayback(key, assetId, params, nowS) !== null;
+}
+
 export type MediaResponse = {
   status: 200 | 206 | 403 | 416;
   headers: Record<string, string>;
@@ -65,7 +75,7 @@ export async function serveSample(
   if (!fileName) return deny();
   const filePath = path.join(SAMPLE_MEDIA_DIR, fileName);
   const size = await stat(filePath).then(
-    (info) => info.size,
+    (info) => (info.isFile() ? info.size : null),
     () => null,
   );
   if (size === null) return deny();

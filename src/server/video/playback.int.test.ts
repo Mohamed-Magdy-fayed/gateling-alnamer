@@ -168,6 +168,34 @@ describe("requestPlayback leak rows", () => {
   });
 });
 
+describe("requestPlayback, review regressions", () => {
+  it("answers no_video (not an error) for a provider this build cannot play yet", async () => {
+    const course = await createCourse(conn);
+    const assetId = crypto.randomUUID();
+    await conn.insert(schema.mediaAssets).values({
+      id: assetId,
+      kind: "video",
+      provider: "bunny",
+      providerId: "bunny-guid",
+      status: "ready",
+    });
+    const [lesson] = await conn
+      .select({ revisionId: schema.lessons.publishedRevisionId })
+      .from(schema.lessons)
+      .where(eq(schema.lessons.id, course.lessonId));
+    if (!lesson?.revisionId) throw new Error("no revision");
+    await conn
+      .update(schema.lessonRevisions)
+      .set({ videoAssetId: assetId })
+      .where(eq(schema.lessonRevisions.id, lesson.revisionId));
+    const { student, deviceId } = await entitled(course.courseId);
+    expect(await requestPlayback(as(student, deviceId), course.lessonId, deps())).toEqual({
+      ok: false,
+      reason: "no_video",
+    });
+  });
+});
+
 describe("serveSample", () => {
   async function issued() {
     const course = await courseWithVideo();

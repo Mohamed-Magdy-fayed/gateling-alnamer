@@ -7,6 +7,11 @@ import { playbackParams } from "./sign";
 
 export type Playback = { url: string; expiresAt: Date };
 
+/** Whether this build can play the video: only bundled sample assets until D2 adds Bunny. */
+export function canPlay(video: LessonVideo): boolean {
+  return video.provider === "sample" && video.isSample;
+}
+
 /** Sample media served by the app: files under media/sample, keyed by asset row. */
 export const SAMPLE_MEDIA_PATH = "/api/media/sample";
 
