@@ -260,16 +260,22 @@ export type RecentResult = {
 
 /** The student's latest submitted attempts, for the landing card. */
 export async function listRecentResults(studentId: string, limit = 3): Promise<RecentResult[]> {
-  return db()
+  const rows = await db()
     .select({
       quizTitle: quizzes.title,
-      scorePct: sql<number>`${quizAttempts.scorePct}`,
+      scorePct: quizAttempts.scorePct,
       passPct: quizzes.passPct,
-      submittedAt: sql<Date>`${quizAttempts.submittedAt}`,
+      submittedAt: quizAttempts.submittedAt,
     })
     .from(quizAttempts)
     .innerJoin(quizzes, eq(quizzes.id, quizAttempts.quizId))
     .where(and(eq(quizAttempts.studentId, studentId), isNotNull(quizAttempts.submittedAt)))
     .orderBy(desc(quizAttempts.submittedAt))
     .limit(limit);
+  return rows.map((row) => ({
+    quizTitle: row.quizTitle,
+    scorePct: row.scorePct ?? 0,
+    passPct: row.passPct,
+    submittedAt: row.submittedAt ?? new Date(0),
+  }));
 }

@@ -18,6 +18,7 @@ import { SoftWarning } from "@/components/devices/soft-warning";
 import { ParentCards } from "@/components/parents/parent-cards";
 import { format } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
+import { listRecentResults } from "@/server/access/quiz";
 import { requirePageUser } from "@/server/auth/page-guard";
 import { shouldPromptParentLink } from "@/server/auth/profile";
 import { listCoursesForDashboard } from "@/server/catalog/repository";
@@ -38,11 +39,12 @@ export default async function DashboardPage({
   const mode = serverEnv().APP_MODE;
   // A sample preview (demo only) shows the W1 sample screens; otherwise the user's own landing.
   const sample = resolveView(mode, requested);
-  const [courses, promptParentLink, parentData, myCourses] = await Promise.all([
+  const [courses, promptParentLink, parentData, myCourses, quizResults] = await Promise.all([
     sample ? listCoursesForDashboard() : [],
     shouldPromptParentLink(user),
     !sample && user.role === "parent" ? loadParentDashboard(user.id) : null,
     !sample && user.role === "student" ? listStudentCourses(user.id, clock.now()) : [],
+    !sample && user.role === "student" ? listRecentResults(user.id) : [],
   ]);
 
   return (
@@ -83,7 +85,7 @@ export default async function DashboardPage({
         {sample === "reviewer" ? <ReviewerView t={t} /> : null}
         {sample === "admin" ? <AdminView t={t} locale={locale} courses={courses} /> : null}
         {sample === null && user.role === "student" ? (
-          <StudentLanding t={t} locale={locale} courses={myCourses} />
+          <StudentLanding t={t} locale={locale} courses={myCourses} results={quizResults} />
         ) : null}
         {sample === null && user.role === "parent" && parentData ? (
           <>

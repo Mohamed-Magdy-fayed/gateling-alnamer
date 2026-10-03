@@ -45,6 +45,9 @@ vi.mock("@/i18n/server", () => ({
     locale: "en" as const,
   }),
 }));
+vi.mock("@/server/quiz/service", () => ({
+  quizStateFor: async () => ({ ok: false, reason: "no_quiz" }),
+}));
 vi.mock("@/server/auth/profile", () => ({
   watermarkNumber: async () => "AN-000123",
 }));

@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/al/empty-state";
 import type { Dictionary } from "@/i18n/ar";
 import { format, formatDate, type Locale } from "@/i18n/config";
 import { pickText } from "@/lib/localized-text";
+import type { RecentResult } from "@/server/access/quiz";
 import type { StudentCourse } from "@/server/orders/my-courses";
 import { Button, ButtonLink, Card } from "@/ui";
 
@@ -22,10 +23,44 @@ import { Button, ButtonLink, Card } from "@/ui";
  */
 const grid = "grid gap-4 md:grid-cols-2";
 
-type StudentLandingProps = { t: Dictionary; locale: Locale; courses: StudentCourse[] };
+type StudentLandingProps = {
+  t: Dictionary;
+  locale: Locale;
+  courses: StudentCourse[];
+  results: RecentResult[];
+};
+
+/** Latest submitted quiz attempts, newest first; an empty state until the first quiz. */
+function QuizResults({ t, locale, results }: Omit<StudentLandingProps, "courses">) {
+  const s = t.dashboard.student;
+  if (results.length === 0) {
+    return <EmptyState icon={ClipboardCheck} title={s.quizzes} body={t.quiz.noResults} />;
+  }
+  return (
+    <Card className="flex flex-col gap-3 p-6">
+      <h2 className="text-lg font-semibold">{s.quizzes}</h2>
+      <ul className="flex flex-col gap-2 text-sm">
+        {results.map((result) => (
+          <li
+            key={`${result.submittedAt.toISOString()}-${result.scorePct}`}
+            className="flex flex-wrap items-center justify-between gap-2"
+          >
+            <bdi className="font-medium">{pickText(result.quizTitle, locale)}</bdi>
+            <span className="text-fg-muted">
+              {format(t.quiz.resultLine, {
+                score: result.scorePct,
+                date: formatDate(locale, result.submittedAt),
+              })}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
 
 /** My courses (live access first), then ended ones with "Buy again"; quizzes are still planned. */
-export function StudentLanding({ t, locale, courses }: StudentLandingProps) {
+export function StudentLanding({ t, locale, courses, results }: StudentLandingProps) {
   const s = t.dashboard.student;
   const live = courses.filter((course) => course.active);
   const ended = courses.filter((course) => !course.active);
@@ -39,7 +74,7 @@ export function StudentLanding({ t, locale, courses }: StudentLandingProps) {
             body={t.dashboard.noCourses}
             action={<ButtonLink href="/courses">{t.dashboard.browseCourses}</ButtonLink>}
           />
-          <EmptyState icon={ClipboardCheck} title={s.quizzes} comingSoon={t.shell.comingSoon} />
+          <QuizResults t={t} locale={locale} results={results} />
         </div>
       ) : (
         <section aria-labelledby="my-courses" className="flex flex-col gap-4">
@@ -77,7 +112,7 @@ export function StudentLanding({ t, locale, courses }: StudentLandingProps) {
       )}
       {live.length > 0 ? (
         <div className={grid}>
-          <EmptyState icon={ClipboardCheck} title={s.quizzes} comingSoon={t.shell.comingSoon} />
+          <QuizResults t={t} locale={locale} results={results} />
         </div>
       ) : null}
       {ended.length > 0 ? (

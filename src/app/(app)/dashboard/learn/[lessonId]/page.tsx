@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { linkClass } from "@/components/auth-parts";
 import { VideoPlayer } from "@/components/player/video-player";
+import { QuizRunner } from "@/components/quiz/quiz-runner";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
 import { getLessonAccess } from "@/server/access/lesson-access";
@@ -11,6 +12,7 @@ import { watermarkNumber } from "@/server/auth/profile";
 import { getCurrentSession } from "@/server/auth/session";
 import { getPublishedLesson } from "@/server/catalog/repository";
 import { clock } from "@/server/clock";
+import { quizStateFor } from "@/server/quiz/service";
 import { Alert, Badge, ButtonLink, Container, Ltr } from "@/ui";
 
 export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
@@ -66,6 +68,10 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
   const { t, locale } = await getDictionary();
   const p = t.dashboard.player;
   const accountNumber = await watermarkNumber(user.id);
+  const quiz =
+    lesson.kind === "quiz"
+      ? await quizStateFor({ id: user.id, role: user.role, deviceId: session.deviceId }, lessonId)
+      : null;
 
   return (
     <Container className="py-8">
@@ -131,7 +137,28 @@ export default async function LessonPage({ params }: { params: Promise<{ lessonI
         </div>
       ) : null}
 
-      {lesson.kind !== "video" && lesson.kind !== "pdf" ? (
+      {lesson.kind === "quiz" && quiz?.ok ? (
+        <div className="mt-6">
+          <QuizRunner
+            lessonId={lessonId}
+            locale={locale}
+            t={t.quiz}
+            minutes={t.courses.minutes}
+            intro={{
+              title: quiz.state.quiz.title,
+              questionCount: quiz.state.quiz.questionCount,
+              timeLimitS: quiz.state.quiz.timeLimitS,
+              passPct: quiz.state.quiz.passPct,
+              attemptsLeft: quiz.state.attemptsLeft,
+              bestScore: quiz.state.bestScore,
+              hasOpenAttempt: quiz.state.open !== null,
+              canAttempt: quiz.state.canAttempt,
+            }}
+          />
+        </div>
+      ) : null}
+
+      {lesson.kind === "image" || (lesson.kind === "quiz" && !quiz?.ok) ? (
         <div className="mt-6">
           <Alert>{p.notYet}</Alert>
         </div>
