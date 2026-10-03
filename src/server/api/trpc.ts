@@ -19,6 +19,10 @@ export type TrpcContext = {
   headers?: Headers;
   twoFactorVerified?: boolean;
   isSuperAdmin?: boolean;
+  /** Hash of the calling session's token, for "this session" decisions; never sent to a client. */
+  sessionTokenHash?: string;
+  /** The device the calling session is bound to (students), or null. */
+  sessionDeviceId?: string | null;
 };
 
 export async function createTrpcContext({ req }: { req: Request }): Promise<TrpcContext> {
@@ -26,6 +30,8 @@ export async function createTrpcContext({ req }: { req: Request }): Promise<Trpc
   return {
     user: session?.user ?? null,
     twoFactorVerified: session?.twoFactorVerified ?? false,
+    sessionTokenHash: session?.tokenHash,
+    sessionDeviceId: session?.deviceId ?? null,
     headers: req.headers,
   };
 }

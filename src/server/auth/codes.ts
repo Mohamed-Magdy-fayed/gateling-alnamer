@@ -1,6 +1,6 @@
 import "server-only";
 import crypto from "node:crypto";
-import { and, eq, gt, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, lt, or, type SQL, sql } from "drizzle-orm";
 import { clock } from "@/server/clock";
 import { RESET_CODE_TTL_MS, RESET_MAX_ATTEMPTS } from "@/server/config/policy";
 import { db } from "@/server/db";
@@ -38,20 +38,38 @@ export async function issueCode(
   userId: string,
   purpose: CodePurpose,
   database: CodeExecutor = db(),
+  pendingEmail?: string,
 ): Promise<{ codeId: string; code: string }> {
   const code = randomCode();
   const codeHash = hashCode(purpose, userId, code);
   const expiresAt = new Date(clock.now().getTime() + RESET_CODE_TTL_MS);
   const [row] = await database
     .insert(verificationCodes)
-    .values({ userId, purpose, codeHash, expiresAt })
+    .values({ userId, purpose, codeHash, expiresAt, pendingEmail })
     .returning({ id: verificationCodes.id });
   if (!row) throw new Error("verification code insert returned no row");
   return { codeId: row.id, code };
 }
 
-/** Counts one attempt against every live code of the user and purpose, returning the ones still open. */
-function countAttempt(database: CodeExecutor, userId: string, purpose: CodePurpose, now: Date) {
+/**
+ * Which codes a verify looks at: the account's own (no pending address) or the "add email" ones. The
+ * two never mix, so a code mailed to a pending address cannot confirm the account email and the
+ * reverse, and spending one kind leaves the other alone.
+ */
+export type CodeScope = "account" | "pending";
+const scopeFilter = (scope: CodeScope): SQL =>
+  scope === "pending"
+    ? isNotNull(verificationCodes.pendingEmail)
+    : isNull(verificationCodes.pendingEmail);
+
+/** Counts one attempt against every live code of the user, purpose and scope, returning the ones still open. */
+function countAttempt(
+  database: CodeExecutor,
+  userId: string,
+  purpose: CodePurpose,
+  now: Date,
+  scope: CodeScope = "account",
+) {
   return database
     .update(verificationCodes)
     .set({ attempts: sql`${verificationCodes.attempts} + 1` })
@@ -59,12 +77,17 @@ function countAttempt(database: CodeExecutor, userId: string, purpose: CodePurpo
       and(
         eq(verificationCodes.userId, userId),
         eq(verificationCodes.purpose, purpose),
+        scopeFilter(scope),
         isNull(verificationCodes.consumedAt),
         gt(verificationCodes.expiresAt, now),
         lt(verificationCodes.attempts, RESET_MAX_ATTEMPTS),
       ),
     )
-    .returning({ id: verificationCodes.id, codeHash: verificationCodes.codeHash });
+    .returning({
+      id: verificationCodes.id,
+      codeHash: verificationCodes.codeHash,
+      pendingEmail: verificationCodes.pendingEmail,
+    });
 }
 
 /**
@@ -80,20 +103,46 @@ export async function verifyCode(
   code: string,
   database: CodeExecutor = db(),
 ): Promise<VerifyResult> {
+  const result = await verifyScoped(userId, purpose, code, database, "account");
+  return result.ok ? { ok: true, codeId: result.codeId } : INVALID;
+}
+
+export type PendingVerifyResult =
+  | { ok: true; codeId: string; pendingEmail: string }
+  | { ok: false; reason: "invalid" };
+
+/** `verifyCode` for the "add email" codes: on success also returns the address the code was mailed to. */
+export async function verifyPendingEmailCode(
+  userId: string,
+  code: string,
+  database: CodeExecutor = db(),
+): Promise<PendingVerifyResult> {
+  const result = await verifyScoped(userId, "email_verify", code, database, "pending");
+  if (!result.ok || !result.pendingEmail) return { ok: false, reason: "invalid" };
+  return { ok: true, codeId: result.codeId, pendingEmail: result.pendingEmail };
+}
+
+async function verifyScoped(
+  userId: string,
+  purpose: CodePurpose,
+  code: string,
+  database: CodeExecutor,
+  scope: CodeScope,
+): Promise<{ ok: true; codeId: string; pendingEmail: string | null } | { ok: false }> {
   const now = clock.now();
-  const live = await countAttempt(database, userId, purpose, now);
+  const live = await countAttempt(database, userId, purpose, now, scope);
   const guess = hashCode(purpose, userId, code);
   const match = live.find((row) => safeEqualHex(row.codeHash, guess));
-  if (!match) return INVALID;
+  if (!match) return { ok: false };
 
   const [consumed] = await database
     .update(verificationCodes)
     .set({ consumedAt: now })
     .where(and(eq(verificationCodes.id, match.id), isNull(verificationCodes.consumedAt)))
     .returning({ id: verificationCodes.id });
-  if (!consumed) return INVALID;
+  if (!consumed) return { ok: false };
 
-  // The code did its job: the user's other live codes for this purpose are spent with it.
+  // The code did its job: the user's other live codes for this purpose and scope are spent with it.
   await database
     .update(verificationCodes)
     .set({ consumedAt: now })
@@ -101,10 +150,11 @@ export async function verifyCode(
       and(
         eq(verificationCodes.userId, userId),
         eq(verificationCodes.purpose, purpose),
+        scopeFilter(scope),
         isNull(verificationCodes.consumedAt),
       ),
     );
-  return { ok: true, codeId: consumed.id };
+  return { ok: true, codeId: consumed.id, pendingEmail: match.pendingEmail };
 }
 
 /**

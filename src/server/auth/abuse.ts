@@ -215,3 +215,27 @@ export async function clearCodeVerifyFailures(
   const keys = verifyKeys(hasherOf(deps), ctx);
   await Promise.all([limiter.reset(keys.pair), limiter.reset(keys.account)]);
 }
+
+const passwordChangeKey = (h: Hasher, userId: string): string => `lock:pwchange:${h.hash(userId)}`;
+
+/**
+ * Password change from the account page: every attempt counts against the signed-in user (the
+ * sign-in pair limit, 10 per window, keyed on the account because the caller is already
+ * authenticated), so the attempt after the tenth is `locked` even with the right password. A
+ * success clears it (`clearPasswordChangeFailures`).
+ */
+export async function guardPasswordChange(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  const { pair } = (deps.limits ?? AUTH_LIMITS).lockout;
+  const lock = await limiterOf(deps).limit(passwordChangeKey(hasherOf(deps), input.userId), pair);
+  return lock.allowed ? OK : { blocked: "locked", until: lock.resetAt };
+}
+
+export async function clearPasswordChangeFailures(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<void> {
+  await limiterOf(deps).reset(passwordChangeKey(hasherOf(deps), input.userId));
+}

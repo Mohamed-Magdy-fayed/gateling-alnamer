@@ -185,6 +185,8 @@ export const verificationCodes = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     purpose: verificationPurpose("purpose").notNull(),
     codeHash: text("code_hash").notNull(),
+    /** Set for an "add email" code: the address that becomes the account's only after verification. */
+    pendingEmail: citext("pending_email"),
     attempts: integer("attempts").notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),

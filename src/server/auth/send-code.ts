@@ -17,7 +17,8 @@ function recipientLocale(saved: string | null, fallback: Locale): Locale {
 }
 
 /**
- * Issues a fresh code and queues its email. An enqueue failure is logged (name only, never the
+ * Issues a fresh code and queues its email. With `pendingEmail` the code is for that not-yet-verified
+ * address (it is stored on the code row, never on the user) and the mail goes there. An enqueue failure is logged (name only, never the
  * code or the address) and not thrown: the answer to the user stays the same, and the status
  * endpoint reports a send that never went out.
  */
@@ -25,13 +26,17 @@ export async function sendCode(
   user: CodeRecipient,
   purpose: CodePurpose,
   requestLocale: Locale,
+  pendingEmail?: string,
 ): Promise<void> {
-  if (!user.email) return;
-  const { codeId, code } = await issueCode(user.id, purpose);
+  const to = pendingEmail ?? user.email;
+  if (!to) return;
+  const { codeId, code } = pendingEmail
+    ? await issueCode(user.id, purpose, undefined, pendingEmail)
+    : await issueCode(user.id, purpose);
   try {
     await sendEvent("auth/code-email", {
       codeId,
-      to: user.email,
+      to,
       locale: recipientLocale(user.locale, requestLocale),
       purpose,
       code,

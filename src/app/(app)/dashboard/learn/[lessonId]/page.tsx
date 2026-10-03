@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
+import { requirePageUser } from "@/server/auth/page-guard";
 import { getCurrentSession } from "@/server/auth/session";
 import { getPublishedLesson } from "@/server/catalog/repository";
 import { assertActiveDevice } from "@/server/devices/service";
@@ -14,8 +15,10 @@ const lessonIdSchema = z.uuid();
 
 export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
   const { lessonId } = await params;
+  await requirePageUser(`/dashboard/learn/${encodeURIComponent(lessonId)}`);
+  // Same request-cached session the guard read; needed for the device binding.
   const session = await getCurrentSession();
-  if (!session) redirect("/sign-in");
+  if (!session) redirect("/sign-in"); // unreachable after the guard; narrows the type
   // Parents never play paid content; deny before any lesson data is loaded. T1's getLessonAccess takes over.
   if (lessonDenial(session.user.role) === "cannotPlay") {
     const { t } = await getDictionary();

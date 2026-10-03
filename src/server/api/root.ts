@@ -1,3 +1,4 @@
+import { accountRouter } from "./routers/account";
 import { adminRouter } from "./routers/admin";
 import { authRouter } from "./routers/auth";
 import { healthRouter } from "./routers/health";
@@ -6,6 +7,7 @@ import { studentRouter } from "./routers/student";
 import { router } from "./trpc";
 
 export const appRouter = router({
+  account: accountRouter,
   admin: adminRouter,
   auth: authRouter,
   health: healthRouter,

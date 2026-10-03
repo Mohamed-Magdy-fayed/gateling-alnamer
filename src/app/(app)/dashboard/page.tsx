@@ -15,8 +15,8 @@ import { SoftWarning } from "@/components/devices/soft-warning";
 import { ParentCards } from "@/components/parents/parent-cards";
 import { format } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
+import { requirePageUser } from "@/server/auth/page-guard";
 import { shouldPromptParentLink } from "@/server/auth/profile";
-import { requireUser } from "@/server/auth/session";
 import { listCoursesForDashboard } from "@/server/catalog/repository";
 import { loadParentDashboard } from "@/server/parents/dashboard";
 import { Alert, Badge, Container, cn } from "@/ui";
@@ -26,7 +26,7 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ view?: string; notice?: string }>;
 }) {
-  const user = await requireUser();
+  const user = await requirePageUser();
   const { t, locale } = await getDictionary();
   const { view: requested, notice } = await searchParams;
   const ownView = dashboardViewForRole(user.role);

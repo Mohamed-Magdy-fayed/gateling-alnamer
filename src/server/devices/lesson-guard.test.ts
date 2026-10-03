@@ -21,6 +21,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/server/auth/session", () => ({
   getCurrentSession: async () => h.session,
   requireUser: async () => h.session?.user,
+  getCurrentUser: async () => h.session?.user ?? null,
 }));
 vi.mock("@/server/catalog/repository", () => ({
   getPublishedLesson: async () => ({

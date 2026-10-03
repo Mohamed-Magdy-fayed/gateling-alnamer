@@ -1,16 +1,14 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { LinkParentForm } from "@/components/parents/link-parent-form";
 import { LinkedParents } from "@/components/parents/linked-parents";
 import { getDictionary } from "@/i18n/server";
-import { requireUser } from "@/server/auth/session";
+import { requirePageRole } from "@/server/auth/page-guard";
 import { listParentsForStudent } from "@/server/parents/views";
 import { Container } from "@/ui";
 
 export default async function LinkParentPage() {
-  const user = await requireUser();
-  if (user.role !== "student") redirect("/dashboard");
+  const user = await requirePageRole("student");
   const [{ t }, parents] = await Promise.all([getDictionary(), listParentsForStudent(user.id)]);
   const texts = { parents: t.parents, auth: t.auth };
 
