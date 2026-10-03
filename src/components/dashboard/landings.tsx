@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/al/empty-state";
 import type { Dictionary } from "@/i18n/ar";
-import { ButtonLink } from "@/ui";
+import { Button, ButtonLink } from "@/ui";
 
 /**
  * Real-user landings (A7a screen map), built only from data that exists today. Anything not built
@@ -53,7 +53,17 @@ export function TeacherLanding({ t }: { t: Dictionary }) {
   const d = t.dashboard.teacher;
   return (
     <div className={grid}>
-      <EmptyState icon={BookOpen} title={d.myCourses} comingSoon={t.shell.comingSoon} />
+      <EmptyState
+        icon={BookOpen}
+        title={d.myCourses}
+        body={d.noCourses}
+        comingSoon={t.shell.comingSoon}
+        action={
+          <Button disabled className="min-h-11">
+            {d.newCourse}
+          </Button>
+        }
+      />
       <EmptyState icon={Wallet} title={d.earnings} comingSoon={t.shell.comingSoon} />
     </div>
   );

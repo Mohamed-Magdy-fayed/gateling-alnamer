@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useMemo, useState } from "react";
 import { CodeInput } from "@/components/al/code-input";
@@ -9,7 +8,7 @@ import { type AuthText, idle, Message } from "@/components/auth-parts";
 import type { Dictionary } from "@/i18n/ar";
 import { useTRPC } from "@/lib/trpc/client";
 import type { FormState } from "@/server/auth/actions";
-import { Button, Field, Ltr } from "@/ui";
+import { Button, Field, LoadingSwap, Ltr } from "@/ui";
 import { accountErrorState } from "./error-state";
 
 type AccountText = Dictionary["account"];
@@ -23,10 +22,6 @@ type Props = {
 
 type Step = "address" | "code";
 type Outcome = "codeSent" | "added" | FormState;
-
-function Spinner({ busy }: { busy: boolean }) {
-  return busy ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null;
-}
 
 /** Shows the email, or walks an account without one through address, code and confirmation. */
 export function EmailSection({ t, authT, email }: Props) {
@@ -52,7 +47,7 @@ export function EmailSection({ t, authT, email }: Props) {
           setStep("code");
           setOutcome("codeSent");
         },
-        onError: (error) => setOutcome(accountErrorState(error, authT)),
+        onError: (error) => setOutcome(accountErrorState(error, authT, "email")),
       },
     );
   }
@@ -85,7 +80,6 @@ export function EmailSection({ t, authT, email }: Props) {
 
   return (
     <div className="flex max-w-md flex-col gap-4">
-      <h3 className="text-base font-medium">{t.addEmail}</h3>
       <p className="text-sm text-fg-2">{t.emailNone}</p>
       <Message state={state} t={authT} />
       {step === "address" ? (
@@ -96,22 +90,21 @@ export function EmailSection({ t, authT, email }: Props) {
             label={authT.fields.email}
             autoComplete="email"
             ltr
+            error={state.fieldErrors?.email}
             required
           />
           <Button type="submit" size="lg" disabled={add.isPending} aria-busy={add.isPending}>
-            <Spinner busy={add.isPending} />
-            {t.sendCode}
+            <LoadingSwap pending={add.isPending}>{t.sendCode}</LoadingSwap>
           </Button>
         </form>
       ) : (
         <form onSubmit={confirm} noValidate className="flex flex-col gap-4">
           <CodeInput name="code" label={authT.fields.code} focusOnMount required />
           <Button type="submit" size="lg" disabled={verify.isPending} aria-busy={verify.isPending}>
-            <Spinner busy={verify.isPending} />
-            {authT.verify.submit}
+            <LoadingSwap pending={verify.isPending}>{authT.verify.submit}</LoadingSwap>
           </Button>
           <Button type="button" variant="outline" size="lg" onClick={() => setStep("address")}>
-            {authT.verify.resend}
+            {t.changeAddress}
           </Button>
         </form>
       )}

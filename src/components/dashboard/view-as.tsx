@@ -10,7 +10,7 @@ import { type DashboardView, dashboardViews } from "./views";
 export function ViewAs({ t, current }: { t: Dictionary; current: DashboardView | null }) {
   return (
     <nav aria-label={t.dashboard.viewAs} className="flex flex-col gap-1.5">
-      <span className="flex items-center gap-2 text-xs font-medium text-fg-muted">
+      <span aria-hidden className="flex items-center gap-2 text-xs font-medium text-fg-muted">
         {t.dashboard.viewAs}
         <Badge tone="highlight">{t.dashboard.samplePreview}</Badge>
       </span>

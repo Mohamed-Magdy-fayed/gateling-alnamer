@@ -35,7 +35,9 @@ export function SubmitButton({
         aria-describedby={reason ? reasonId : undefined}
         className={cn(buttonClasses(variant, "lg"), "w-full", className)}
       >
-        {pending ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null}
+        {pending ? (
+          <LoaderCircle aria-hidden className="size-4 animate-spin motion-reduce:animate-none" />
+        ) : null}
         {children}
       </button>
       {reason ? (

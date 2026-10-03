@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { LoaderCircle, Monitor } from "lucide-react";
+import { Monitor } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { type AuthText, idle, Message } from "@/components/auth-parts";
@@ -20,8 +20,9 @@ import type { Dictionary } from "@/i18n/ar";
 import { format, type Locale } from "@/i18n/config";
 import { useTRPC } from "@/lib/trpc/client";
 import type { FormState } from "@/server/auth/actions";
-import { Alert, Badge, Button, Ltr } from "@/ui";
+import { Alert, Badge, Button, LoadingSwap, Ltr } from "@/ui";
 import { accountErrorState } from "./error-state";
+import { useOutcomeFocus } from "./outcome-focus";
 
 export type DeviceRowData = {
   id: string;
@@ -48,12 +49,15 @@ type RowProps = Texts & {
 };
 
 const THROTTLE_ID = "account-device-throttle";
+const HEADING_ID = "account-devices";
+const MESSAGE_ID = "account-devices-message";
 
 function DeviceRow({ device, t, deviceT, authT, locale, throttled, onDone }: RowProps) {
   const router = useRouter();
   const trpc = useTRPC();
   const mutation = useMutation(trpc.account.removeDevice.mutationOptions());
   const [open, setOpen] = useState(false);
+  const focus = useOutcomeFocus();
   const labelId = `account-device-${device.id}`;
   const name = device.label ? <Ltr wrap>{device.label}</Ltr> : deviceT.unknownDevice;
 
@@ -62,11 +66,16 @@ function DeviceRow({ device, t, deviceT, authT, locale, throttled, onDone }: Row
       { deviceId: device.id },
       {
         onSuccess: () => {
+          focus.target.current = HEADING_ID;
+          setOpen(false);
           onDone({ status: "success", message: t.deviceRemoved });
           router.refresh();
         },
-        onError: (error) => onDone(accountErrorState(error, authT)),
-        onSettled: () => setOpen(false),
+        onError: (error) => {
+          focus.target.current = MESSAGE_ID;
+          setOpen(false);
+          onDone(accountErrorState(error, authT));
+        },
       },
     );
   }
@@ -96,13 +105,10 @@ function DeviceRow({ device, t, deviceT, authT, locale, throttled, onDone }: Row
               aria-busy={mutation.isPending}
               aria-describedby={throttled ? `${labelId} ${THROTTLE_ID}` : labelId}
             >
-              {mutation.isPending ? (
-                <LoaderCircle aria-hidden className="size-4 animate-spin" />
-              ) : null}
-              {deviceT.remove}
+              <LoadingSwap pending={mutation.isPending}>{deviceT.remove}</LoadingSwap>
             </Button>
           </AlertDialogTrigger>
-          <AlertDialogContent>
+          <AlertDialogContent onCloseAutoFocus={focus.onCloseAutoFocus}>
             <AlertDialogHeader>
               <AlertDialogTitle>{deviceT.remove}</AlertDialogTitle>
               <AlertDialogDescription>
@@ -143,7 +149,7 @@ export function DevicesList({
   const throttled = throttledText !== null || state.tone === "warning";
   return (
     <div className="flex flex-col gap-3">
-      <Message state={state} t={texts.authT} />
+      <Message state={state} t={texts.authT} id={MESSAGE_ID} />
       <ul className="divide-y divide-line">
         {devices.map((device) => (
           <DeviceRow

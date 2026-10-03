@@ -6,3 +6,4 @@ export { Card } from "./card";
 export { cn } from "./cn";
 export { describedBy, Field, FieldFrame } from "./field";
 export { Container, Ltr, Progress } from "./layout";
+export { LoadingSwap } from "./loading-swap";

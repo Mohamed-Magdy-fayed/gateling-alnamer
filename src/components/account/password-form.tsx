@@ -1,14 +1,13 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { LoaderCircle } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 import { PasswordInput } from "@/components/al/password-input";
 import { type AuthText, idle, Message } from "@/components/auth-parts";
 import type { Dictionary } from "@/i18n/ar";
 import { useTRPC } from "@/lib/trpc/client";
 import type { FormState } from "@/server/auth/actions";
-import { Button } from "@/ui";
+import { Button, LoadingSwap } from "@/ui";
 import { accountErrorState } from "./error-state";
 
 type AccountText = Dictionary["account"];
@@ -36,7 +35,7 @@ export function PasswordForm({ t, authT }: Props) {
           form.reset();
           setOutcome("changed");
         },
-        onError: (error) => setOutcome(accountErrorState(error, authT)),
+        onError: (error) => setOutcome(accountErrorState(error, authT, "password")),
       },
     );
   }
@@ -53,6 +52,8 @@ export function PasswordForm({ t, authT }: Props) {
       />
       <PasswordInput
         name="next"
+        id="field-password"
+        error={state.fieldErrors?.password}
         label={t.newPassword}
         hint={authT.fields.passwordHint}
         toggleLabel={authT.fields.showPassword}
@@ -60,8 +61,7 @@ export function PasswordForm({ t, authT }: Props) {
         required
       />
       <Button type="submit" size="lg" disabled={mutation.isPending} aria-busy={mutation.isPending}>
-        {mutation.isPending ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null}
-        {t.changePassword}
+        <LoadingSwap pending={mutation.isPending}>{t.changePassword}</LoadingSwap>
       </Button>
     </form>
   );

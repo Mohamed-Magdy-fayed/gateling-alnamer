@@ -159,7 +159,7 @@ test.describe("device limit of 2", () => {
       const headerOverflow = await header.evaluate((el) => el.scrollWidth - el.clientWidth);
       expect(headerOverflow, `${language} header overflow`).toBeLessThanOrEqual(0);
       const targets = [
-        third.page.getByRole("link", { name: /^(حسابي|My account)$/ }),
+        header.locator("button[lang]"),
         header.getByRole("button", { name: /^(تسجيل الخروج|Sign out)$/ }),
       ];
       for (const target of targets) {

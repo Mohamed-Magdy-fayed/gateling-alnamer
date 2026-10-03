@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { LoaderCircle, Smartphone } from "lucide-react";
+import { Smartphone } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { type AuthText, idle, Message } from "@/components/auth-parts";
@@ -19,8 +19,9 @@ import type { Dictionary } from "@/i18n/ar";
 import { format } from "@/i18n/config";
 import { useTRPC } from "@/lib/trpc/client";
 import type { FormState } from "@/server/auth/actions";
-import { Badge, Button, Ltr } from "@/ui";
+import { Badge, Button, LoadingSwap, Ltr } from "@/ui";
 import { accountErrorState } from "./error-state";
+import { useOutcomeFocus } from "./outcome-focus";
 
 export type SessionRowData = {
   id: string;
@@ -36,6 +37,9 @@ type AccountText = Dictionary["account"];
 
 type Texts = { t: AccountText; authT: AuthText; cancel: string };
 
+const HEADING_ID = "account-sessions";
+const MESSAGE_ID = "account-sessions-message";
+
 type RowProps = Texts & {
   session: SessionRowData;
   onDone: (state: FormState) => void;
@@ -46,6 +50,7 @@ function SessionRow({ session, t, authT, cancel, onDone }: RowProps) {
   const trpc = useTRPC();
   const mutation = useMutation(trpc.account.revokeSession.mutationOptions());
   const [open, setOpen] = useState(false);
+  const focus = useOutcomeFocus();
   const titleId = `session-${session.id}`;
 
   function revoke() {
@@ -53,11 +58,16 @@ function SessionRow({ session, t, authT, cancel, onDone }: RowProps) {
       { id: session.id },
       {
         onSuccess: () => {
+          focus.target.current = HEADING_ID;
+          setOpen(false);
           onDone({ status: "success", message: t.revoked });
           router.refresh();
         },
-        onError: (error) => onDone(accountErrorState(error, authT)),
-        onSettled: () => setOpen(false),
+        onError: (error) => {
+          focus.target.current = MESSAGE_ID;
+          setOpen(false);
+          onDone(accountErrorState(error, authT));
+        },
       },
     );
   }
@@ -96,15 +106,12 @@ function SessionRow({ session, t, authT, cancel, onDone }: RowProps) {
               className="min-h-11"
               disabled={mutation.isPending}
               aria-busy={mutation.isPending}
-              aria-describedby={titleId}
+              aria-label={format(t.revokeLabel, { time: session.createdText })}
             >
-              {mutation.isPending ? (
-                <LoaderCircle aria-hidden className="size-4 animate-spin" />
-              ) : null}
-              {t.revoke}
+              <LoadingSwap pending={mutation.isPending}>{t.revoke}</LoadingSwap>
             </Button>
           </AlertDialogTrigger>
-          <AlertDialogContent>
+          <AlertDialogContent onCloseAutoFocus={focus.onCloseAutoFocus}>
             <AlertDialogHeader>
               <AlertDialogTitle>{t.revokeTitle}</AlertDialogTitle>
               <AlertDialogDescription>
@@ -145,7 +152,7 @@ export function SessionsList({
   const [state, setState] = useState<FormState>(idle);
   return (
     <div className="flex flex-col gap-3">
-      <Message state={state} t={authT} />
+      <Message state={state} t={authT} id={MESSAGE_ID} />
       <ul className="divide-y divide-line">
         {sessions.map((session) => (
           <SessionRow

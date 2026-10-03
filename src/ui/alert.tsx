@@ -16,10 +16,9 @@ type AlertProps = {
   id?: string;
 };
 
-/** Danger interrupts (`alert`) unless the alert takes focus, where focus already announces it. */
-function roleFor(tone: Tone, focusable: boolean): "alert" | "status" | undefined {
-  if (tone !== "danger") return "status";
-  return focusable ? undefined : "alert";
+/** Danger interrupts (`alert`); every other tone is polite (`status`). */
+function roleFor(tone: Tone): "alert" | "status" {
+  return tone === "danger" ? "alert" : "status";
 }
 
 export function Alert({ tone = "info", children, ref, tabIndex, id }: AlertProps) {
@@ -30,7 +29,7 @@ export function Alert({ tone = "info", children, ref, tabIndex, id }: AlertProps
       id={id}
       tabIndex={tabIndex}
       variant={tone}
-      role={roleFor(tone, tabIndex !== undefined)}
+      role={roleFor(tone)}
       className="focus-visible:outline-2 focus-visible:outline-focus"
     >
       <Icon aria-hidden className="mt-1 size-4 shrink-0" strokeWidth={1.75} />

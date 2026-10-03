@@ -9,7 +9,11 @@ export function AccountSection({ id, title, children }: Props) {
   return (
     <section aria-labelledby={headingId}>
       <Card className="flex flex-col gap-4 p-6">
-        <h2 id={headingId} className="text-lg font-semibold">
+        <h2
+          id={headingId}
+          tabIndex={-1}
+          className="text-lg font-semibold focus-visible:outline-2 focus-visible:outline-focus"
+        >
           {title}
         </h2>
         {children}

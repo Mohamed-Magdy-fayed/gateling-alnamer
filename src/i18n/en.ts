@@ -30,6 +30,7 @@ export const en: Dictionary = {
     openMenu: "Open menu",
     closeMenu: "Close menu",
     menu: "Menu",
+    loading: "Loading",
     switchLanguageShort: "ع",
     currency: "AED",
   },
@@ -393,6 +394,8 @@ export const en: Dictionary = {
     teacher: {
       myCourses: "My courses",
       newCourse: "New course",
+      noCourses:
+        "You have not created a course yet. Course creation opens in the full test version.",
       studentsCount: {
         one: "1 student",
         other: "{count} students",
@@ -461,7 +464,7 @@ export const en: Dictionary = {
     saved: "Saved.",
     emailTitle: "Email",
     emailNone: "Your account has no email yet. Add one to reset your password and get notices.",
-    addEmail: "Add an email",
+    changeAddress: "Change address",
     sendCode: "Send code",
     emailCodeSent: "If the address is available, we sent it a 6-digit code. Enter it below.",
     emailAdded: "Your email was added and confirmed.",
@@ -476,6 +479,7 @@ export const en: Dictionary = {
     revokeTitle: "End this session?",
     revokeBody: "The session that started on {time} will be signed out.",
     revoked: "Session ended.",
+    revokeLabel: "End the session that started {time}",
     sessionStarted: "Started {time}",
     sessionLastSeen: "Last active {time}",
     devicesTitle: "Your devices",

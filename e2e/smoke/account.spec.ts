@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { uniqueClientIpPerTest } from "../helpers/client-ip";
+import { nextClientIp, uniqueClientIpPerTest } from "../helpers/client-ip";
 import { countMail, extractCode, waitForMailText } from "../helpers/mailpit";
 import {
   BANNER,
@@ -9,6 +9,7 @@ import {
   CONTINUE,
   createStudent,
   EMAIL_DELAYED,
+  END_SESSION,
   FIELD_CODE,
   FIELD_EMAIL,
   FIELD_NAME,
@@ -22,6 +23,7 @@ import {
   runId,
   SAVE_PASSWORD,
   SEND_CODE,
+  SESSION_ENDED,
   SIGN_UP,
   signIn,
   VERIFIED,
@@ -156,4 +158,31 @@ test("forgot password: wrong code, Mailpit code, reset signs out other sessions,
   await other.close();
 
   await signIn(page, recoveryEmail, newPassword);
+});
+
+test("after ending another session focus lands on the section heading, never body", async ({
+  browser,
+  baseURL,
+  page,
+}) => {
+  const other = `smoke-revoke-${runId}@alnamer.local`;
+  await createStudent(browser, baseURL, { name: "Smoke Revoke", email: other, password });
+  await signIn(page, other, password);
+  const second = await browser.newContext({
+    baseURL: baseURL as string,
+    extraHTTPHeaders: { "x-real-ip": nextClientIp() },
+  });
+  try {
+    await signIn(await second.newPage(), other, password);
+  } finally {
+    await second.close();
+  }
+  await page.goto("/dashboard/account");
+  const section = page.locator("section[aria-labelledby='account-sessions']");
+  await section.getByRole("button", { name: END_SESSION }).first().click();
+  await page.getByRole("alertdialog").getByRole("button", { name: END_SESSION }).click();
+  await expect(page.getByText(SESSION_ENDED)).toBeVisible();
+  // Success moves focus to the section heading (the dialog's own focus return must not win).
+  await expect(page.locator("#account-sessions")).toBeFocused();
+  expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe("BODY");
 });

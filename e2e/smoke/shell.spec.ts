@@ -140,3 +140,24 @@ test.describe("first paint with an emulated dark scheme", () => {
     ).toBe("dark");
   });
 });
+
+test("the signed-in header does not scroll horizontally at 320px", async ({ page }) => {
+  await signIn(page, shellEmail, password);
+  await page.setViewportSize({ width: 320, height: 700 });
+  for (const path of ["/dashboard", "/dashboard/account"]) {
+    await page.goto(path);
+    await expect(page.locator("header")).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      const page = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+      const inner = document.querySelector("header > div");
+      const content = inner ? inner.scrollWidth - inner.clientWidth : 0;
+      return Math.max(page, content);
+    });
+    expect(overflow, path).toBeLessThanOrEqual(0);
+    // The account link lives in the Sheet nav below sm, and the language switch is a 44px target.
+    await expect(page.locator('header a[href="/dashboard/account"]')).toBeHidden();
+    const box = await page.locator("header form button[lang]").boundingBox();
+    expect(box?.height ?? 0, path).toBeGreaterThanOrEqual(44);
+    expect(box?.width ?? 0, path).toBeGreaterThanOrEqual(44);
+  }
+});

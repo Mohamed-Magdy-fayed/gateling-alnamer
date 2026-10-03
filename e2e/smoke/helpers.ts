@@ -69,6 +69,8 @@ export const minorEmail = `smoke-minor-${runId}@alnamer.local`;
 export const shellEmail = `smoke-shell-${runId}@alnamer.local`;
 export const recoveryEmail = `smoke-recovery-${runId}@alnamer.local`;
 export const redeemEmail = `smoke-redeem-${runId}@alnamer.local`;
+export const END_SESSION = "إنهاء الجلسة";
+export const SESSION_ENDED = "تم إنهاء الجلسة.";
 export const SHOW_PASSWORD = "إظهار كلمة المرور";
 
 /** Picks a date in the three DOB selects by option position, so it does not depend on month names. */

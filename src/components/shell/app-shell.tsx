@@ -56,7 +56,10 @@ export async function AppShell({ user, children }: { user: SessionUser; children
               nav: t.common.mainNav,
             }}
           />
-          <Link href="/" className="shrink-0 rounded-[var(--radius-sm)]">
+          <Link
+            href="/dashboard"
+            className="inline-flex min-h-11 shrink-0 items-center rounded-[var(--radius-sm)]"
+          >
             <Wordmark label={t.common.brand} labelClassName="max-sm:sr-only" />
           </Link>
           <div className="ms-auto flex items-center gap-1">
@@ -66,10 +69,10 @@ export async function AppShell({ user, children }: { user: SessionUser; children
               href="/dashboard/account"
               variant="ghost"
               size="sm"
-              className="min-h-11 min-w-11 lg:hidden"
+              className="min-h-11 min-w-11 max-sm:hidden lg:hidden"
             >
               <UserRound aria-hidden className="size-4" strokeWidth={1.75} />
-              <span className="max-sm:sr-only">{t.devices.accountTitle}</span>
+              <span>{t.devices.accountTitle}</span>
             </ButtonLink>
             <form action={signOutAction}>
               <Button type="submit" variant="ghost" size="sm" className="min-h-11 min-w-11">
@@ -86,7 +89,7 @@ export async function AppShell({ user, children }: { user: SessionUser; children
             <ShellNav items={items} label={t.common.mainNav} />
           </div>
         </aside>
-        <main id="main" className="min-w-0 pb-16">
+        <main id="main" tabIndex={-1} className="min-w-0 pb-16 focus:outline-none">
           {showVerifyBanner && user.email ? <VerifyBanner t={t} email={user.email} /> : null}
           {children}
         </main>

@@ -31,6 +31,7 @@ export const ar = {
     openMenu: "فتح القائمة",
     closeMenu: "إغلاق القائمة",
     menu: "القائمة",
+    loading: "جارٍ التحميل",
     switchLanguageShort: "EN",
     currency: "AED",
   },
@@ -398,6 +399,7 @@ export const ar = {
     teacher: {
       myCourses: "دوراتي",
       newCourse: "دورة جديدة",
+      noCourses: "لم تُنشئ أي دورة بعد. إنشاء الدورات يتاح في النسخة التجريبية الكاملة.",
       studentsCount: {
         zero: "لا طلاب",
         one: "طالب واحد",
@@ -471,7 +473,7 @@ export const ar = {
     saved: "تم الحفظ.",
     emailTitle: "البريد الإلكتروني",
     emailNone: "ليس لحسابك بريد إلكتروني بعد. أضف بريدًا لتستعيد كلمة المرور وتصلك الإشعارات.",
-    addEmail: "إضافة بريد إلكتروني",
+    changeAddress: "تغيير العنوان",
     sendCode: "إرسال الرمز",
     emailCodeSent: "إن كان البريد متاحًا فقد أرسلنا إليه رمزًا من 6 أرقام. أدخله أدناه.",
     emailAdded: "تمت إضافة بريدك الإلكتروني وتأكيده.",
@@ -486,6 +488,7 @@ export const ar = {
     revokeTitle: "إنهاء هذه الجلسة؟",
     revokeBody: "سيتم تسجيل الخروج من الجلسة التي بدأت في {time}.",
     revoked: "تم إنهاء الجلسة.",
+    revokeLabel: "إنهاء الجلسة التي بدأت في {time}",
     sessionStarted: "بدأت في {time}",
     sessionLastSeen: "آخر نشاط: {time}",
     devicesTitle: "أجهزتك",

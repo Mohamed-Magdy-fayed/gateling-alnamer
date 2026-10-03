@@ -5,7 +5,9 @@ import { getDictionary } from "@/i18n/server";
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const { t } = await getDictionary();
   return (
-    <ErrorTextsProvider texts={{ message: t.errors.retry, retry: t.errors.retryAction }}>
+    <ErrorTextsProvider
+      texts={{ message: t.errors.retry, retry: t.errors.retryAction, home: t.notFound.back }}
+    >
       {children}
     </ErrorTextsProvider>
   );

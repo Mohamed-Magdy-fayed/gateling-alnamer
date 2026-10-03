@@ -39,10 +39,10 @@ export function ShellNav({
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex min-h-11 items-center gap-3 rounded-[var(--radius-md)] px-3 text-sm font-medium",
+                "flex min-h-11 items-center gap-3 rounded-[var(--radius-md)] border-s-2 px-3 text-sm font-medium",
                 active
-                  ? "bg-primary-soft text-primary-soft-fg"
-                  : "text-fg-2 hover:bg-sunken hover:text-fg",
+                  ? "border-primary bg-primary-soft font-semibold text-primary-soft-fg"
+                  : "border-transparent text-fg-2 hover:bg-sunken hover:text-fg",
               )}
             >
               <Icon aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />

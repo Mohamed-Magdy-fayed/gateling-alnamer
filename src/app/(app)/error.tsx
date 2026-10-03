@@ -1,27 +1,20 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
-import { EmptyState } from "@/components/al/empty-state";
-import { useErrorTexts } from "@/components/shell/error-texts";
-import { Button, Container } from "@/ui";
+import { ErrorView } from "@/components/shell/error-view";
+import { Container } from "@/ui";
 
-/** Route error for every signed-in page: one sentence and a retry that re-renders the segment. */
+/** Fallback for a failure above the dashboard shell (the layout itself): retry and a home link. */
 export default function AppError({
+  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const texts = useErrorTexts();
   return (
-    <main id="main" className="py-8">
+    <main id="main" tabIndex={-1} className="py-8 focus:outline-none">
       <Container>
-        <EmptyState
-          icon={TriangleAlert}
-          headingLevel="h1"
-          title={texts?.message ?? ""}
-          action={<Button onClick={reset}>{texts?.retry}</Button>}
-        />
+        <ErrorView error={error} reset={reset} withHome />
       </Container>
     </main>
   );

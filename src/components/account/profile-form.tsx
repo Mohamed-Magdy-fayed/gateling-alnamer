@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation } from "@tanstack/react-query";
-import { LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useMemo, useState } from "react";
 import { type AuthText, idle, Message } from "@/components/auth-parts";
@@ -18,7 +17,7 @@ import type { Dictionary } from "@/i18n/ar";
 import { isLocale, type Locale } from "@/i18n/config";
 import { useTRPC } from "@/lib/trpc/client";
 import type { FormState } from "@/server/auth/actions";
-import { Button, Field } from "@/ui";
+import { Button, Field, LoadingSwap } from "@/ui";
 import { accountErrorState } from "./error-state";
 
 type AccountText = Dictionary["account"];
@@ -60,7 +59,7 @@ export function ProfileForm({ t, authT, name, locale, dir }: Props) {
           setOutcome("saved");
           router.refresh();
         },
-        onError: (error) => setOutcome(accountErrorState(error, authT)),
+        onError: (error) => setOutcome(accountErrorState(error, authT, "name")),
       },
     );
   }
@@ -72,6 +71,7 @@ export function ProfileForm({ t, authT, name, locale, dir }: Props) {
         name="name"
         label={authT.fields.name}
         defaultValue={name}
+        error={state.fieldErrors?.name}
         autoComplete="name"
         required
       />
@@ -98,8 +98,7 @@ export function ProfileForm({ t, authT, name, locale, dir }: Props) {
         </Select>
       </div>
       <Button type="submit" size="lg" disabled={mutation.isPending} aria-busy={mutation.isPending}>
-        {mutation.isPending ? <LoaderCircle aria-hidden className="size-4 animate-spin" /> : null}
-        {t.save}
+        <LoadingSwap pending={mutation.isPending}>{t.save}</LoadingSwap>
       </Button>
     </form>
   );

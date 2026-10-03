@@ -44,7 +44,7 @@ function toneOf(state: FormState): MessageTone {
  * Form-level result. After every submit it takes focus (a `tabIndex={-1}` alert) so keyboard and
  * screen-reader users land on the outcome; field-format errors are listed as links to the fields.
  */
-export function Message({ state, t }: { state: FormState; t: AuthText }) {
+export function Message({ state, t, id }: { state: FormState; t: AuthText; id?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (state.status !== "idle") ref.current?.focus();
@@ -54,7 +54,7 @@ export function Message({ state, t }: { state: FormState; t: AuthText }) {
     (entry): entry is [string, string] => typeof entry[1] === "string",
   );
   return (
-    <Alert ref={ref} tabIndex={-1} tone={toneOf(state)}>
+    <Alert ref={ref} id={id} tabIndex={-1} tone={toneOf(state)}>
       {state.message}
       {state.offerReset ? (
         <>
