@@ -4,13 +4,20 @@ import { setClockForTests } from "@/server/clock";
 import { auditLog, deviceRemovals, devices, sessions, users } from "@/server/db/schema";
 
 vi.mock("@/server/redis", () => ({ getRedis: () => null }));
-vi.mock("@/server/auth/session", () => ({ getCurrentUser: vi.fn(async () => null) }));
-vi.mock("@/server/env", () => ({ serverEnv: () => ({ BASE_URL: "https://alnamer.example" }) }));
+vi.mock("@/server/auth/session", () => ({
+  getCurrentUser: vi.fn(async () => null),
+}));
+vi.mock("@/server/env", () => ({
+  serverEnv: () => ({ BASE_URL: "https://alnamer.example" }),
+}));
 vi.mock("@/server/db", async () => {
   const { drizzle } = await import("drizzle-orm/postgres-js");
   const postgres = (await import("postgres")).default;
   const schema = await import("@/server/db/schema");
-  const client = postgres(process.env.DATABASE_URL ?? "", { max: 4, onnotice: () => {} });
+  const client = postgres(process.env.DATABASE_URL ?? "", {
+    max: 4,
+    onnotice: () => {},
+  });
   const conn = drizzle(client, { schema });
   return { db: () => conn, closeTestDb: () => client.end() };
 });
@@ -28,15 +35,28 @@ const db = () =>
   >;
 
 const NOW = new Date("2030-05-01T09:00:00.000Z");
-const HEADERS = new Headers({ origin: "https://alnamer.example", host: "alnamer.example" });
+const HEADERS = new Headers({
+  origin: "https://alnamer.example",
+  host: "alnamer.example",
+});
 
 type Role = "student" | "admin" | "parent";
-type TestUser = { id: string; name: string; email: string; role: Role; status: "active" };
+type TestUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  status: "active";
+};
 
 async function makeUser(role: Role): Promise<TestUser> {
   const [user] = await db()
     .insert(users)
-    .values({ name: role, email: `${role}-${crypto.randomUUID()}@example.test`, role })
+    .values({
+      name: role,
+      email: `${role}-${crypto.randomUUID()}@example.test`,
+      role,
+    })
     .returning({
       id: users.id,
       name: users.name,
@@ -54,7 +74,11 @@ const callerAs = (user: TestUser | null) =>
 async function addDevice(userId: string) {
   const [device] = await db()
     .insert(devices)
-    .values({ userId, deviceKey: crypto.randomUUID(), label: "Chrome on Windows" })
+    .values({
+      userId,
+      deviceKey: crypto.randomUUID(),
+      label: "Chrome on Windows",
+    })
     .returning({ id: devices.id });
   if (!device) throw new Error("no device");
   const tokenHash = crypto.randomUUID();
@@ -76,12 +100,12 @@ afterAll(async () => {
 });
 
 describe("admin.devices.reset", () => {
-  it("rejects anonymous and non-admin callers with FORBIDDEN and changes nothing", async () => {
+  it("rejects anonymous (UNAUTHORIZED) and non-admin (FORBIDDEN) callers and changes nothing", async () => {
     const student = await makeUser("student");
     const target = await makeUser("student");
     const d = await addDevice(target.id);
     await expect(callerAs(null).admin.devices.reset({ userId: target.id })).rejects.toMatchObject({
-      code: "FORBIDDEN",
+      code: "UNAUTHORIZED",
     });
     await expect(
       callerAs(student).admin.devices.reset({ userId: target.id }),

@@ -288,6 +288,9 @@ export const en: Dictionary = {
       },
     },
   },
+  parents: {
+    cannotPlay: "Parent accounts can't play lessons. You can follow your children's progress here.",
+  },
   email: {
     code: {
       subjectReset: "Your password reset code - Al-Namer",

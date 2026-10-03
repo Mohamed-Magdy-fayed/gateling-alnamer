@@ -7,22 +7,42 @@ import { pickText } from "@/lib/localized-text";
 import { getCurrentSession } from "@/server/auth/session";
 import { getPublishedLesson } from "@/server/catalog/repository";
 import { assertActiveDevice } from "@/server/devices/service";
+import { lessonDenial } from "@/server/parents/lesson-access";
 import { Alert, Badge, Container, Ltr } from "@/ui";
 
 const lessonIdSchema = z.uuid();
 
 export default async function LessonPage({ params }: { params: Promise<{ lessonId: string }> }) {
   const { lessonId } = await params;
+  const session = await getCurrentSession();
+  if (!session) redirect("/sign-in");
+  // Parents never play paid content; deny before any lesson data is loaded. T1's getLessonAccess takes over.
+  if (lessonDenial(session.user.role) === "cannotPlay") {
+    const { t } = await getDictionary();
+    return (
+      <Container className="py-8">
+        <Alert>{t.parents.cannotPlay}</Alert>
+        <Link
+          href="/dashboard"
+          className="mt-4 inline-flex min-h-11 items-center gap-1.5 rounded-[var(--radius-sm)] text-sm text-fg-2 hover:text-fg"
+        >
+          <ArrowRight aria-hidden className="size-4 ltr:rotate-180" strokeWidth={1.75} />
+          {t.dashboard.player.back}
+        </Link>
+      </Container>
+    );
+  }
   // A malformed id would make Postgres throw (22P02); treat it as not found.
   const lesson = lessonIdSchema.safeParse(lessonId).success
     ? await getPublishedLesson(lessonId)
     : null;
   if (!lesson) notFound();
-  const session = await getCurrentSession();
-  if (!session) redirect("/sign-in");
   // Paid content needs an active device. A student with none (a session from before the limit, or a
   // revoked device) goes through /devices/check, which registers this browser or blocks it.
-  const access = await assertActiveDevice({ role: session.user.role, deviceId: session.deviceId });
+  const access = await assertActiveDevice({
+    role: session.user.role,
+    deviceId: session.deviceId,
+  });
   if (!access.ok) {
     redirect(`/devices/check?next=${encodeURIComponent(`/dashboard/learn/${lessonId}`)}`);
   }

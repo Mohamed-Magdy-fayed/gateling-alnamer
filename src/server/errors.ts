@@ -15,11 +15,31 @@ type AppErrorDefinition = {
 };
 
 export const APP_ERRORS = {
-  internal: { i18nKey: "errors.internal", trpcCode: "INTERNAL_SERVER_ERROR", logLevel: "error" },
-  not_found: { i18nKey: "errors.notFound", trpcCode: "NOT_FOUND", logLevel: "info" },
-  forbidden: { i18nKey: "errors.forbidden", trpcCode: "FORBIDDEN", logLevel: "warn" },
-  rate_limited: { i18nKey: "errors.rateLimited", trpcCode: "TOO_MANY_REQUESTS", logLevel: "warn" },
-  invalid_input: { i18nKey: "errors.invalidInput", trpcCode: "BAD_REQUEST", logLevel: "info" },
+  internal: {
+    i18nKey: "errors.internal",
+    trpcCode: "INTERNAL_SERVER_ERROR",
+    logLevel: "error",
+  },
+  not_found: {
+    i18nKey: "errors.notFound",
+    trpcCode: "NOT_FOUND",
+    logLevel: "info",
+  },
+  forbidden: {
+    i18nKey: "errors.forbidden",
+    trpcCode: "FORBIDDEN",
+    logLevel: "warn",
+  },
+  rate_limited: {
+    i18nKey: "errors.rateLimited",
+    trpcCode: "TOO_MANY_REQUESTS",
+    logLevel: "warn",
+  },
+  invalid_input: {
+    i18nKey: "errors.invalidInput",
+    trpcCode: "BAD_REQUEST",
+    logLevel: "info",
+  },
 } as const satisfies Record<string, AppErrorDefinition>;
 
 export type AppErrorCode = keyof typeof APP_ERRORS;
@@ -30,7 +50,10 @@ export class AppError extends Error {
   readonly trpcCode: TrpcErrorCode;
   readonly logLevel: AppErrorLogLevel;
 
-  constructor(code: AppErrorCode, options?: { cause?: unknown; message?: string }) {
+  constructor(
+    code: AppErrorCode,
+    options?: { cause?: unknown; message?: string; i18nKey?: string },
+  ) {
     super(
       options?.message ?? code,
       options?.cause === undefined ? undefined : { cause: options.cause },
@@ -38,7 +61,7 @@ export class AppError extends Error {
     this.name = "AppError";
     this.code = code;
     const def: AppErrorDefinition = APP_ERRORS[code];
-    this.i18nKey = def.i18nKey;
+    this.i18nKey = options?.i18nKey ?? def.i18nKey;
     this.trpcCode = def.trpcCode;
     this.logLevel = def.logLevel;
   }

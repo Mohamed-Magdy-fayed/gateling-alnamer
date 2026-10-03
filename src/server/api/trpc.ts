@@ -2,6 +2,7 @@ import "server-only";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import { getCurrentUser, type SessionUser } from "@/server/auth/session";
+import type { UserRole } from "@/server/db/schema";
 import { serverEnv } from "@/server/env";
 import { AppError } from "@/server/errors";
 
@@ -29,7 +30,11 @@ const mapAppErrors = t.middleware(async ({ next }) => {
   if (result.ok) return result;
   const cause = result.error.cause;
   if (cause instanceof AppError) {
-    throw new TRPCError({ code: cause.trpcCode, message: cause.i18nKey, cause });
+    throw new TRPCError({
+      code: cause.trpcCode,
+      message: cause.i18nKey,
+      cause,
+    });
   }
   return result;
 });
@@ -78,6 +83,21 @@ export function logTrpcError({
     console.error(`[trpc] ${path ?? "?"} failed`, real);
   }
 }
+
+/**
+ * Role gate: no user is UNAUTHORIZED, a user of another role is FORBIDDEN. Use as
+ * `publicProcedure.use(requireRole("parent"))`; the handler's `ctx.user` is then non-null.
+ */
+export const requireRole = (...roles: UserRole[]) =>
+  t.middleware(async ({ ctx, next }) => {
+    if (!ctx.user)
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "errors.unauthenticated",
+      });
+    if (!roles.includes(ctx.user.role)) throw new AppError("forbidden", { message: "role" });
+    return next({ ctx: { ...ctx, user: ctx.user } });
+  });
 
 export const router = t.router;
 export const publicProcedure = t.procedure.use(mapAppErrors).use(requireSameOrigin);
