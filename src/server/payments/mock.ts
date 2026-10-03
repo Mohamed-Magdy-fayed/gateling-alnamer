@@ -1,6 +1,6 @@
 import "server-only";
 import { randomBytes, randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
 import { mockGatewayInvoices, type mockInvoiceStatus } from "@/server/db/schema";
@@ -33,6 +33,15 @@ export function createMockGateway(): PaymentGateway {
         currency: input.currency,
       });
       return { invoiceId, paymentUrl: `/dev/pay/${invoiceId}` };
+    },
+
+    async cancelInvoice(invoiceId) {
+      await db()
+        .update(mockGatewayInvoices)
+        .set({ status: "expired" })
+        .where(
+          and(eq(mockGatewayInvoices.id, invoiceId), eq(mockGatewayInvoices.status, "pending")),
+        );
     },
 
     async getPaymentStatus(invoiceId): Promise<PaymentStatus> {

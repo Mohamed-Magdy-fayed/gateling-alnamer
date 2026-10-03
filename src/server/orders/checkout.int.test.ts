@@ -91,6 +91,24 @@ describe("startCheckout", () => {
     expect(await ordersOf(student.id, course.courseId)).toHaveLength(1);
   });
 
+  it("a restart supersedes the previous invoice so it can no longer be paid", async () => {
+    const student = await createUser(conn);
+    const course = await createCourse(conn);
+    const first = await startCheckout({ buyer: student, courseId: course.courseId }, deps());
+    if (!first.ok) throw new Error("first start failed");
+    const [before] = await ordersOf(student.id, course.courseId);
+    const oldInvoice = before?.gatewayInvoiceId;
+    if (!oldInvoice) throw new Error("no first invoice");
+    await startCheckout({ buyer: student, courseId: course.courseId }, deps());
+    const status = await gateway.getPaymentStatus(oldInvoice);
+    expect(status.status).toBe("expired");
+    const [after] = await ordersOf(student.id, course.courseId);
+    expect(after?.gatewayInvoiceId).not.toBe(oldInvoice);
+    const latest = after?.gatewayInvoiceId;
+    if (!latest) throw new Error("no new invoice");
+    expect((await gateway.getPaymentStatus(latest)).status).toBe("pending");
+  });
+
   it("marks an expired pending order expired and opens a new one", async () => {
     const student = await createUser(conn);
     const course = await createCourse(conn);
@@ -276,6 +294,7 @@ describe("startCheckout", () => {
         throw new Error("gateway down");
       },
       getPaymentStatus: gateway.getPaymentStatus,
+      cancelInvoice: gateway.cancelInvoice,
     };
     const failed = await startCheckout(
       { buyer: student, courseId: course.courseId },

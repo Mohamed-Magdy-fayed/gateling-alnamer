@@ -26,6 +26,8 @@ export type PaymentStatus = {
 export interface PaymentGateway {
   createInvoice(input: CreateInvoiceInput): Promise<{ invoiceId: string; paymentUrl: string }>;
   getPaymentStatus(invoiceId: string): Promise<PaymentStatus>;
+  /** Supersedes an invoice that was replaced by a newer one; a no-op once it is no longer pending. */
+  cancelInvoice(invoiceId: string): Promise<void>;
 }
 
 /** The gateway selected by `PAYMENT_PROVIDER`. Only the mock exists until P3. */

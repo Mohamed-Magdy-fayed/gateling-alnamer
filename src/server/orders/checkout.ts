@@ -229,6 +229,17 @@ async function reserveWithRetry(reservation: Reservation, now: Date): Promise<Or
   }
 }
 
+/** Best effort: a failure here must not fail the new checkout; a late payment is flagged on confirm. */
+async function supersedeInvoice(gateway: PaymentGateway, invoiceId: string): Promise<void> {
+  try {
+    await gateway.cancelInvoice(invoiceId);
+  } catch (error) {
+    console.error(
+      `[checkout] could not cancel superseded invoice (${error instanceof Error ? error.name : "unknown"})`,
+    );
+  }
+}
+
 /**
  * Starts (or resumes) a purchase. The order row commits first; the gateway invoice is created
  * afterwards and its id stored on the order. If the invoice cannot be created the order stays
@@ -302,6 +313,7 @@ export async function startCheckout(
 
   try {
     const gateway = deps.gateway ?? paymentGateway();
+    const previousInvoiceId = order.gatewayInvoiceId;
     const invoice = await gateway.createInvoice({
       orderId: order.id,
       amountMinor: order.amountMinor,
@@ -314,6 +326,7 @@ export async function startCheckout(
       .update(orders)
       .set({ gatewayInvoiceId: invoice.invoiceId, updatedAt: now })
       .where(eq(orders.id, order.id));
+    if (previousInvoiceId) await supersedeInvoice(gateway, previousInvoiceId);
     return {
       ok: true,
       orderId: order.id,

@@ -94,7 +94,18 @@ async function applyPaid(
   await lockStudentCourse(tx, peek.beneficiary, peek.courseId);
   const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
   if (!order) throw new Error("order vanished during confirmation");
-  if (PAID_STATUSES.includes(order.status)) return order;
+  if (PAID_STATUSES.includes(order.status)) {
+    if (order.gatewayInvoiceId === invoiceId || order.refundFlag) return order;
+    // A different invoice of an already-paid order was also paid: the buyer was charged twice.
+    // Keep the status and the first payment ids, grant nothing, flag it for a refund.
+    console.warn(`[payments] second paid invoice ${invoiceId} for order ${order.id}`);
+    const [flagged] = await tx
+      .update(orders)
+      .set({ refundFlag: "duplicate", updatedAt: clock.now() })
+      .where(eq(orders.id, order.id))
+      .returning();
+    return flagged ?? order;
+  }
 
   const [revision] = await tx
     .select({

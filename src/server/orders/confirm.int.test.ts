@@ -216,6 +216,37 @@ describe("confirmPayment", () => {
     expect((await orderOf(orderId))?.status).toBe("paid");
   });
 
+  it("a second paid invoice on a paid order is flagged duplicate, not ignored", async () => {
+    const { student, course, orderId, invoiceId: firstInvoice } = await buy();
+    const restarted = await startCheckout({ buyer: student, courseId: course.courseId }, deps());
+    if (!restarted.ok) throw new Error(`restart failed: ${restarted.reason}`);
+    const latest = (await orderOf(orderId))?.gatewayInvoiceId;
+    if (!latest || latest === firstInvoice) throw new Error("restart made no new invoice");
+    await setMockInvoiceStatus(latest, "paid");
+    await confirmPayment(latest, { gateway });
+    expect((await orderOf(orderId))?.refundFlag).toBeNull();
+
+    // The superseded invoice is paid anyway at the gateway: the buyer was charged twice.
+    await setMockInvoiceStatus(firstInvoice, "paid");
+    const result = await confirmPayment(firstInvoice, { gateway });
+    expect(result).toMatchObject({ kind: "order", status: "paid", refundFlag: "duplicate" });
+    const order = await orderOf(orderId);
+    expect(order).toMatchObject({
+      status: "paid",
+      refundFlag: "duplicate",
+      gatewayInvoiceId: latest,
+    });
+    expect(await grantsOf(student.id)).toHaveLength(1);
+  });
+
+  it("replaying the same paid invoice never sets the duplicate flag", async () => {
+    const { orderId, invoiceId } = await buy();
+    await setMockInvoiceStatus(invoiceId, "paid");
+    await confirmPayment(invoiceId, { gateway });
+    await confirmPayment(invoiceId, { gateway });
+    expect((await orderOf(orderId))?.refundFlag).toBeNull();
+  });
+
   it("an unknown invoice is not_found", async () => {
     expect(await confirmPayment("MOCK-does-not-exist", { gateway })).toEqual({
       kind: "not_found",
