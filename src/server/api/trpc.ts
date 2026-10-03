@@ -98,7 +98,18 @@ const requireSameOrigin = t.middleware(async ({ type, ctx, next }) => {
   return next();
 });
 
-/** Server-side log of the real error. Never sent to the client. */
+/** Postgres error code from a driver error or anything in its cause chain, never a message (it quotes the row). */
+function pgCode(error: unknown, depth = 0): string | undefined {
+  if (typeof error !== "object" || error === null || depth > 5) return undefined;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return code;
+  return pgCode((error as { cause?: unknown }).cause, depth + 1);
+}
+
+/**
+ * Server-side log of the real error. Never sent to the client. An unexpected error logs only its
+ * class name and a pg code: a Drizzle error's message and params quote the row (email, hash).
+ */
 export function logTrpcError({
   path,
   error,
@@ -112,7 +123,9 @@ export function logTrpcError({
     return;
   }
   if (error.code === "INTERNAL_SERVER_ERROR") {
-    console.error(`[trpc] ${path ?? "?"} failed`, real);
+    const name = real instanceof Error ? real.name : "unknown";
+    const code = pgCode(real);
+    console.error(`[trpc] ${path ?? "?"} failed (${name}${code ? `, pg ${code}` : ""})`);
   }
 }
 

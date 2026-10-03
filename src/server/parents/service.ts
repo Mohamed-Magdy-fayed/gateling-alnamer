@@ -6,8 +6,8 @@ import { writeAudit } from "@/server/audit/repository";
 import {
   type AbuseDeps,
   guardChildCreate,
-  guardCodeSend,
   guardInviteRedeem,
+  guardParentReset,
 } from "@/server/auth/abuse";
 import { ageOn, isUnder18 } from "@/server/auth/age";
 import { hashPassword } from "@/server/auth/password";
@@ -508,7 +508,7 @@ export async function resetChildPassword(
   }
 
   const { facts, email } = decision;
-  const guard = await guardCodeSend({ identifier: email, ip: `parent:${parentId}` }, deps);
+  const guard = await guardParentReset({ parentId, childId }, deps);
   if (!("ok" in guard)) return { ok: false, reason: "rateLimited" };
   await db().transaction(async (tx) => {
     await writeAudit(tx, {

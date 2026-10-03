@@ -138,7 +138,13 @@ describe("removeDeviceAction", () => {
   it("removes and registers in one service call for the pre-session's own device", async () => {
     expect(await run(remove)).toBe("redirect:/dashboard");
     expect(h.removeCalls).toEqual([
-      { userId: "u1", deviceId: DEVICE_ID, currentDeviceKey: "key-1", userAgent: "UA" },
+      {
+        userId: "u1",
+        deviceId: DEVICE_ID,
+        currentDeviceKey: "key-1",
+        userAgent: "UA",
+        preSessionTokenHash: "t",
+      },
     ]);
     expect(h.created).toEqual([["u1", { deviceId: "dev-new" }]]);
     expect(h.cleared).toBe(1);
@@ -155,6 +161,13 @@ describe("removeDeviceAction", () => {
     h.registered = { ok: false, reason: "throttled", nextAt: new Date("2030-03-09T10:00:00.000Z") };
     const state = await remove();
     expect(state).toMatchObject({ status: "error", tone: "warning" });
+    expect(h.created).toHaveLength(0);
+    expect(h.cleared).toBe(0);
+  });
+
+  it("sends a dead pre-session (reset, sign-out everywhere, suspension) to sign-in with no session", async () => {
+    h.registered = { ok: false, reason: "expired" };
+    expect(await run(remove)).toBe("redirect:/sign-in");
     expect(h.created).toHaveLength(0);
     expect(h.cleared).toBe(0);
   });

@@ -1,5 +1,7 @@
 import "server-only";
+import { eq } from "drizzle-orm";
 import type { db } from "@/server/db";
+import { preSessions } from "@/server/db/schema";
 import { cacheDeleteUser } from "./session-cache";
 import { deleteUserSessions } from "./session-repo";
 
@@ -22,13 +24,16 @@ export async function invalidateUserSessionsCore(
 
 /**
  * Transactional half of a revocation: deletes the session rows inside `tx` and returns the token
- * hashes. Once the transaction commits, the caller runs `purgeSessionCache` with them.
+ * hashes. The user's pre-sessions (a correct password on a blocked device) die with them, so a
+ * password reset or "sign out everywhere" also ends a pending device removal. Once the transaction
+ * commits, the caller runs `purgeSessionCache` with the hashes.
  */
-export function deleteUserSessionsIn(
+export async function deleteUserSessionsIn(
   tx: SessionTx,
   userId: string,
   exceptTokenHash?: string,
 ): Promise<string[]> {
+  await tx.delete(preSessions).where(eq(preSessions.userId, userId));
   return deleteUserSessions(userId, exceptTokenHash, tx);
 }
 

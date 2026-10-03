@@ -6,6 +6,7 @@ import {
   deviceRemovals,
   devices,
   platformSettings,
+  preSessions,
   sessions,
   users,
 } from "@/server/db/schema";
@@ -25,6 +26,7 @@ const dbModule = (await import("@/server/db")) as unknown as {
   closeTestDb: () => Promise<void>;
 };
 const service = await import("./service");
+const { deleteUserSessionsIn } = await import("@/server/auth/session-invalidate");
 
 const db = () =>
   dbModule.db() as unknown as import("drizzle-orm/postgres-js").PostgresJsDatabase<
@@ -64,6 +66,22 @@ async function addSession(userId: string, deviceId: string | null) {
     .insert(sessions)
     .values({ tokenHash, userId, deviceId, expiresAt: new Date(NOW.getTime() + DAY) });
   return tokenHash;
+}
+
+/** A live pre-session row for the user; returns its token hash. */
+async function pre(userId: string) {
+  const tokenHash = crypto.randomUUID();
+  await db()
+    .insert(preSessions)
+    .values({ tokenHash, userId, deviceKey: key(), expiresAt: new Date(NOW.getTime() + DAY) });
+  return tokenHash;
+}
+
+/** `removeAndRegister` with a fresh pre-session behind it, as the block screen has. */
+async function rar(
+  input: Omit<Parameters<typeof service.removeAndRegister>[0], "preSessionTokenHash">,
+) {
+  return service.removeAndRegister({ ...input, preSessionTokenHash: await pre(input.userId) });
 }
 
 async function deviceRows(userId: string) {
@@ -249,7 +267,7 @@ describe("removeAndRegister", () => {
     const so = await addSession(userId, old);
     const current = key();
 
-    const result = await service.removeAndRegister({
+    const result = await rar({
       userId,
       deviceId: old,
       currentDeviceKey: current,
@@ -273,7 +291,7 @@ describe("removeAndRegister", () => {
     await setSettings(1, "strict"); // lowered: one removal leaves one active, still at the limit
     const sa = await addSession(userId, a);
 
-    const result = await service.removeAndRegister({
+    const result = await rar({
       userId,
       deviceId: a,
       currentDeviceKey: key(),
@@ -295,21 +313,70 @@ describe("removeAndRegister", () => {
     const a = await need(userId, key());
     const b = await need(userId, kCurrent);
     const mine = { userId, currentDeviceKey: kCurrent, userAgent: UA };
-    expect(await service.removeAndRegister({ ...mine, deviceId: b })).toEqual({
+    expect(await rar({ ...mine, deviceId: b })).toEqual({
       ok: false,
       reason: "is_current",
     });
-    expect(await service.removeAndRegister({ ...mine, userId: other, deviceId: a })).toEqual({
+    expect(await rar({ ...mine, userId: other, deviceId: a })).toEqual({
       ok: false,
       reason: "not_found",
     });
-    expect((await service.removeAndRegister({ ...mine, deviceId: a })).ok).toBe(true);
+    expect((await rar({ ...mine, deviceId: a })).ok).toBe(true);
     const c = await need(userId, key());
-    expect(await service.removeAndRegister({ ...mine, deviceId: c })).toEqual({
+    expect(await rar({ ...mine, deviceId: c })).toEqual({
       ok: false,
       reason: "throttled",
       nextAt: new Date(NOW.getTime() + 7 * DAY),
     });
+  });
+});
+
+describe("pre-sessions die with the account's sessions", () => {
+  it("deleteUserSessionsIn also deletes the user's pre-sessions, and only theirs", async () => {
+    const userId = await makeUser("psd");
+    const other = await makeUser("psdo");
+    await pre(userId);
+    const kept = await pre(other);
+    await db().transaction((tx) => deleteUserSessionsIn(tx, userId));
+    expect(
+      await db().select().from(preSessions).where(eq(preSessions.userId, userId)),
+    ).toHaveLength(0);
+    expect(
+      await db().select().from(preSessions).where(eq(preSessions.tokenHash, kept)),
+    ).toHaveLength(1);
+  });
+
+  it("a removal after a password reset is refused and changes nothing", async () => {
+    const userId = await makeUser("psr");
+    await setSettings(1, "strict");
+    const old = await need(userId, key());
+    const token = await pre(userId);
+    await db().transaction((tx) => deleteUserSessionsIn(tx, userId));
+    const result = await service.removeAndRegister({
+      userId,
+      deviceId: old,
+      currentDeviceKey: key(),
+      userAgent: UA,
+      preSessionTokenHash: token,
+    });
+    expect(result).toEqual({ ok: false, reason: "expired" });
+    expect((await deviceRows(userId)).filter((d) => d.revokedAt === null)).toHaveLength(1);
+  });
+
+  it("a removal for a suspended account is refused even with a live pre-session", async () => {
+    const userId = await makeUser("pss");
+    await setSettings(1, "strict");
+    const old = await need(userId, key());
+    const token = await pre(userId);
+    await db().update(users).set({ status: "suspended" }).where(eq(users.id, userId));
+    const result = await service.removeAndRegister({
+      userId,
+      deviceId: old,
+      currentDeviceKey: key(),
+      userAgent: UA,
+      preSessionTokenHash: token,
+    });
+    expect(result).toEqual({ ok: false, reason: "expired" });
   });
 });
 

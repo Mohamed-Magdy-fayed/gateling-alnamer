@@ -37,6 +37,9 @@ const h = vi.hoisted(() => ({
   pendingSet: [] as string[],
   pendingCleared: 0,
   codeRow: null as null | { emailStatus: "queued" | "sent" | "failed"; createdAt: Date },
+  contexts: 0,
+  known: new Set<string>(),
+  seen: [] as string[],
 }));
 
 vi.mock("next/server", () => ({
@@ -72,14 +75,26 @@ vi.mock("./sign-up", async (importOriginal) => {
     },
   };
 });
+vi.mock("./known-device", () => ({
+  isKnownDevice: async (id: string) => h.known.has(id),
+  markDeviceSeen: async (id: string) => {
+    h.seen.push(id);
+  },
+}));
+vi.mock("./session-invalidate", () => ({
+  deleteUserSessionsIn: async () => {
+    h.calls.push("sessions:delete");
+    return ["hash-1"];
+  },
+  purgeSessionCache: async () => {
+    h.calls.push("sessions:purge");
+  },
+}));
 vi.mock("./request-context", () => ({
-  requestContext: async () => ({
-    ip: h.ip,
-    deviceId: h.deviceId,
-    deviceKey: "key-1",
-    userAgent: "UA",
-    secure: false,
-  }),
+  requestContext: async () => {
+    h.contexts += 1;
+    return { ip: h.ip, deviceId: h.deviceId, deviceKey: "key-1", userAgent: "UA", secure: false };
+  },
 }));
 vi.mock("@/server/devices/sign-in", () => ({
   gateDevice: async (...args: unknown[]) => {
@@ -99,6 +114,7 @@ vi.mock("./pending-reset", () => ({
 }));
 vi.mock("./code-status", () => ({ latestCodeRow: async () => h.codeRow }));
 const tx = {
+  delete: () => ({ where: async () => undefined }),
   insert: () => ({
     values: () => ({
       onConflictDoUpdate: async () => {
@@ -192,6 +208,9 @@ beforeEach(() => {
   h.pendingSet.length = 0;
   h.pendingCleared = 0;
   h.codeRow = null;
+  h.contexts = 0;
+  h.known.clear();
+  h.seen.length = 0;
   h.gate = { kind: "allowed", deviceId: null, overLimit: false };
   h.gateCalls.length = 0;
   vi.clearAllMocks();
@@ -235,6 +254,57 @@ describe("signInAction", () => {
       ),
     ).rejects.toThrow("redirect:/dashboard");
     expect(h.calls).toEqual(["destroy", "create:u1"]);
+  });
+
+  describe("device ids and the pair lock (D36)", () => {
+    const attempt = (password = "wrong pass 1") =>
+      signInAction({ status: "idle" }, form({ identifier: "victim@example.test", password }));
+    const locked = (state: FormState) =>
+      state.tone === "danger" && state.offerReset === true && state.retryAt !== undefined;
+
+    it("an empty post validates before requestContext, so it mints no device id", async () => {
+      await signInAction({ status: "idle" }, form({}));
+      await signInAction({ status: "idle" }, form({ identifier: "", password: "" }));
+      expect(h.contexts).toBe(0);
+    });
+
+    it("12 failures with 12 different unknown dids from one IP lock the pair", async () => {
+      const results: FormState[] = [];
+      for (let i = 0; i < 12; i++) {
+        h.deviceId = `did-fresh-${i}`;
+        results.push(await attempt());
+      }
+      expect(results.slice(0, 10).some(locked)).toBe(false);
+      expect(locked(results[10] as FormState)).toBe(true);
+      expect(locked(results[11] as FormState)).toBe(true);
+    });
+
+    it("a known returning device keeps its own pair, whatever IP it comes from", async () => {
+      h.known.add("did-real");
+      h.deviceId = "did-real";
+      for (let i = 0; i < 10; i++) {
+        h.ip = `198.51.100.${i + 1}`;
+        expect(locked(await attempt())).toBe(false);
+      }
+      h.ip = "198.51.100.200";
+      expect(locked(await attempt())).toBe(true);
+      // Another, unknown device on the same address is a different pair and is not locked.
+      h.deviceId = "did-other";
+      expect(locked(await attempt())).toBe(false);
+    });
+
+    it("marks the device id seen only after a successful sign-in", async () => {
+      h.deviceId = "did-real";
+      await attempt();
+      expect(h.seen).toEqual([]);
+      h.user = {
+        id: "u1",
+        status: "active",
+        credentials: { passwordHash: await hashPassword("right pass 1"), passwordSalt: null },
+      };
+      await expect(attempt("right pass 1")).rejects.toThrow("redirect:/dashboard");
+      expect(h.seen).toEqual(["key-1"]);
+    });
   });
 
   describe("device limit", () => {
@@ -370,7 +440,14 @@ describe("resetPasswordAction", () => {
     h.user = { id: "u1", email: "who@example.test" };
     h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" });
     const result = await reset();
-    expect(h.calls).toEqual(["tx:begin", "verify:u1", "credential", "tx:end"]);
+    expect(h.calls).toEqual([
+      "tx:begin",
+      "verify:u1",
+      "credential",
+      "sessions:delete",
+      "tx:end",
+      "sessions:purge",
+    ]);
     expect(result).toMatchObject({ status: "success", message: en.auth.reset.done });
     expect(h.pendingCleared).toBe(1);
   });

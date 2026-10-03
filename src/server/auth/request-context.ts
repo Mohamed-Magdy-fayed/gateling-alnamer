@@ -32,7 +32,7 @@ export async function requestContext(): Promise<RequestContext> {
   return {
     ip: clientIp(requestHeaders, {
       VERCEL: env.VERCEL,
-      TRUST_PROXY_HEADERS: process.env.TRUST_PROXY_HEADERS,
+      TRUST_PROXY_HEADERS: env.TRUST_PROXY_HEADERS ? "1" : undefined,
     }),
     deviceId: device.existing ? device.id : null,
     deviceKey: device.id,

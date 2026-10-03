@@ -10,7 +10,13 @@ try {
   process.exit(1);
 }
 // Port 3400 by default: 3000 and 3100 are often held by other local projects.
-const env = sanitizedChildEnv({ keep: args.useTestDatabase ? ["DATABASE_URL"] : [] });
+// TRUST_PROXY_HEADERS is now an env-schema key (so it would be blanked); the smoke harness sets it
+// on purpose, so it is kept whenever the caller provides it.
+const keep = [
+  ...(args.useTestDatabase ? ["DATABASE_URL"] : []),
+  ...(process.env.TRUST_PROXY_HEADERS ? ["TRUST_PROXY_HEADERS"] : []),
+];
+const env = sanitizedChildEnv({ keep });
 env.PORT = env.PORT || "3400";
 const result = spawnSync(process.execPath, ["./node_modules/next/dist/bin/next", "start"], {
   stdio: "inherit",

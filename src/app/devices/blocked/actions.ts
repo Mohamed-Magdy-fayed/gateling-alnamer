@@ -36,8 +36,11 @@ export async function removeDeviceAction(_prev: FormState, formData: FormData): 
     deviceId: parsed.data.deviceId,
     currentDeviceKey: device.deviceKey,
     userAgent: device.userAgent,
+    preSessionTokenHash: pre.tokenHash,
   });
   if (!removal.ok) {
+    // The pre-session died (password reset, sign-out everywhere) or the account was suspended.
+    if (removal.reason === "expired") redirect("/sign-in");
     if (removal.reason !== "throttled") redirect(BLOCKED_PATH);
     const { t, locale } = await getDictionary();
     return {

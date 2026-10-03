@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { describeProviders, EnvError, parseServerEnv } from "./env-schema";
 
+/** Live is refused until two-factor is enforced (A7b); tests that are not about that pass it as on. */
+const ENFORCED = { twoFactorEnforced: true };
+const parse = (source: Record<string, string | undefined>, options = ENFORCED) =>
+  parseServerEnv(source, options);
+
 const local = { APP_MODE: "demo", DATABASE_URL: "postgres://u:p@localhost:5432/db" };
 
-function failure(source: Record<string, string | undefined>): string {
+function failure(
+  source: Record<string, string | undefined>,
+  options: { twoFactorEnforced: boolean } = ENFORCED,
+): string {
   try {
-    parseServerEnv(source);
+    parse(source, options);
   } catch (error) {
     expect(error).toBeInstanceOf(EnvError);
     return (error as Error).message;
@@ -15,7 +23,7 @@ function failure(source: Record<string, string | undefined>): string {
 
 describe("parseServerEnv", () => {
   it("passes a minimal local demo environment", () => {
-    const env = parseServerEnv(local);
+    const env = parse(local);
     expect(env.APP_MODE).toBe("demo");
   });
 
@@ -50,7 +58,7 @@ describe("parseServerEnv", () => {
   });
 
   it("allows a MyFatoorah test key in demo", () => {
-    expect(() => parseServerEnv({ ...local, MYFATOORAH_API_KEY: "test-key" })).not.toThrow();
+    expect(() => parse({ ...local, MYFATOORAH_API_KEY: "test-key" })).not.toThrow();
   });
 
   it("fails demo on VERCEL_ENV=production when the BASE_URL host is not in DEMO_HOSTS", () => {
@@ -70,7 +78,7 @@ describe("parseServerEnv", () => {
   });
 
   it("passes demo on an allowlisted production host", () => {
-    const env = parseServerEnv({
+    const env = parse({
       ...local,
       VERCEL_ENV: "production",
       BASE_URL: "https://alnamer.gateling.com",
@@ -90,7 +98,7 @@ describe("parseServerEnv", () => {
   });
 
   it("allows INNGEST_DEV locally", () => {
-    expect(() => parseServerEnv({ ...local, INNGEST_DEV: "1" })).not.toThrow();
+    expect(() => parse({ ...local, INNGEST_DEV: "1" })).not.toThrow();
   });
 
   it("fails live with DEMO_ACCOUNTS_PASSWORD, without echoing it", () => {
@@ -132,10 +140,11 @@ describe("parseServerEnv", () => {
       TURNSTILE_SECRET_KEY: "turnstile-secret-value",
       UPSTASH_REDIS_REST_URL: "https://redis.example",
       UPSTASH_REDIS_REST_TOKEN: "redis-token-value",
+      TRUST_PROXY_HEADERS: "false",
     };
 
     it("resolves the minimal local demo to mock providers, mailpit and inline jobs", () => {
-      expect(parseServerEnv(local).providers).toEqual({
+      expect(parse(local).providers).toEqual({
         payment: "mock",
         video: "mock",
         storage: "local",
@@ -147,8 +156,8 @@ describe("parseServerEnv", () => {
     });
 
     it("defaults demo CAPTCHA to fake and honours an explicit fake", () => {
-      expect(parseServerEnv(local).providers.captcha).toBe("fake");
-      expect(parseServerEnv({ ...local, CAPTCHA: "fake" }).providers.captcha).toBe("fake");
+      expect(parse(local).providers.captcha).toBe("fake");
+      expect(parse({ ...local, CAPTCHA: "fake" }).providers.captcha).toBe("fake");
     });
 
     it("refuses CAPTCHA=fake in live, naming the key", () => {
@@ -172,7 +181,7 @@ describe("parseServerEnv", () => {
     });
 
     it("passes CAPTCHA=turnstile with both keys", () => {
-      const env = parseServerEnv({
+      const env = parse({
         ...local,
         CAPTCHA: "turnstile",
         TURNSTILE_SITE_KEY: "site",
@@ -186,19 +195,19 @@ describe("parseServerEnv", () => {
     });
 
     it("defaults demo email to smtp when SMTP_HOST is set", () => {
-      const { providers } = parseServerEnv({ ...local, SMTP_HOST: "smtp.example" });
+      const { providers } = parse({ ...local, SMTP_HOST: "smtp.example" });
       expect(providers.email).toBe("smtp");
       expect(providers.emailIsDefault).toBe(true);
     });
 
     it("defaults demo jobs to inngest when Inngest keys are set, inngest-dev when INNGEST_DEV is", () => {
       const keys = { INNGEST_EVENT_KEY: "a", INNGEST_SIGNING_KEY: "b" };
-      expect(parseServerEnv({ ...local, ...keys }).providers.jobs).toBe("inngest");
-      expect(parseServerEnv({ ...local, INNGEST_DEV: "1" }).providers.jobs).toBe("inngest-dev");
+      expect(parse({ ...local, ...keys }).providers.jobs).toBe("inngest");
+      expect(parse({ ...local, INNGEST_DEV: "1" }).providers.jobs).toBe("inngest-dev");
     });
 
     it("honours explicit selectors in demo", () => {
-      const { providers } = parseServerEnv({
+      const { providers } = parse({
         ...local,
         EMAIL_TRANSPORT: "mailpit",
         STORAGE_DRIVER: "local",
@@ -233,11 +242,11 @@ describe("parseServerEnv", () => {
     );
 
     it("treats the Upstash keys as optional in demo", () => {
-      expect(() => parseServerEnv(local)).not.toThrow();
+      expect(() => parse(local)).not.toThrow();
     });
 
     it("passes a complete live environment", () => {
-      const { providers } = parseServerEnv(live);
+      const { providers } = parse(live);
       expect(providers).toMatchObject({ payment: "myfatoorah", jobs: "inngest", email: "smtp" });
     });
 
@@ -281,9 +290,7 @@ describe("parseServerEnv", () => {
 
     it("fails on Vercel without AUTH_SECRET even in demo", () => {
       expect(failure({ ...local, VERCEL: "1" })).toContain("AUTH_SECRET");
-      expect(() =>
-        parseServerEnv({ ...local, VERCEL: "1", AUTH_SECRET: "a".repeat(40) }),
-      ).not.toThrow();
+      expect(() => parse({ ...local, VERCEL: "1", AUTH_SECRET: "a".repeat(40) })).not.toThrow();
     });
 
     it("fails when AUTH_SECRET is shorter than 32 characters, without echoing it", () => {
@@ -293,20 +300,61 @@ describe("parseServerEnv", () => {
     });
 
     it("leaves AUTH_SECRET optional in demo off Vercel; DEVICE_COOKIE_SECRET no longer counts", () => {
-      expect(() => parseServerEnv(local)).not.toThrow();
+      expect(() => parse(local)).not.toThrow();
       const legacy = { ...live, AUTH_SECRET: undefined, DEVICE_COOKIE_SECRET: "d".repeat(40) };
       expect(failure(legacy)).toContain("AUTH_SECRET");
     });
 
     it("leaves INNGEST_ENCRYPTION_KEY optional in demo", () => {
-      expect(() => parseServerEnv(local)).not.toThrow();
+      expect(() => parse(local)).not.toThrow();
+    });
+
+    it("refuses to boot live while two-factor is not enforced; demo is unaffected", () => {
+      const off = { twoFactorEnforced: false };
+      expect(failure(live, off)).toContain("APP_MODE=live requires two-factor enforcement (A7b)");
+      expect(() => parse(live, off)).toThrow(EnvError);
+      expect(() => parse(local, off)).not.toThrow();
+      expect(() => parse(live, ENFORCED)).not.toThrow();
+    });
+
+    it("refuses INNGEST_DEV in live, on any host", () => {
+      expect(failure({ ...live, INNGEST_DEV: "1" })).toContain("INNGEST_DEV");
+    });
+
+    describe("TRUST_PROXY_HEADERS", () => {
+      it("parses to a boolean", () => {
+        expect(parse({ ...local, TRUST_PROXY_HEADERS: "1" }).TRUST_PROXY_HEADERS).toBe(true);
+        expect(parse({ ...local, TRUST_PROXY_HEADERS: "true" }).TRUST_PROXY_HEADERS).toBe(true);
+        expect(parse({ ...local, TRUST_PROXY_HEADERS: "false" }).TRUST_PROXY_HEADERS).toBe(false);
+        expect(parse({ ...local, TRUST_PROXY_HEADERS: "0" }).TRUST_PROXY_HEADERS).toBe(false);
+        expect(parse(local).TRUST_PROXY_HEADERS).toBeUndefined();
+      });
+
+      it("rejects anything else", () => {
+        expect(failure({ ...local, TRUST_PROXY_HEADERS: "maybe" })).toContain(
+          "TRUST_PROXY_HEADERS",
+        );
+      });
+
+      it("must be set explicitly in live off Vercel, either way", () => {
+        expect(failure({ ...live, TRUST_PROXY_HEADERS: undefined })).toContain(
+          "TRUST_PROXY_HEADERS",
+        );
+        expect(() => parse({ ...live, TRUST_PROXY_HEADERS: "true" })).not.toThrow();
+        expect(() => parse({ ...live, TRUST_PROXY_HEADERS: "false" })).not.toThrow();
+      });
+
+      it("is not required in live on Vercel, nor in demo", () => {
+        expect(() => parse({ ...live, VERCEL: "1", TRUST_PROXY_HEADERS: undefined })).not.toThrow();
+        expect(() => parse(local)).not.toThrow();
+      });
     });
   });
 
   describe("describeProviders", () => {
     it("lists the resolved choices without any credential value", () => {
       const line = describeProviders(
-        parseServerEnv({ ...local, SMTP_HOST: "smtp.example", SMTP_PASSWORD: "pw-value" }),
+        parse({ ...local, SMTP_HOST: "smtp.example", SMTP_PASSWORD: "pw-value" }),
       );
       expect(line).toBe(
         "APP_MODE=demo payment=mock video=mock storage=local email=smtp jobs=inline",
@@ -316,6 +364,6 @@ describe("parseServerEnv", () => {
 
   it("treats blank values as unset", () => {
     expect(failure({ ...local, APP_MODE: "" })).toContain("APP_MODE");
-    expect(() => parseServerEnv({ ...local, BUNNY_STREAM_API_KEY: "  " })).not.toThrow();
+    expect(() => parse({ ...local, BUNNY_STREAM_API_KEY: "  " })).not.toThrow();
   });
 });

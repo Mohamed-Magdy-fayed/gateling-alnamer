@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { writeAudit } from "@/server/audit/repository";
 import { cacheDeleteUser } from "@/server/auth/session-cache";
 import { clock } from "@/server/clock";
@@ -10,6 +10,7 @@ import {
   deviceRemovals,
   devices,
   parentLinks,
+  preSessions,
   sessions,
   type UserRole,
   users,
@@ -248,11 +249,31 @@ export async function removeDevice(input: {
 
 export type RemoveAndRegisterResult =
   | { ok: true; deviceId: string }
-  | { ok: false; reason: "not_found" | "is_current" | "blocked" }
+  | { ok: false; reason: "not_found" | "is_current" | "blocked" | "expired" }
   | { ok: false; reason: "throttled"; nextAt: Date };
 
 /** Thrown inside the transaction to roll it back when the current device would still be blocked. */
 class StillBlocked extends Error {}
+
+/**
+ * Re-checked inside the removal's transaction: a password reset or sign-out-everywhere deletes the
+ * pre-session, and a suspended account must not get a session from one that was issued earlier.
+ */
+async function preSessionStillValid(tx: Tx, userId: string, tokenHash: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ status: users.status })
+    .from(preSessions)
+    .innerJoin(users, eq(users.id, preSessions.userId))
+    .where(
+      and(
+        eq(preSessions.tokenHash, tokenHash),
+        eq(preSessions.userId, userId),
+        gt(preSessions.expiresAt, clock.now()),
+      ),
+    )
+    .limit(1);
+  return row?.status === "active";
+}
 
 /**
  * The block screen's remove: the self removal and the current device's registration in ONE
@@ -264,11 +285,16 @@ export async function removeAndRegister(input: {
   deviceId: string;
   currentDeviceKey: string;
   userAgent: string | null;
+  /** The pre-session the request came with; it must still exist and the account must still be active. */
+  preSessionTokenHash: string;
 }): Promise<RemoveAndRegisterResult> {
   const { userId, currentDeviceKey, userAgent } = input;
   try {
     const result = await db().transaction(async (tx) => {
       await lockUserDevices(tx, userId);
+      if (!(await preSessionStillValid(tx, userId, input.preSessionTokenHash))) {
+        return { ok: false, reason: "expired" } as const;
+      }
       const removal = await revokeOwnDevice(tx, input);
       if (!removal.ok) return removal;
       const registered = await registerInTx(tx, userId, currentDeviceKey, userAgent);

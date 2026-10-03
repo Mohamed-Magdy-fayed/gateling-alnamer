@@ -22,10 +22,18 @@ describe("invalidateUserSessionsCore", () => {
   });
 
   it("with a tx the rows go through it, and the cache purge is left to the caller", async () => {
-    const tx = { marker: "tx" };
+    const tx = { marker: "tx", delete: vi.fn(() => ({ where: vi.fn(async () => undefined) })) };
     const deleted = await deleteUserSessionsIn(tx as never, "u1");
     expect(h.deleteUserSessions).toHaveBeenCalledWith("u1", undefined, tx);
     expect(deleted).toEqual(["a", "b"]);
     expect(h.cacheDeleteUser).not.toHaveBeenCalled();
+  });
+
+  it("also deletes the user's pre-sessions through the same tx", async () => {
+    const where = vi.fn(async () => undefined);
+    const tx = { delete: vi.fn(() => ({ where })) };
+    await deleteUserSessionsIn(tx as never, "u1");
+    expect(tx.delete).toHaveBeenCalledTimes(1);
+    expect(where).toHaveBeenCalledTimes(1);
   });
 });

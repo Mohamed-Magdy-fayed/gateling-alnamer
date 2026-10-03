@@ -79,6 +79,9 @@ export const AUTH_LIMITS: AuthLimits = {
 /** D34: sessions kept per device; sharing the `did` cookie cannot multiply them. The oldest are revoked. */
 export const MAX_SESSIONS_PER_DEVICE = 3;
 
+/** How long a device id that signed in successfully stays "known" for the sign-in pair lock (D36). */
+export const SEEN_DID_TTL_SEC = 30 * 24 * 60 * 60;
+
 /** The device cookie lives 400 days, the browser cap; it is refreshed on every auth action. */
 export const DEVICE_COOKIE_MAX_AGE_SEC = 400 * 24 * 60 * 60;
 

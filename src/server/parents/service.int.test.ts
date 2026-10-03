@@ -14,6 +14,10 @@ import {
 import { MemoryLimiter } from "../../../test/fake-limiter";
 
 vi.mock("@/server/redis", () => ({ getRedis: () => null }));
+vi.mock("@/server/auth/session-invalidate", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/server/auth/session-invalidate")>();
+  return { ...actual, deleteUserSessionsIn: vi.fn(actual.deleteUserSessionsIn) };
+});
 vi.mock("@/server/db", async () => {
   const { drizzle } = await import("drizzle-orm/postgres-js");
   const postgres = (await import("postgres")).default;
@@ -28,6 +32,8 @@ const dbModule = (await import("@/server/db")) as unknown as {
   closeTestDb: () => Promise<void>;
 };
 const svc = await import("./service");
+const invalidate = await import("@/server/auth/session-invalidate");
+const { guardCodeSend } = await import("@/server/auth/abuse");
 const { supportContacts } = await import("@/server/devices/service");
 
 const db = () =>
@@ -614,6 +620,63 @@ describe("resetChildPassword", () => {
     );
     const audit = await auditFor("parent.reset_password", child);
     expect(JSON.stringify(audit[0]?.after)).toContain("email");
+  });
+
+  it("direct: rolls the password back when ending the sessions fails", async () => {
+    const parent = await makeUser("parent");
+    const childId = await createOk(parent);
+    const before = await db().select().from(credentials).where(eq(credentials.userId, childId));
+    vi.mocked(invalidate.deleteUserSessionsIn).mockRejectedValueOnce(new Error("boom"));
+    await expect(
+      svc.resetChildPassword(
+        { parentId: parent, childId, newPassword: "Brand-new-pass-9" },
+        ctx,
+        deps(),
+      ),
+    ).rejects.toThrow("boom");
+    expect(await db().select().from(credentials).where(eq(credentials.userId, childId))).toEqual(
+      before,
+    );
+    expect(await auditFor("parent.reset_password", childId)).toHaveLength(0);
+  });
+
+  it("email: the parent's resets use their own budget, apart from the child's self-serve one", async () => {
+    const parent = await makeUser("parent");
+    const email = `k-${crypto.randomUUID()}@example.test`;
+    const child = await makeUser("student", { email });
+    await link(parent, child, "invite");
+    // The child burns the whole self-serve reset budget for their address.
+    for (let i = 0; i < 3; i++)
+      await guardCodeSend({ identifier: email, ip: "198.51.100.7" }, deps());
+    expect(await guardCodeSend({ identifier: email, ip: "198.51.100.7" }, deps())).toMatchObject({
+      blocked: "rateLimited",
+    });
+    const viaParent = await svc.resetChildPassword(
+      { parentId: parent, childId: child },
+      ctx,
+      deps(),
+    );
+    expect(viaParent).toMatchObject({ ok: true, mode: "email" });
+  });
+
+  it("email: parent resets cannot burn the child's self-serve budget", async () => {
+    const parent = await makeUser("parent");
+    const email = `k-${crypto.randomUUID()}@example.test`;
+    const child = await makeUser("student", { email });
+    await link(parent, child, "invite");
+    for (let i = 0; i < 3; i++) {
+      const done = await svc.resetChildPassword({ parentId: parent, childId: child }, ctx, deps());
+      expect(done).toMatchObject({ ok: true, mode: "email" });
+    }
+    expect(await svc.resetChildPassword({ parentId: parent, childId: child }, ctx, deps())).toEqual(
+      {
+        ok: false,
+        reason: "rateLimited",
+      },
+    );
+    expect(await guardCodeSend({ identifier: email, ip: "198.51.100.8" }, deps())).toEqual({
+      ok: true,
+    });
   });
 
   it("an adult created child gets no_verified_email, never a direct write", async () => {

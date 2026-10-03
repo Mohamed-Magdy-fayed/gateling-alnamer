@@ -27,11 +27,13 @@ import { verifyCaptcha } from "./captcha";
 import { latestCodeRow } from "./code-status";
 import { type CodePurpose, verifyCode, verifyCodeDecoy } from "./codes";
 import { authenticate } from "./credentials";
+import { isKnownDevice, markDeviceSeen } from "./known-device";
 import { hashPassword } from "./password";
 import { clearPendingReset, readPendingReset, setPendingReset } from "./pending-reset";
 import { requestContext } from "./request-context";
 import { sendCode } from "./send-code";
-import { createSession, destroySession, getCurrentUser, invalidateUserSessions } from "./session";
+import { createSession, destroySession, getCurrentUser } from "./session";
+import { deleteUserSessionsIn, purgeSessionCache } from "./session-invalidate";
 import { type SignUpField, signUpUser } from "./sign-up";
 
 /** How the form-level message looks and sounds: danger is an error, warning a wait or a delay. */
@@ -203,16 +205,24 @@ async function sendVerificationCode(userId: string, locale: Locale): Promise<voi
 export async function signInAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const { t, locale } = await getDictionary();
   const raw = fields(formData);
-  const device = await requestContext();
   const failed: FormState = {
     status: "error",
     message: t.auth.errors.credentials,
     values: typeof raw.identifier === "string" ? { identifier: raw.identifier } : {},
   };
+  // Validate first: an empty post must not reach requestContext, which mints a device cookie.
   const parsed = signInSchema.safeParse(raw);
   if (!parsed.success) return failed;
 
-  const who = { identifier: parsed.data.identifier, ...device };
+  const device = await requestContext();
+  // D36: the pair lock keys on the device id only when the server knows that device; a minted or
+  // replayed id falls back to the hashed IP, so a fresh `did` never resets the lock.
+  const known = device.deviceId !== null && (await isKnownDevice(device.deviceId));
+  const who = {
+    identifier: parsed.data.identifier,
+    ip: device.ip,
+    deviceId: known ? device.deviceId : null,
+  };
   const guard = await guardSignIn({ ...who, captchaToken: captchaToken(raw) });
   if (!("ok" in guard)) return { ...blockedState(guard, t, locale), values: failed.values };
 
@@ -230,6 +240,7 @@ export async function signInAction(_prev: FormState, formData: FormData): Promis
   // A student over the limit in strict mode gets a pre-session, never a session.
   if (gate.kind === "blocked") redirect("/devices/blocked");
   await createSession(userId, { deviceId: gate.deviceId });
+  await markDeviceSeen(device.deviceKey);
   // The over-limit notice lives on the dashboard, so it wins over `next`; otherwise a same-origin
   // relative `next` is honoured and anything else falls back to the dashboard.
   redirect(
@@ -309,7 +320,7 @@ export async function resetPasswordAction(
   // usable, and a code can never be spent without the password changing.
   const reset = await db().transaction(async (tx) => {
     const verified = await verifyCode(user.id, "password_reset", input.code, tx);
-    if (!verified.ok) return false;
+    if (!verified.ok) return null;
     const passwordHash = await hashPassword(input.password);
     const now = clock.now();
     await tx
@@ -319,12 +330,14 @@ export async function resetPasswordAction(
         target: credentials.userId,
         set: { passwordHash, passwordSalt: null, updatedAt: now },
       });
-    return true;
+    // A password reset signs the account out everywhere (pre-sessions included) in the same
+    // transaction, so a failure after the credential write rolls the write back.
+    return { sessionHashes: await deleteUserSessionsIn(tx, user.id) };
   });
   if (!reset) return { status: "error", message: t.auth.states.codeInvalid };
   await clearCodeVerifyFailures(who);
-  // A password reset signs the account out everywhere.
-  await invalidateUserSessions(user.id);
+  // The cache is purged only after the commit.
+  await purgeSessionCache(user.id, reset.sessionHashes);
   await clearPendingReset();
   return { status: "success", message: t.auth.reset.done };
 }

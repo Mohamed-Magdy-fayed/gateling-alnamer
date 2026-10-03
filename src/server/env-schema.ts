@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TWO_FACTOR_ENFORCED } from "./config/policy";
 
 /**
  * Pure environment schema: no `server-only`, no Next imports, so build, boot and tests share it.
@@ -54,6 +55,14 @@ const schema = z.object({
   DEMO_ACCOUNTS_PASSWORD: optionalText,
   DEMO_TOTP_SECRET: optionalText,
   INNGEST_DEV: optionalText,
+  /** Trust `x-real-ip` (a proxy we run sets it); on Vercel `x-forwarded-for` is trusted regardless. */
+  TRUST_PROXY_HEADERS: z.preprocess(
+    blankAsUnset,
+    z
+      .enum(["1", "true", "0", "false"])
+      .transform((value) => value === "1" || value === "true")
+      .optional(),
+  ),
   UPSTASH_REDIS_REST_URL: optionalText,
   UPSTASH_REDIS_REST_TOKEN: optionalText,
   MYFATOORAH_LIVE: optionalText,
@@ -234,7 +243,29 @@ function redisProblems(env: RawEnv): string[] {
     .map((key) => `${key} is required when APP_MODE=live; ${FIX_HINT}.`);
 }
 
-function crossProblems(env: RawEnv, providers: ResolvedProviders): string[] {
+/** Live-only guards that are not about a provider choice. */
+function liveProblems(env: RawEnv, twoFactorEnforced: boolean): string[] {
+  if (env.APP_MODE !== "live") return [];
+  const problems: string[] = [];
+  if (!twoFactorEnforced) {
+    problems.push("APP_MODE=live requires two-factor enforcement (A7b).");
+  }
+  if (env.INNGEST_DEV) {
+    problems.push("INNGEST_DEV must not be set when APP_MODE=live; unset it.");
+  }
+  if (!env.VERCEL && env.TRUST_PROXY_HEADERS === undefined) {
+    problems.push(
+      `TRUST_PROXY_HEADERS must be set explicitly (true or false) when APP_MODE=live off Vercel; ${FIX_HINT}.`,
+    );
+  }
+  return problems;
+}
+
+function crossProblems(
+  env: RawEnv,
+  providers: ResolvedProviders,
+  twoFactorEnforced: boolean,
+): string[] {
   const problems: string[] = [];
   const deployed = env.VERCEL_ENV === "preview" || env.VERCEL_ENV === "production";
   if (deployed && !env.BASE_URL) {
@@ -249,6 +280,7 @@ function crossProblems(env: RawEnv, providers: ResolvedProviders): string[] {
   if (env.APP_MODE === "live" && env.DEMO_ACCOUNTS_PASSWORD) {
     problems.push("DEMO_ACCOUNTS_PASSWORD is refused when APP_MODE=live; unset it.");
   }
+  problems.push(...liveProblems(env, twoFactorEnforced));
   problems.push(...authSecretProblems(env));
   problems.push(...redisProblems(env));
   problems.push(...selectorProblems(env, providers));
@@ -256,12 +288,15 @@ function crossProblems(env: RawEnv, providers: ResolvedProviders): string[] {
 }
 
 /** Validates an environment source; throws `EnvError` listing key names only. */
-export function parseServerEnv(source: Source): ServerEnv {
+export function parseServerEnv(
+  source: Source,
+  options: { readonly twoFactorEnforced?: boolean } = {},
+): ServerEnv {
   const shape = shapeProblems(source);
   if (shape.length > 0) throw new EnvError(shape);
   const raw = schema.parse(source);
   const providers = resolveProviders(raw);
-  const problems = crossProblems(raw, providers);
+  const problems = crossProblems(raw, providers, options.twoFactorEnforced ?? TWO_FACTOR_ENFORCED);
   if (problems.length > 0) throw new EnvError(problems);
   return { ...raw, providers };
 }

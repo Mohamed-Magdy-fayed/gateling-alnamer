@@ -169,6 +169,22 @@ export async function guardCodeSend(
   ]);
 }
 
+/**
+ * A parent's "reset by email" for one child: its own namespace, so it can neither burn the child's
+ * self-serve reset budget (`guardCodeSend`, keyed on the address) nor be burned by it.
+ */
+export async function guardParentReset(
+  input: { parentId: string; childId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  const limits = deps.limits ?? AUTH_LIMITS;
+  return within(
+    limiterOf(deps),
+    `rl:parentreset:${hasherOf(deps).hash(`parent-reset:${input.parentId}:${input.childId}`)}`,
+    limits.codeSend.id,
+  );
+}
+
 /** "Add email": 3 an hour per target address across all accounts; keyed on an HMAC of the lower-cased address. */
 export async function guardAddEmailTarget(
   input: { address: string },

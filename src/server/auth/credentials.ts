@@ -15,7 +15,7 @@ export function identifierCondition(identifier: string) {
 
 /**
  * Checks an email or username and a password. Returns the user id, or null for every failure
- * (unknown user, wrong password, suspended account). Exactly one password verify runs whatever the
+ * (unknown user, wrong password, suspended account, a sample account when `appMode` is "live"). Exactly one password verify runs whatever the
  * outcome; the account status is read after it so timing does not reveal a suspension.
  * A legacy scrypt credential is rehashed to argon2id (salt cleared) only while the stored hash is
  * still the one we verified, so a reset that lands in between is never overwritten.
@@ -24,14 +24,17 @@ export async function authenticate(
   identifier: string,
   password: string,
   conn: Database = db(),
+  appMode: string | undefined = process.env.APP_MODE,
 ): Promise<string | null> {
   const user = await conn.query.users.findFirst({
-    columns: { id: true, status: true },
+    columns: { id: true, status: true, isSample: true },
     where: identifierCondition(identifier),
     with: { credentials: { columns: { passwordHash: true, passwordSalt: true } } },
   });
   const credential = user?.credentials;
   if (!user || !credential) return verifyDummy(password).then(() => null);
+  // Demo accounts cannot sign in on the real site; same cost and same answer as a wrong password.
+  if (user.isSample && appMode === "live") return verifyDummy(password).then(() => null);
   // A legacy credential without a salt cannot verify; it still costs one hash like every other failure.
   if (isLegacyHash(credential) && !credential.passwordSalt) {
     return verifyDummy(password).then(() => null);
