@@ -18,6 +18,8 @@ afterAll(async () => {
 });
 
 const MIGRATION = path.resolve(import.meta.dirname, "migrations/0008_sample_catalogue.sql");
+// C3: the four W1 grades moved under curricula; more grades and subjects (ids 213-263).
+const TAXONOMY = path.resolve(import.meta.dirname, "migrations/0033_sample_taxonomy.sql");
 const LOW = "00000000-0000-7000-8000-000000000001";
 const HIGH = "00000000-0000-7000-8000-000000000999";
 
@@ -61,11 +63,16 @@ const SAMPLE_SLUGS = [
 const sectionTotal = 5;
 const lessonTotal = 20;
 
-async function rerunMigration() {
-  const statements = readFileSync(MIGRATION, "utf8")
+// 0008's category insert still holds the W1 grades with no curriculum; the C3 check rejects
+// them before ON CONFLICT is considered. 0033 supersedes it and has its own rerun test.
+const SUPERSEDED = /^INSERT INTO "categories"/;
+
+async function rerunMigration(file = MIGRATION) {
+  const statements = readFileSync(file, "utf8")
     .split("--> statement-breakpoint")
     .map((statement) => statement.trim())
-    .filter((statement) => statement.length > 0);
+    .filter((statement) => statement.length > 0)
+    .filter((statement) => file !== MIGRATION || !SUPERSEDED.test(statement));
   expect(statements.length).toBeGreaterThan(0);
   for (const statement of statements) {
     await client.unsafe(statement);
@@ -83,7 +90,7 @@ describe("sample catalogue seed", () => {
     expect(counts.section_revisions?.count).toBe(sectionTotal);
     expect(counts.lessons?.count).toBe(lessonTotal);
     expect(counts.lesson_revisions?.count).toBe(lessonTotal);
-    expect(counts.categories?.count).toBe(12);
+    expect(counts.categories?.count).toBe(63);
     expect(counts.course_categories?.count).toBe(12);
   });
 
@@ -117,6 +124,12 @@ describe("sample catalogue seed", () => {
   it("changes nothing when the migration SQL runs a second time", async () => {
     const before = await fingerprint();
     await rerunMigration();
+    expect(await fingerprint()).toEqual(before);
+  });
+
+  it("changes nothing when the taxonomy SQL runs a second time", async () => {
+    const before = await fingerprint();
+    await rerunMigration(TAXONOMY);
     expect(await fingerprint()).toEqual(before);
   });
 

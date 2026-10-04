@@ -19,10 +19,10 @@ exports[`sample catalogue seed > repository output for chemistry-grade-10-founda
     {
       "id": "00000000-0000-7000-8000-000000000206",
       "name": {
-        "ar": "الصف العاشر",
-        "en": "Grade 10",
+        "ar": "السنة الحادية عشرة",
+        "en": "Year 11",
       },
-      "slug": "grade-10",
+      "slug": "british-year-11",
       "type": "grade",
     },
     {
@@ -135,7 +135,7 @@ exports[`sample catalogue seed > repository output for english-grade-9-writing i
         "ar": "الصف التاسع",
         "en": "Grade 9",
       },
-      "slug": "grade-9",
+      "slug": "american-grade-9",
       "type": "grade",
     },
     {
@@ -248,7 +248,7 @@ exports[`sample catalogue seed > repository output for math-grade-12-calculus is
         "ar": "الصف الثاني عشر",
         "en": "Grade 12",
       },
-      "slug": "grade-12",
+      "slug": "uae-moe-grade-12",
       "type": "grade",
     },
     {
@@ -407,10 +407,10 @@ exports[`sample catalogue seed > repository output for physics-grade-11-mechanic
     {
       "id": "00000000-0000-7000-8000-000000000207",
       "name": {
-        "ar": "الصف الحادي عشر",
+        "ar": "الصف الثاني الثانوي",
         "en": "Grade 11",
       },
-      "slug": "grade-11",
+      "slug": "saudi-grade-11",
       "type": "grade",
     },
     {

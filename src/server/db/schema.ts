@@ -372,7 +372,13 @@ export const categories = pgTable(
     isSample,
     createdAt,
   },
-  (t) => [unique("categories_type_slug_unique").on(t.type, t.slug)],
+  (t) => [
+    unique("categories_type_slug_unique").on(t.type, t.slug),
+    // C3: a grade belongs to a curriculum; curricula and subjects are top level. That the parent
+    // is a curriculum is the service's rule (categories.ts).
+    check("categories_grade_parent", sql`(${t.type} = 'grade') = (${t.parentId} is not null)`),
+    index("categories_parent_idx").on(t.parentId),
+  ],
 );
 
 export const mediaAssets = pgTable("media_assets", {
@@ -452,7 +458,8 @@ export const courseCategories = pgTable(
       .references(() => courses.id, { onDelete: "cascade" }),
     categoryId: uuid("category_id")
       .notNull()
-      .references(() => categories.id, { onDelete: "cascade" }),
+      // C3: restrict, so deleting a category in use fails instead of untagging courses.
+      .references(() => categories.id, { onDelete: "restrict" }),
     isSample,
   },
   (t) => [
