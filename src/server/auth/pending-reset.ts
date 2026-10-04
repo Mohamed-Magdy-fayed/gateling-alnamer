@@ -1,10 +1,10 @@
 import "server-only";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { clock } from "@/server/clock";
 import { PENDING_RESET_TTL_MS } from "@/server/config/policy";
 import { serverEnv } from "@/server/env";
-import { authKey } from "./keys";
+import { authKey, keyedHash } from "./keys";
 
 /**
  * The password-reset screens need to know which account a code was requested for without the email in
@@ -13,7 +13,18 @@ import { authKey } from "./keys";
  */
 export const PENDING_RESET_COOKIE = "rp";
 
-export type PendingReset = { email: string; issuedAt: number };
+/**
+ * `nonce` is random per reset request: the codes sent for it carry its keyed hash, so only this
+ * browser's guesses count against them (A8 review L2).
+ */
+export type PendingReset = { email: string; issuedAt: number; nonce: string };
+
+/** A new requester nonce for a reset request. */
+export const newResetNonce = (): string => randomBytes(18).toString("base64url");
+
+/** What a reset code row stores for its requester: never the nonce itself. */
+export const resetRequesterHash = (nonce: string, key: Buffer = authKey("rp")): string =>
+  keyedHash(key, `requester:${nonce}`);
 
 const mac = (payload: string, key: Buffer | string): string =>
   createHmac("sha256", key).update(`pending-reset:${payload}`).digest("base64url");
@@ -26,8 +37,14 @@ export function signPendingReset(value: PendingReset, key: Buffer | string): str
 
 function isPending(value: unknown): value is PendingReset {
   if (typeof value !== "object" || value === null) return false;
-  const { email, issuedAt } = value as Record<string, unknown>;
-  return typeof email === "string" && typeof issuedAt === "number" && Number.isFinite(issuedAt);
+  const { email, issuedAt, nonce } = value as Record<string, unknown>;
+  return (
+    typeof email === "string" &&
+    typeof nonce === "string" &&
+    nonce.length > 0 &&
+    typeof issuedAt === "number" &&
+    Number.isFinite(issuedAt)
+  );
 }
 
 /** The pending reset when the cookie is correctly signed and not older than the TTL, else null. */
@@ -54,14 +71,14 @@ export function parsePendingReset(
 
 const pendingKey = () => authKey("rp");
 
-/** Server actions only: remembers that a reset code was just requested for `email`. */
-export async function setPendingReset(email: string): Promise<void> {
+/** Server actions only: remembers that a reset code was just requested for `email` by this browser. */
+export async function setPendingReset(email: string, nonce: string): Promise<void> {
   const [store, requestHeaders] = await Promise.all([cookies(), headers()]);
   const env = serverEnv();
   const secure =
     requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https" ||
     Boolean(env.VERCEL);
-  const value = signPendingReset({ email, issuedAt: clock.now().getTime() }, pendingKey());
+  const value = signPendingReset({ email, issuedAt: clock.now().getTime(), nonce }, pendingKey());
   store.set(PENDING_RESET_COOKIE, value, {
     httpOnly: true,
     secure,

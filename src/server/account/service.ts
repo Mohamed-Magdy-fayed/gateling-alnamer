@@ -94,7 +94,7 @@ export async function requestAddedEmail(input: {
     await issueCode(user.id, "email_verify", db(), address);
     return;
   }
-  await sendCode({ ...user, email: null }, "email_verify", locale, address);
+  await sendCode({ ...user, email: null }, "email_verify", locale, { pendingEmail: address });
 }
 
 /**

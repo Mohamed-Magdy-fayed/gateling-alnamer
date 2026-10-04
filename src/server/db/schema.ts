@@ -187,6 +187,12 @@ export const verificationCodes = pgTable(
     codeHash: text("code_hash").notNull(),
     /** Set for an "add email" code: the address that becomes the account's only after verification. */
     pendingEmail: citext("pending_email"),
+    /**
+     * A self-serve password reset code: the keyed hash of the nonce in the requesting browser's
+     * `rp` cookie. A guess only counts against codes of its own requester, so a stranger cannot
+     * burn the owner's codes (A8 review L2). Null for every other code (parent resets included).
+     */
+    requesterHash: text("requester_hash"),
     attempts: integer("attempts").notNull().default(0),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),

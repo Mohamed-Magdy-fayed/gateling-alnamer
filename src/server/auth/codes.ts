@@ -39,13 +39,14 @@ export async function issueCode(
   purpose: CodePurpose,
   database: CodeExecutor = db(),
   pendingEmail?: string,
+  requesterHash?: string,
 ): Promise<{ codeId: string; code: string }> {
   const code = randomCode();
   const codeHash = hashCode(purpose, userId, code);
   const expiresAt = new Date(clock.now().getTime() + RESET_CODE_TTL_MS);
   const [row] = await database
     .insert(verificationCodes)
-    .values({ userId, purpose, codeHash, expiresAt, pendingEmail })
+    .values({ userId, purpose, codeHash, expiresAt, pendingEmail, requesterHash })
     .returning({ id: verificationCodes.id });
   if (!row) throw new Error("verification code insert returned no row");
   return { codeId: row.id, code };
@@ -62,13 +63,26 @@ const scopeFilter = (scope: CodeScope): SQL =>
     ? isNotNull(verificationCodes.pendingEmail)
     : isNull(verificationCodes.pendingEmail);
 
-/** Counts one attempt against every live code of the user, purpose and scope, returning the ones still open. */
+/**
+ * Which reset codes a guess may touch: `undefined` all of them (email codes), a hash only that
+ * requester's self-serve codes, `null` only codes with no requester (a parent's reset).
+ */
+export type CodeRequester = string | null | undefined;
+const requesterFilter = (requester: CodeRequester): SQL | undefined => {
+  if (requester === undefined) return undefined;
+  return requester === null
+    ? isNull(verificationCodes.requesterHash)
+    : eq(verificationCodes.requesterHash, requester);
+};
+
+/** Counts one attempt against every live code of the user, purpose, scope and requester, returning the ones still open. */
 function countAttempt(
   database: CodeExecutor,
   userId: string,
   purpose: CodePurpose,
   now: Date,
   scope: CodeScope = "account",
+  requester: CodeRequester = undefined,
 ) {
   return database
     .update(verificationCodes)
@@ -78,6 +92,7 @@ function countAttempt(
         eq(verificationCodes.userId, userId),
         eq(verificationCodes.purpose, purpose),
         scopeFilter(scope),
+        requesterFilter(requester),
         isNull(verificationCodes.consumedAt),
         gt(verificationCodes.expiresAt, now),
         lt(verificationCodes.attempts, RESET_MAX_ATTEMPTS),
@@ -102,8 +117,9 @@ export async function verifyCode(
   purpose: CodePurpose,
   code: string,
   database: CodeExecutor = db(),
+  requester: CodeRequester = undefined,
 ): Promise<VerifyResult> {
-  const result = await verifyScoped(userId, purpose, code, database, "account");
+  const result = await verifyScoped(userId, purpose, code, database, "account", requester);
   return result.ok ? { ok: true, codeId: result.codeId } : INVALID;
 }
 
@@ -128,9 +144,10 @@ async function verifyScoped(
   code: string,
   database: CodeExecutor,
   scope: CodeScope,
+  requester: CodeRequester = undefined,
 ): Promise<{ ok: true; codeId: string; pendingEmail: string | null } | { ok: false }> {
   const now = clock.now();
-  const live = await countAttempt(database, userId, purpose, now, scope);
+  const live = await countAttempt(database, userId, purpose, now, scope, requester);
   const guess = hashCode(purpose, userId, code);
   const match = live.find((row) => safeEqualHex(row.codeHash, guess));
   if (!match) return { ok: false };

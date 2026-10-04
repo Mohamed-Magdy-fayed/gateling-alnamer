@@ -34,8 +34,10 @@ const h = vi.hoisted(() => ({
   gateCalls: [] as unknown[],
   sessionUser: null as null | { id: string; email: string | null; role?: string },
   sessionVerified: false,
-  pending: null as null | { email: string; issuedAt: number },
+  pending: null as null | { email: string; issuedAt: number; nonce: string },
   pendingSet: [] as string[],
+  pendingNonces: [] as string[],
+  nonces: 0,
   pendingCleared: 0,
   codeRow: null as null | { emailStatus: "queued" | "sent" | "failed"; createdAt: Date },
   contexts: 0,
@@ -105,8 +107,14 @@ vi.mock("@/server/devices/sign-in", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 vi.mock("./pending-reset", () => ({
-  setPendingReset: async (email: string) => {
+  newResetNonce: () => {
+    h.nonces += 1;
+    return `nonce-${h.nonces}`;
+  },
+  resetRequesterHash: (nonce: string) => `rh:${nonce}`,
+  setPendingReset: async (email: string, nonce: string) => {
     h.pendingSet.push(email);
+    h.pendingNonces.push(nonce);
   },
   readPendingReset: async () => h.pending,
   clearPendingReset: async () => {
@@ -214,6 +222,8 @@ beforeEach(() => {
   h.sessionVerified = false;
   h.pending = null;
   h.pendingSet.length = 0;
+  h.pendingNonces.length = 0;
+  h.nonces = 0;
   h.pendingCleared = 0;
   h.codeRow = null;
   h.contexts = 0;
@@ -382,7 +392,13 @@ describe("requestPasswordResetAction", () => {
     expect(h.sent).toHaveLength(0);
     expect(h.after).toHaveLength(1);
     await runAfter();
-    expect(h.issue).toHaveBeenCalledWith("u1", "password_reset");
+    expect(h.issue).toHaveBeenCalledWith(
+      "u1",
+      "password_reset",
+      undefined,
+      undefined,
+      "rh:nonce-2",
+    );
     expect(h.sent).toEqual([
       [
         "auth/code-email",
@@ -439,7 +455,14 @@ describe("resetPasswordAction", () => {
   it("verifies against verification_codes inside a transaction and rejects an invalid code", async () => {
     h.user = { id: "u1", email: "who@example.test" };
     const result = await reset();
-    expect(h.verify).toHaveBeenCalledWith("u1", "password_reset", "123456", expect.anything());
+    // A typed email only reaches codes with no requester (A8 L2).
+    expect(h.verify).toHaveBeenCalledWith(
+      "u1",
+      "password_reset",
+      "123456",
+      expect.anything(),
+      null,
+    );
     expect(h.calls).toEqual(["tx:begin", "verify:u1", "tx:end"]);
     expect(result).toMatchObject({ status: "error", message: en.auth.states.codeInvalid });
   });
@@ -461,13 +484,20 @@ describe("resetPasswordAction", () => {
   });
 
   it("takes the email from the pending cookie when the form has none", async () => {
-    h.pending = { email: "who@example.test", issuedAt: now() };
+    h.pending = { email: "who@example.test", issuedAt: now(), nonce: "mine" };
     h.user = { id: "u1", email: "who@example.test" };
     await resetPasswordAction(
       { status: "idle" },
       form({ code: "123456", password: "a-new-pass-1" }),
     );
-    expect(h.verify).toHaveBeenCalledWith("u1", "password_reset", "123456", expect.anything());
+    // Only this browser's codes are checked (A8 L2).
+    expect(h.verify).toHaveBeenCalledWith(
+      "u1",
+      "password_reset",
+      "123456",
+      expect.anything(),
+      "rh:mine",
+    );
   });
 
   it("with neither a form email nor a pending cookie answers codeInvalid", async () => {
@@ -481,6 +511,8 @@ describe("resetPasswordAction", () => {
 
   it("locks the (email, device) pair after 10 verifies, and a different device is not locked", async () => {
     h.user = { id: "u1", email: "who@example.test" };
+    h.known.add("dev-1");
+    h.known.add("dev-victim");
     for (let i = 0; i < 10; i++) await reset();
     const verifies = h.verify.mock.calls.length;
     const locked = await reset();
@@ -500,9 +532,11 @@ describe("resetPasswordAction", () => {
     h.user = { id: "u1", email: "who@example.test" };
     for (let i = 0; i < 30; i++) {
       h.deviceId = `dev-${i}`;
+      h.known.add(h.deviceId);
       await reset();
     }
     h.deviceId = "dev-victim";
+    h.known.add("dev-victim");
     const asked = await reset();
     expect(asked).toMatchObject({
       captchaRequired: true,
@@ -513,6 +547,18 @@ describe("resetPasswordAction", () => {
     expect(refused).toMatchObject({ captchaRequired: true });
     h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" });
     expect(await reset({ captcha_token: "fake-ok" })).toMatchObject({ status: "success" });
+  });
+
+  it("a fresh, unknown device id does not reset the pair lock (D36 for codes, A8 L2)", async () => {
+    h.user = { id: "u1", email: "who@example.test" };
+    for (let i = 0; i < 10; i++) {
+      h.deviceId = `minted-${i}`;
+      await reset();
+    }
+    const verifies = h.verify.mock.calls.length;
+    h.deviceId = "minted-new";
+    expect(await reset()).toMatchObject({ message: en.auth.states.rateLimited });
+    expect(h.verify.mock.calls.length).toBe(verifies);
   });
 
   it("forgets the pair's failures after a successful reset", async () => {
@@ -723,7 +769,7 @@ describe("sign-up issues an email verification code", () => {
       "destroy",
       "create:u1",
     ]);
-    expect(h.issue).toHaveBeenCalledWith("u1", "email_verify");
+    expect(h.issue).toHaveBeenCalledWith("u1", "email_verify", undefined, undefined, undefined);
     expect(h.sent).toEqual([
       [
         "auth/code-email",
@@ -835,7 +881,7 @@ describe("resendCodeAction", () => {
     h.codeRow = { emailStatus: "failed", createdAt: new Date(now() - 5 * 60_000) };
     const result = await resend("email_verify");
     expect(result).toMatchObject({ status: "success", message: en.auth.states.codeSent });
-    expect(h.issue).toHaveBeenCalledWith("u1", "email_verify");
+    expect(h.issue).toHaveBeenCalledWith("u1", "email_verify", undefined, undefined, undefined);
     expect(h.sent[0]).toMatchObject(["auth/code-email", { purpose: "email_verify" }]);
   });
 
@@ -859,7 +905,7 @@ describe("resendCodeAction", () => {
   });
 
   it("answers a pending reset for a known and an unknown email alike", async () => {
-    h.pending = { email: "who@example.test", issuedAt: now() - 5 * 60_000 };
+    h.pending = { email: "who@example.test", issuedAt: now() - 5 * 60_000, nonce: "mine" };
     h.user = undefined;
     const unknown = await resend("password_reset");
     await runAfter();
@@ -869,7 +915,9 @@ describe("resendCodeAction", () => {
     const answered = await resend("password_reset");
     expect(h.issue).not.toHaveBeenCalled();
     await runAfter();
-    expect(h.issue).toHaveBeenCalledWith("u1", "password_reset");
+    expect(h.issue).toHaveBeenCalledWith("u1", "password_reset", undefined, undefined, "rh:mine");
+    // A resend keeps the same requester, so earlier codes still verify (A8 L2).
+    expect(h.pendingNonces.at(-1)).toBe("mine");
     expect(answered).toEqual(unknown);
     expect(answered).toMatchObject({ status: "success", message: en.auth.states.codeSent });
     expect(h.pendingSet).toEqual(["who@example.test", "who@example.test"]);

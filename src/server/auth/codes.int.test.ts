@@ -242,3 +242,25 @@ describe("purgeCodesOlderThan", () => {
     expect(left.sort()).toEqual(["purge-live", "purge-recent-consumed", "purge-recent-expired"]);
   });
 });
+
+describe("verifyCode scoped to a requester (A8 L2)", () => {
+  it("a stranger's guesses never touch the owner's reset code", async () => {
+    const userId = await makeUser();
+    const owner = await issueCode(userId, "password_reset", conn, undefined, "rh-owner");
+    const parentCode = await issueCode(userId, "password_reset", conn);
+    for (let i = 0; i < RESET_MAX_ATTEMPTS; i += 1) {
+      expect(await verifyCode(userId, "password_reset", "000000", conn, "rh-stranger")).toEqual(
+        INVALID,
+      );
+      // A typed email (no cookie) only reaches codes with no requester.
+      await verifyCode(userId, "password_reset", "000000", conn, null);
+    }
+    expect((await rowOf(owner.codeId))?.attempts).toBe(0);
+    expect((await rowOf(parentCode.codeId))?.attempts).toBe(RESET_MAX_ATTEMPTS);
+    // The owner's code still works, and only from the owner's browser.
+    expect(await verifyCode(userId, "password_reset", owner.code, conn, null)).toEqual(INVALID);
+    expect(await verifyCode(userId, "password_reset", owner.code, conn, "rh-owner")).toMatchObject({
+      ok: true,
+    });
+  });
+});

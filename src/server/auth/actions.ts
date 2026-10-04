@@ -29,7 +29,13 @@ import { completeSignIn } from "./complete-sign-in";
 import { authenticate } from "./credentials";
 import { isKnownDevice } from "./known-device";
 import { hashPassword } from "./password";
-import { clearPendingReset, readPendingReset, setPendingReset } from "./pending-reset";
+import {
+  clearPendingReset,
+  newResetNonce,
+  readPendingReset,
+  resetRequesterHash,
+  setPendingReset,
+} from "./pending-reset";
 import { requestContext } from "./request-context";
 import { sendCode } from "./send-code";
 import { createSession, destroySession } from "./session";
@@ -264,10 +270,15 @@ export async function requestPasswordResetAction(
   });
   // Issuing the code and sending the mail happen after the response; both paths do the same
   // work before it (one lookup), so the answer's timing says nothing about the account.
-  if (user?.email) sendAfterResponse(() => sendCode(user, "password_reset", locale));
+  // The code belongs to this browser: its nonce rides in the signed cookie (A8 review L2).
+  const nonce = newResetNonce();
+  const requesterHash = resetRequesterHash(nonce);
+  if (user?.email) {
+    sendAfterResponse(() => sendCode(user, "password_reset", locale, { requesterHash }));
+  }
   // Same answer whether or not the email exists (no account enumeration): the code screen, with
   // the email kept in a signed server-side cookie instead of the URL.
-  await setPendingReset(parsed.data.email);
+  await setPendingReset(parsed.data.email, nonce);
   redirect("/reset-password");
 }
 
@@ -287,9 +298,20 @@ export async function resetPasswordAction(
     };
   }
   const input = parsed.data;
-  const target = input.email ?? (await readPendingReset())?.email;
+  // With the cookie, a guess only touches the codes this browser asked for. A typed email (no
+  // cookie: a parent-sent code, or another browser) only touches codes with no requester.
+  const pending = input.email ? null : await readPendingReset();
+  const target = input.email ?? pending?.email;
   if (!target) return { status: "error", message: t.auth.states.codeInvalid };
-  const who = { purpose: "password_reset", identifier: target, ip, deviceId } as const;
+  const requester = pending ? resetRequesterHash(pending.nonce) : null;
+  // D36 also for codes: a minted or replayed device id never resets the pair lock.
+  const known = deviceId !== null && (await isKnownDevice(deviceId));
+  const who = {
+    purpose: "password_reset",
+    identifier: target,
+    ip,
+    deviceId: known ? deviceId : null,
+  } as const;
   const guard = await guardCodeVerify({ ...who, captchaToken: captchaToken(raw) });
   if (!("ok" in guard)) return verifyBlockedState(guard, t, locale);
 
@@ -305,7 +327,7 @@ export async function resetPasswordAction(
   // Consuming the code and writing the credential commit together: a failed write leaves the code
   // usable, and a code can never be spent without the password changing.
   const reset = await db().transaction(async (tx) => {
-    const verified = await verifyCode(user.id, "password_reset", input.code, tx);
+    const verified = await verifyCode(user.id, "password_reset", input.code, tx, requester);
     if (!verified.ok) return null;
     const passwordHash = await hashPassword(input.password);
     const now = clock.now();
@@ -362,7 +384,7 @@ export async function verifyEmailAction(_prev: FormState, formData: FormData): P
 }
 
 /** What a resend needs: who the code is for and the earliest time a new one may go out. */
-type ResendTarget = { email: string; id: string | null; nextAt: number };
+type ResendTarget = { email: string; id: string | null; nextAt: number; nonce?: string };
 
 async function resendTarget(purpose: CodePurpose): Promise<ResendTarget | "anonymous" | null> {
   if (purpose === "email_verify") {
@@ -375,7 +397,12 @@ async function resendTarget(purpose: CodePurpose): Promise<ResendTarget | "anony
   }
   const pending = await readPendingReset();
   if (!pending) return null;
-  return { email: pending.email, id: null, nextAt: pending.issuedAt + CODE_RESEND_COOLDOWN_MS };
+  return {
+    email: pending.email,
+    id: null,
+    nextAt: pending.issuedAt + CODE_RESEND_COOLDOWN_MS,
+    nonce: pending.nonce,
+  };
 }
 
 /**
@@ -408,11 +435,14 @@ export async function resendCodeAction(_prev: FormState, formData: FormData): Pr
     columns: { id: true, name: true, email: true, locale: true },
     where: target.id ? eq(users.id, target.id) : eq(users.email, target.email),
   });
+  // A resent reset code stays with the same browser (same nonce), so earlier codes still verify.
+  const nonce = target.nonce ?? newResetNonce();
   if (user && purpose === "password_reset") {
-    sendAfterResponse(() => sendCode(user, purpose, locale));
+    const requesterHash = resetRequesterHash(nonce);
+    sendAfterResponse(() => sendCode(user, purpose, locale, { requesterHash }));
   } else if (user) {
     await sendCode(user, purpose, locale);
   }
-  if (purpose === "password_reset") await setPendingReset(target.email);
+  if (purpose === "password_reset") await setPendingReset(target.email, nonce);
   return { status: "success", message: t.auth.states.codeSent };
 }
