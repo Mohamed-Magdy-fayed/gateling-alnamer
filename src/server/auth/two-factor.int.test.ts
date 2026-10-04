@@ -51,10 +51,11 @@ async function sessionFor(userId: string) {
 /** A staff user with confirmed TOTP; returns the user, the secret and the recovery codes. */
 async function enrolled(d = deps()) {
   const user = await createUser(conn, { role: "teacher" });
-  const setup = await tf.beginTotpSetup(user.id, d);
+  const setupSession = await sessionFor(user.id);
+  const setup = await tf.beginTotpSetup(user.id, setupSession, d);
   if (!setup.ok) throw new Error(setup.reason);
   const secret = base32Decode(setup.secret);
-  const confirmed = await tf.confirmTotpSetup(user.id, totpAt(secret, NOW_S), d);
+  const confirmed = await tf.confirmTotpSetup(user.id, setupSession, totpAt(secret, NOW_S), d);
   if (!confirmed.ok) throw new Error(confirmed.reason);
   return { user, secret, codes: confirmed.recoveryCodes };
 }
@@ -91,16 +92,46 @@ describe("two-factor enrolment", () => {
   it("refuses a wrong confirm code and a second setup once enrolled", async () => {
     const user = await createUser(conn, { role: "teacher" });
     const d = deps();
-    await tf.beginTotpSetup(user.id, d);
-    expect(await tf.confirmTotpSetup(user.id, "000000", d)).toEqual({
+    const own = await sessionFor(user.id);
+    await tf.beginTotpSetup(user.id, own, d);
+    expect(await tf.confirmTotpSetup(user.id, own, "000000", d)).toEqual({
       ok: false,
       reason: "invalid",
     });
     const { user: done } = await enrolled();
-    expect(await tf.beginTotpSetup(done.id, deps())).toEqual({
+    expect(await tf.beginTotpSetup(done.id, await sessionFor(done.id), deps())).toEqual({
       ok: false,
       reason: "already_enrolled",
     });
+  });
+
+  it("a pending secret belongs to the session that started it (A8 H1)", async () => {
+    const user = await createUser(conn, { role: "teacher" });
+    const d = deps();
+    const attacker = await sessionFor(user.id);
+    const owner = await sessionFor(user.id);
+    const stolen = await tf.pendingTotpSetup(user.id, attacker, "t", d);
+    if (!stolen.ok) throw new Error(stolen.reason);
+    // The same session keeps its QR code across reloads.
+    expect(await tf.pendingTotpSetup(user.id, attacker, "t", d)).toMatchObject({
+      secret: stolen.secret,
+    });
+    // Another session never sees it: it gets a new secret, and the old one is gone.
+    const mine = await tf.pendingTotpSetup(user.id, owner, "t", d);
+    if (!mine.ok) throw new Error(mine.reason);
+    expect(mine.secret).not.toBe(stolen.secret);
+    const stolenCode = totpAt(base32Decode(stolen.secret), NOW_S);
+    expect(await tf.confirmTotpSetup(user.id, attacker, stolenCode, d)).toEqual({
+      ok: false,
+      reason: "no_setup",
+    });
+    // Only the session that started the current setup can confirm it.
+    const code = totpAt(base32Decode(mine.secret), NOW_S);
+    expect(await tf.confirmTotpSetup(user.id, attacker, code, d)).toEqual({
+      ok: false,
+      reason: "no_setup",
+    });
+    expect(await tf.confirmTotpSetup(user.id, owner, code, d)).toMatchObject({ ok: true });
   });
 });
 

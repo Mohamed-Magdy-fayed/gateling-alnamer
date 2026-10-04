@@ -15,7 +15,7 @@ export default async function TwoFactorSetupPage({
   const { next: rawNext } = await searchParams;
   const { session, next } = await requireUnverifiedStaff(rawNext);
   const account = session.user.email ?? session.user.id;
-  const setup = await pendingTotpSetup(session.user.id, account);
+  const setup = await pendingTotpSetup(session.user.id, session.tokenHash, account);
   if (!setup.ok) redirect(`/two-factor?next=${encodeURIComponent(next)}`);
   const { t } = await getDictionary();
   const qrSvg = await QRCode.toString(setup.uri, { type: "svg", margin: 1, width: 176 });

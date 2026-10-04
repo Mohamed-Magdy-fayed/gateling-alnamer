@@ -48,9 +48,13 @@ export type SetupResult =
   | { ok: true; secret: string; uri: string }
   | { ok: false; reason: "already_enrolled" };
 
-/** Starts (or restarts) enrolment: a fresh unconfirmed secret. Refused once enrolled. */
+/**
+ * Starts (or restarts) enrolment: a fresh unconfirmed secret, bound to the calling session.
+ * Refused once enrolled.
+ */
 export async function beginTotpSetup(
   userId: string,
+  sessionTokenHash: string,
   deps: TwoFactorDeps = {},
   account = "",
 ): Promise<SetupResult> {
@@ -64,8 +68,11 @@ export async function beginTotpSetup(
   const sealed = seal(totpKey(deps), secret);
   await db()
     .insert(totpSecrets)
-    .values({ userId, secretEnc: sealed })
-    .onConflictDoUpdate({ target: totpSecrets.userId, set: { secretEnc: sealed, lastStep: null } });
+    .values({ userId, secretEnc: sealed, setupSessionHash: sessionTokenHash })
+    .onConflictDoUpdate({
+      target: totpSecrets.userId,
+      set: { secretEnc: sealed, lastStep: null, setupSessionHash: sessionTokenHash },
+    });
   return { ok: true, secret, uri: otpauthUri(secret, account || "account") };
 }
 
@@ -90,9 +97,13 @@ export type ConfirmResult =
   | { ok: true; recoveryCodes: string[] }
   | { ok: false; reason: "invalid" | "no_setup" | "locked"; until?: Date };
 
-/** Confirms enrolment with a first code; creates the recovery codes (shown once). */
+/**
+ * Confirms enrolment with a first code; creates the recovery codes (shown once). Only the session
+ * that started the setup can confirm it.
+ */
 export async function confirmTotpSetup(
   userId: string,
+  sessionTokenHash: string,
   code: string,
   deps: TwoFactorDeps = {},
 ): Promise<ConfirmResult> {
@@ -104,14 +115,16 @@ export async function confirmTotpSetup(
       .from(totpSecrets)
       .where(eq(totpSecrets.userId, userId))
       .for("update");
-    if (!row || row.confirmedAt) return { ok: false, reason: "no_setup" };
+    if (!row || row.confirmedAt || row.setupSessionHash !== sessionTokenHash) {
+      return { ok: false, reason: "no_setup" };
+    }
     const secret = open(totpKey(deps), row.secretEnc);
     if (!secret) return { ok: false, reason: "no_setup" };
     const step = verifyTotp(base32Decode(secret), code, nowS(), row.lastStep);
     if (step === null) return { ok: false, reason: "invalid" };
     await tx
       .update(totpSecrets)
-      .set({ confirmedAt: clock.now(), lastStep: step })
+      .set({ confirmedAt: clock.now(), lastStep: step, setupSessionHash: null })
       .where(eq(totpSecrets.userId, userId));
     const codes = await storeRecoveryCodes(tx, userId, deps);
     // The first enrolment is recorded: anyone holding the password could enrol on an account that
@@ -241,28 +254,14 @@ export async function resetTwoFactor(actorId: string, userId: string): Promise<v
   await invalidateUserSessionsCore(userId);
 }
 
-/** Seeds a confirmed TOTP for a known secret (seed scripts only: demo and local staff). */
-export async function seedConfirmedTotp(
-  userId: string,
-  secretBase32: string,
-  deps: TwoFactorDeps = {},
-): Promise<void> {
-  const sealed = seal(totpKey(deps), secretBase32);
-  await db()
-    .insert(totpSecrets)
-    .values({ userId, secretEnc: sealed, confirmedAt: clock.now() })
-    .onConflictDoUpdate({
-      target: totpSecrets.userId,
-      set: { secretEnc: sealed, confirmedAt: clock.now(), lastStep: null },
-    });
-}
-
 /**
- * The setup page's secret: the pending (unconfirmed) one if any, so a reload while scanning keeps
- * the same QR code; otherwise a new one. Refused once enrolled.
+ * The setup page's secret: the pending (unconfirmed) one when this same session started it, so a
+ * reload while scanning keeps the same QR code; otherwise a new one bound to this session (another
+ * session never sees someone else's pending secret). Refused once enrolled.
  */
 export async function pendingTotpSetup(
   userId: string,
+  sessionTokenHash: string,
   account: string,
   deps: TwoFactorDeps = {},
 ): Promise<SetupResult> {
@@ -272,9 +271,10 @@ export async function pendingTotpSetup(
     .where(eq(totpSecrets.userId, userId))
     .limit(1);
   if (row?.confirmedAt) return { ok: false, reason: "already_enrolled" };
-  const existing = row ? open(totpKey(deps), row.secretEnc) : null;
+  const mine = row && row.setupSessionHash === sessionTokenHash;
+  const existing = mine ? open(totpKey(deps), row.secretEnc) : null;
   if (existing) return { ok: true, secret: existing, uri: otpauthUri(existing, account) };
-  return beginTotpSetup(userId, deps, account);
+  return beginTotpSetup(userId, sessionTokenHash, deps, account);
 }
 
 /** Right after a confirmed enrolment: the calling session is stepped up to verified. */

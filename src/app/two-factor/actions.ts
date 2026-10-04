@@ -51,7 +51,7 @@ export async function confirmSetupAction(code: string): Promise<TwoFactorActionR
   if (!session || typeof code !== "string" || code.length > MAX_INPUT) {
     return { ok: false, reason: "error" };
   }
-  const result = await confirmTotpSetup(session.user.id, code);
+  const result = await confirmTotpSetup(session.user.id, session.tokenHash, code);
   if (!result.ok) {
     return { ok: false, reason: result.reason === "locked" ? "locked" : "invalid" };
   }

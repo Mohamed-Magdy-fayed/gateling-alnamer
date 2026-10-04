@@ -623,6 +623,11 @@ export const totpSecrets = pgTable("totp_secrets", {
   confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
   /** The last accepted 30-second step: a code is never accepted twice. */
   lastStep: bigint("last_step", { mode: "number" }),
+  /**
+   * The session that started an unconfirmed setup (token hash). Only that session sees or
+   * confirms the pending secret; any other session gets a new one (A8 review H1).
+   */
+  setupSessionHash: text("setup_session_hash"),
   createdAt,
 });
 

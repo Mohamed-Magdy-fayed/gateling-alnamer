@@ -1,0 +1,1 @@
+ALTER TABLE "totp_secrets" ADD COLUMN "setup_session_hash" text;
