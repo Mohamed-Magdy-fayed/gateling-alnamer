@@ -142,6 +142,61 @@ export type ChallengeResult =
   | { ok: true; rotated: RotatedSession; usedRecoveryCode: boolean }
   | { ok: false; reason: "invalid" | "locked" | "not_enrolled" | "no_session"; until?: Date };
 
+type Tx = Parameters<Parameters<ReturnType<typeof db>["transaction"]>[0]>[0];
+
+export type SecondFactorResult =
+  | { ok: true; usedRecoveryCode: boolean }
+  | { ok: false; reason: "invalid" | "not_enrolled" };
+
+/**
+ * A 6-digit TOTP code or a recovery code, checked in the caller's transaction with the secret row
+ * locked: a TOTP step is never accepted twice, a recovery code is burnt (and audited). The caller
+ * applies the attempt limit (`guardTwoFactor`).
+ */
+export async function checkSecondFactorIn(
+  tx: Tx,
+  userId: string,
+  input: string,
+  deps: TwoFactorDeps = {},
+): Promise<SecondFactorResult> {
+  const [row] = await tx
+    .select()
+    .from(totpSecrets)
+    .where(eq(totpSecrets.userId, userId))
+    .for("update");
+  if (!row?.confirmedAt) return { ok: false, reason: "not_enrolled" };
+
+  const digits = input.replace(/\s/g, "");
+  if (/^\d{6}$/.test(digits)) {
+    const secret = open(totpKey(deps), row.secretEnc);
+    const step = secret ? verifyTotp(base32Decode(secret), digits, nowS(), row.lastStep) : null;
+    if (step === null) return { ok: false, reason: "invalid" };
+    await tx.update(totpSecrets).set({ lastStep: step }).where(eq(totpSecrets.userId, userId));
+    return { ok: true, usedRecoveryCode: false };
+  }
+  const normal = normalizeRecoveryCode(input);
+  if (!normal) return { ok: false, reason: "invalid" };
+  const used = await tx
+    .update(recoveryCodes)
+    .set({ usedAt: clock.now() })
+    .where(
+      and(
+        eq(recoveryCodes.userId, userId),
+        eq(recoveryCodes.codeHash, keyedHash(recoveryKey(deps), normal)),
+        isNull(recoveryCodes.usedAt),
+      ),
+    )
+    .returning({ id: recoveryCodes.id });
+  if (used.length === 0) return { ok: false, reason: "invalid" };
+  await writeAudit(tx, {
+    actorId: userId,
+    action: "two_factor.recovery_code_used",
+    subjectType: "user",
+    subjectId: userId,
+  });
+  return { ok: true, usedRecoveryCode: true };
+}
+
 /**
  * The sign-in challenge: a 6-digit TOTP code, or a recovery code (single use). On success the
  * calling session is stepped up (new token, verified); the caller sets the cookie.
@@ -155,51 +210,15 @@ export async function verifyChallenge(
   const guard = await guardTwoFactor({ userId }, deps);
   if (!("ok" in guard)) return { ok: false, reason: "locked", until: guard.until };
   const result = await db().transaction(async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(totpSecrets)
-      .where(eq(totpSecrets.userId, userId))
-      .for("update");
-    if (!row?.confirmedAt) return { ok: false as const, reason: "not_enrolled" as const };
-
-    let usedRecoveryCode = false;
-    const digits = input.replace(/\s/g, "");
-    if (/^\d{6}$/.test(digits)) {
-      const secret = open(totpKey(deps), row.secretEnc);
-      const step = secret ? verifyTotp(base32Decode(secret), digits, nowS(), row.lastStep) : null;
-      if (step === null) return { ok: false as const, reason: "invalid" as const };
-      await tx.update(totpSecrets).set({ lastStep: step }).where(eq(totpSecrets.userId, userId));
-    } else {
-      const normal = normalizeRecoveryCode(input);
-      if (!normal) return { ok: false as const, reason: "invalid" as const };
-      const used = await tx
-        .update(recoveryCodes)
-        .set({ usedAt: clock.now() })
-        .where(
-          and(
-            eq(recoveryCodes.userId, userId),
-            eq(recoveryCodes.codeHash, keyedHash(recoveryKey(deps), normal)),
-            isNull(recoveryCodes.usedAt),
-          ),
-        )
-        .returning({ id: recoveryCodes.id });
-      if (used.length === 0) return { ok: false as const, reason: "invalid" as const };
-      usedRecoveryCode = true;
-      await writeAudit(tx, {
-        actorId: userId,
-        action: "two_factor.recovery_code_used",
-        subjectType: "user",
-        subjectId: userId,
-      });
-    }
-
+    const factor = await checkSecondFactorIn(tx, userId, input, deps);
+    if (!factor.ok) return factor;
     const elevated = await elevateSessionIn(tx, userId, currentTokenHash);
     if (!elevated) return { ok: false as const, reason: "no_session" as const };
     return {
       ok: true as const,
       rotated: elevated.rotated,
       oldHash: elevated.oldHash,
-      usedRecoveryCode,
+      usedRecoveryCode: factor.usedRecoveryCode,
     };
   });
   if (!result.ok) return result;

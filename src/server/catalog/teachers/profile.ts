@@ -58,6 +58,25 @@ export type TeacherOnboardingState = {
   canAuthor: boolean;
 };
 
+/** The profile status of an active teacher account (C2 payout details); null for anyone else. */
+export async function activeTeacherStatus(
+  userId: string,
+): Promise<TeacherOnboardingState["status"] | null> {
+  const [row] = await db()
+    .select({ status: teacherProfiles.status })
+    .from(teacherProfiles)
+    .innerJoin(users, eq(users.id, teacherProfiles.userId))
+    .where(
+      and(
+        eq(teacherProfiles.userId, userId),
+        eq(users.role, "teacher"),
+        eq(users.status, "active"),
+      ),
+    )
+    .limit(1);
+  return row?.status ?? null;
+}
+
 /** What the teacher dashboard shows before authoring (C1); null when the user has no profile. */
 export async function teacherOnboardingState(
   teacherId: string,

@@ -134,6 +134,7 @@ describe("parseServerEnv", () => {
       INNGEST_SIGNING_KEY: "signing-key-value",
       INNGEST_ENCRYPTION_KEY: "encryption-key-value",
       AUTH_SECRET: "d".repeat(40),
+      IBAN_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString("base64"),
       CAPTCHA: "turnstile",
       TURNSTILE_SITE_KEY: "site-key-value",
       TURNSTILE_SECRET_KEY: "turnstile-secret-value",
@@ -318,6 +319,46 @@ describe("parseServerEnv", () => {
 
     it("refuses INNGEST_DEV in live, on any host", () => {
       expect(failure({ ...live, INNGEST_DEV: "1" })).toContain("INNGEST_DEV");
+    });
+
+    describe("IBAN keys (C2)", () => {
+      const key = (fill: number) => Buffer.alloc(32, fill).toString("base64");
+
+      it("requires IBAN_ENCRYPTION_KEY in live only", () => {
+        expect(failure({ ...live, IBAN_ENCRYPTION_KEY: undefined })).toContain(
+          "IBAN_ENCRYPTION_KEY",
+        );
+        expect(() => parse(local)).not.toThrow();
+      });
+
+      it("refuses a key that is not 32 bytes of base64, without echoing it", () => {
+        const message = failure({ ...local, IBAN_ENCRYPTION_KEY: "not-a-real-key-value" });
+        expect(message).toContain("IBAN_ENCRYPTION_KEY");
+        expect(message).not.toContain("not-a-real-key-value");
+        const short = Buffer.alloc(16, 1).toString("base64");
+        expect(failure({ ...local, IBAN_ENCRYPTION_KEY: short })).toContain("IBAN_ENCRYPTION_KEY");
+      });
+
+      it("parses IBAN_KEY_VERSION as a positive integer", () => {
+        expect(parse({ ...local, IBAN_KEY_VERSION: "3" }).IBAN_KEY_VERSION).toBe(3);
+        expect(failure({ ...local, IBAN_KEY_VERSION: "0" })).toContain("IBAN_KEY_VERSION");
+      });
+
+      it("accepts a previous key only with a current key at version 2 or more", () => {
+        const rotating = {
+          ...local,
+          IBAN_ENCRYPTION_KEY: key(2),
+          IBAN_ENCRYPTION_KEY_PREVIOUS: key(1),
+        };
+        expect(failure(rotating)).toContain("IBAN_KEY_VERSION");
+        expect(() => parse({ ...rotating, IBAN_KEY_VERSION: "2" })).not.toThrow();
+        expect(
+          failure({ ...local, IBAN_ENCRYPTION_KEY_PREVIOUS: key(1), IBAN_KEY_VERSION: "2" }),
+        ).toContain("IBAN_ENCRYPTION_KEY");
+        expect(
+          failure({ ...rotating, IBAN_KEY_VERSION: "2", IBAN_ENCRYPTION_KEY_PREVIOUS: "bad" }),
+        ).toContain("IBAN_ENCRYPTION_KEY_PREVIOUS");
+      });
     });
 
     describe("TRUST_PROXY_HEADERS", () => {

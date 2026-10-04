@@ -15,7 +15,8 @@ export type KeyPurpose =
   | "totp"
   | "totp-finish"
   | "recovery"
-  | "oauth";
+  | "oauth"
+  | "iban";
 
 const MIN_SECRET_LENGTH = 32;
 

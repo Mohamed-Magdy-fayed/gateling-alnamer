@@ -170,6 +170,8 @@ export const sessions = pgTable(
     deviceId: uuid("device_id").references(() => devices.id, { onDelete: "set null" }),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     twoFactorVerified: boolean("two_factor_verified").notNull().default(false),
+    /** C2: when this session last passed a re-auth (password + second factor); sensitive reads need it fresh. */
+    reauthAt: timestamp("reauth_at", { withTimezone: true }),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt,
   },
@@ -358,6 +360,37 @@ export const teacherInvites = pgTable(
   },
   (t) => [index("teacher_invites_invited_by_idx").on(t.invitedBy, desc(t.createdAt))],
 );
+
+// Where a teacher is paid (C2). The IBAN is sealed (payouts/payout-crypto.ts, the teacher id as
+// additional data); only the last 4 and the country are readable. Revealing it is a super-admin
+// action after a fresh re-auth, audit-logged.
+export const teacherPayoutDetails = pgTable(
+  "teacher_payout_details",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => teacherProfiles.userId, { onDelete: "restrict" }),
+    ibanCiphertext: text("iban_ciphertext").notNull(),
+    ibanLast4: text("iban_last4").notNull(),
+    ibanCountry: text("iban_country").notNull(),
+    holderName: text("holder_name").notNull(),
+    bankName: text("bank_name").notNull(),
+    keyVersion: integer("key_version").notNull(),
+    createdAt,
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("teacher_payout_details_last4", sql`${t.ibanLast4} ~ '^[A-Z0-9]{4}$'`),
+    check("teacher_payout_details_country", sql`${t.ibanCountry} ~ '^[A-Z]{2}$'`),
+    check(
+      "teacher_payout_details_names_length",
+      sql`length(${t.holderName}) between 1 and 100 and length(${t.bankName}) between 1 and 100`,
+    ),
+    check("teacher_payout_details_key_version", sql`${t.keyVersion} >= 1`),
+  ],
+);
+
+export type TeacherPayoutDetailsRow = typeof teacherPayoutDetails.$inferSelect;
 
 export const categories = pgTable(
   "categories",

@@ -32,3 +32,16 @@ describe("secret box tag length", () => {
     expect(open(KEY, [version, iv, short, body].join("."))).toBeNull();
   });
 });
+
+describe("secret box additional data", () => {
+  it("binds the value to its additional data", () => {
+    const sealed = seal(KEY, "AE070331234567890123456", "teacher-a");
+    expect(open(KEY, sealed, "teacher-a")).toBe("AE070331234567890123456");
+    expect(open(KEY, sealed, "teacher-b")).toBeNull();
+    expect(open(KEY, sealed)).toBeNull();
+  });
+
+  it("keeps values sealed without additional data readable", () => {
+    expect(open(KEY, seal(KEY, "JBSWY3DPEHPK3PXP"))).toBe("JBSWY3DPEHPK3PXP");
+  });
+});

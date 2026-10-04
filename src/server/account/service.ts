@@ -166,7 +166,7 @@ export async function changePassword(input: {
  * account change that asks for it. A wrong one costs one argon2 verify, with or without a
  * credential, and throws the wrong-password error.
  */
-async function checkCurrentPassword(userId: string, current: string): Promise<void> {
+export async function checkCurrentPassword(userId: string, current: string): Promise<void> {
   const guard = await guardPasswordChange({ userId });
   if (!("ok" in guard)) throw new AppError("rate_limited");
   const credential = await db().query.credentials.findFirst({

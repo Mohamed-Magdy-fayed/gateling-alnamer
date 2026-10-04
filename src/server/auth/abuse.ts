@@ -5,10 +5,12 @@ import {
   CHECKOUT_LIMIT,
   CSP_REPORT_LIMIT,
   DRAFT_COURSE_LIMIT,
+  IBAN_REVEAL_LIMIT,
   type LimitRule,
   OAUTH_CALLBACK_LIMIT,
   ORDER_RECHECK_LIMIT,
   PASSKEY_OPTIONS_LIMIT,
+  PAYOUT_DETAILS_SET_LIMIT,
   PLAYBACK_LIMIT,
   QUIZ_LIMIT,
   TEACHER_INVITE_LIMIT,
@@ -350,6 +352,30 @@ export async function guardCategoryWrite(
     limiterOf(deps),
     `rl:categorywrite:user:${hasherOf(deps).hash(input.userId)}`,
     CATEGORY_WRITE_LIMIT,
+  );
+}
+
+/** C2: payout-details saves, 10 a day per teacher. */
+export async function guardPayoutDetailsSet(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:payoutset:user:${hasherOf(deps).hash(input.userId)}`,
+    PAYOUT_DETAILS_SET_LIMIT,
+  );
+}
+
+/** C2: full-IBAN reveals, 30 an hour per super admin. */
+export async function guardIbanReveal(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:ibanreveal:user:${hasherOf(deps).hash(input.userId)}`,
+    IBAN_REVEAL_LIMIT,
   );
 }
 

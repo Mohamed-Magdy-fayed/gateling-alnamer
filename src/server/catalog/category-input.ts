@@ -1,22 +1,15 @@
 import { z } from "zod";
+import { stripHidden } from "@/lib/hidden-chars";
 
 // Category input rules (C3). Messages are dictionary keys (`categories.errors.*`).
 
 const MAX_NAME = 80;
 const MAX_SLUG = 60;
 
-/**
- * Characters nobody sees: C0/C1 controls (NUL breaks the insert), zero-width and direction marks,
- * bidi overrides and isolates, and the BOM. They can reorder or spoof a name, so they are dropped.
- * Written as escapes so no invisible character sits in the source.
- */
-// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point.
-const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u061C\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
-
 const name = (field: "nameAr" | "nameEn") =>
   z
     .string()
-    .transform((value) => value.replace(HIDDEN, "").trim())
+    .transform(stripHidden)
     .pipe(
       z
         .string()

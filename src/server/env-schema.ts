@@ -44,6 +44,12 @@ const schema = z.object({
   INNGEST_SIGNING_KEY: optionalText,
   INNGEST_ENCRYPTION_KEY: optionalText,
   AUTH_SECRET: optionalText,
+  /** C2: 32-byte base64 key sealing teacher IBANs; required in live (see payouts/payout-crypto.ts). */
+  IBAN_ENCRYPTION_KEY: optionalText,
+  /** C2: the version of IBAN_ENCRYPTION_KEY (default 1); bump it on rotation. */
+  IBAN_KEY_VERSION: z.preprocess(blankAsUnset, z.coerce.number().int().positive().optional()),
+  /** C2: during a rotation only, the key of version IBAN_KEY_VERSION - 1. */
+  IBAN_ENCRYPTION_KEY_PREVIOUS: optionalText,
   DATABASE_URL: z.preprocess(blankAsUnset, z.string().min(1)),
   VERCEL: optionalText,
   VERCEL_ENV: z.preprocess(
@@ -248,6 +254,44 @@ function authSecretProblems(env: RawEnv): string[] {
     : [];
 }
 
+const KEY_BYTES = 32;
+
+/** A 32-byte key written as base64 (what env:init generates), or null. */
+export function decodeKey32(value: string | undefined): Buffer | null {
+  if (!value || !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return null;
+  const bytes = Buffer.from(value, "base64");
+  return bytes.length === KEY_BYTES ? bytes : null;
+}
+
+/** C2: the IBAN keyring. The current key is required in live; a previous key means a rotation. */
+function ibanKeyProblems(env: RawEnv): string[] {
+  const problems: string[] = [];
+  const keyHint = `a ${KEY_BYTES}-byte base64 key (npm run env:init writes one locally)`;
+  if (!env.IBAN_ENCRYPTION_KEY) {
+    if (env.APP_MODE === "live") {
+      problems.push(`IBAN_ENCRYPTION_KEY is required when APP_MODE=live; ${FIX_HINT}.`);
+    }
+  } else if (!decodeKey32(env.IBAN_ENCRYPTION_KEY)) {
+    problems.push(`IBAN_ENCRYPTION_KEY must be ${keyHint}.`);
+  }
+  if (env.IBAN_ENCRYPTION_KEY_PREVIOUS) {
+    if (!decodeKey32(env.IBAN_ENCRYPTION_KEY_PREVIOUS)) {
+      problems.push(`IBAN_ENCRYPTION_KEY_PREVIOUS must be ${keyHint}.`);
+    }
+    if (!env.IBAN_ENCRYPTION_KEY) {
+      problems.push(
+        "IBAN_ENCRYPTION_KEY_PREVIOUS needs IBAN_ENCRYPTION_KEY (the new key) as well.",
+      );
+    }
+    if ((env.IBAN_KEY_VERSION ?? 1) < 2) {
+      problems.push(
+        "IBAN_KEY_VERSION must be 2 or more while IBAN_ENCRYPTION_KEY_PREVIOUS is set (it is the version of the new key).",
+      );
+    }
+  }
+  return problems;
+}
+
 function redisProblems(env: RawEnv): string[] {
   if (env.APP_MODE !== "live") return [];
   return (["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"] as const)
@@ -306,6 +350,7 @@ function crossProblems(
   }
   problems.push(...liveProblems(env, twoFactorEnforced));
   problems.push(...authSecretProblems(env));
+  problems.push(...ibanKeyProblems(env));
   problems.push(...redisProblems(env));
   problems.push(...selectorProblems(env, providers));
   return problems;
