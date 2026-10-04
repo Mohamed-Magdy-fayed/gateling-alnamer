@@ -2,9 +2,18 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type BucketLike, firebaseStorage } from "./firebase";
+import { type BucketLike, firebaseStorage, normalizePrivateKey } from "./firebase";
 import { localStorage } from "./local";
 import { assertStorageKey } from "./types";
+
+describe("normalizePrivateKey", () => {
+  it("turns literal \\n into line breaks and drops wrapping quotes", () => {
+    const pem = "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n";
+    expect(normalizePrivateKey(pem.replace(/\n/g, "\\n"))).toBe(pem);
+    expect(normalizePrivateKey(`"${pem.replace(/\n/g, "\\n")}"`)).toBe(pem);
+    expect(normalizePrivateKey(pem)).toBe(pem);
+  });
+});
 
 describe("assertStorageKey", () => {
   it("accepts server-made keys and refuses anything that could be a path trick", () => {

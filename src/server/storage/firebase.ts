@@ -53,26 +53,43 @@ export function firebaseStorage(bucket: BucketLike): StorageAdapter {
   };
 }
 
+/** The service account fields, from `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`. */
+export type FirebaseCredentials = {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
+};
+
 /**
- * The live bucket from the service account JSON (`FIREBASE_SERVICE_ACCOUNT`) and the bucket name.
+ * Env stores keep the PEM's line breaks as literal `\n`; `cert()` needs real ones.
+ * Surrounding quotes left from a pasted `.env` line are dropped too.
+ */
+export function normalizePrivateKey(raw: string): string {
+  return raw.replace(/^"([\s\S]*)"$/, "$1").replace(/\\n/g, "\n");
+}
+
+/**
+ * The live bucket from the service account fields and the bucket name.
  * `firebase-admin` loads only here, and only when the firebase driver is selected.
  */
 export async function firebaseBucket(
-  serviceAccountJson: string,
+  credentials: FirebaseCredentials,
   bucketName: string,
 ): Promise<BucketLike> {
   const { cert, getApps, initializeApp } = await import("firebase-admin/app");
   const { getStorage } = await import("firebase-admin/storage");
   const name = "al-namer-storage";
-  let credentials: object;
-  try {
-    credentials = JSON.parse(serviceAccountJson) as object;
-  } catch {
-    // Never the parser's message: it quotes the input around the error (the private key).
-    throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON");
-  }
   const app =
     getApps().find((candidate) => candidate.name === name) ??
-    initializeApp({ credential: cert(credentials), storageBucket: bucketName }, name);
+    initializeApp(
+      {
+        credential: cert({
+          ...credentials,
+          privateKey: normalizePrivateKey(credentials.privateKey),
+        }),
+        storageBucket: bucketName,
+      },
+      name,
+    );
   return getStorage(app).bucket(bucketName) as unknown as BucketLike;
 }

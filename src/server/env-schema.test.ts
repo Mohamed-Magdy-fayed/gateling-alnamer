@@ -46,11 +46,6 @@ describe("parseServerEnv", () => {
       "MYFATOORAH_API_KEY",
     ],
     ["a Bunny Stream key", { BUNNY_STREAM_API_KEY: "secret-b" }, "BUNNY_STREAM_API_KEY"],
-    [
-      "a Firebase service account",
-      { FIREBASE_SERVICE_ACCOUNT: "secret-c" },
-      "FIREBASE_SERVICE_ACCOUNT",
-    ],
   ])("fails demo with %s, naming the key and not the value", (_label, extra, key) => {
     const message = failure({ ...local, ...extra });
     expect(message).toContain(key);
@@ -128,7 +123,9 @@ describe("parseServerEnv", () => {
       PAYMENT_PROVIDER: "myfatoorah",
       VIDEO_PROVIDER: "bunny",
       STORAGE_DRIVER: "firebase",
-      FIREBASE_SERVICE_ACCOUNT: "{}",
+      FIREBASE_PROJECT_ID: "alnamer",
+      FIREBASE_CLIENT_EMAIL: "storage@alnamer.iam.gserviceaccount.com",
+      FIREBASE_PRIVATE_KEY: "private-key-value",
       FIREBASE_STORAGE_BUCKET: "alnamer.appspot.com",
       EMAIL_TRANSPORT: "smtp",
       SMTP_HOST: "smtp.example",
@@ -383,13 +380,31 @@ describe("Google sign-in keys", () => {
 });
 
 describe("storage driver (F5b)", () => {
-  it("firebase needs its service account and bucket; local needs nothing", () => {
+  const firebase = {
+    STORAGE_DRIVER: "firebase",
+    FIREBASE_PROJECT_ID: "alnamer",
+    FIREBASE_CLIENT_EMAIL: "storage@alnamer.iam.gserviceaccount.com",
+    FIREBASE_PRIVATE_KEY: "secret-key-value",
+    FIREBASE_STORAGE_BUCKET: "alnamer.appspot.com",
+  };
+
+  it("firebase needs its service account fields and bucket; local needs nothing", () => {
     expect(() =>
       parse({ ...local, STORAGE_DRIVER: "local", STORAGE_LOCAL_DIR: "/tmp/s" }),
     ).not.toThrow();
     expect(failure({ ...local, STORAGE_DRIVER: "firebase" })).toMatch(
-      /STORAGE_DRIVER=firebase needs FIREBASE_SERVICE_ACCOUNT and FIREBASE_STORAGE_BUCKET/,
+      /STORAGE_DRIVER=firebase needs FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY, FIREBASE_STORAGE_BUCKET/,
     );
+  });
+
+  it("names only the missing firebase keys, never a value", () => {
+    const message = failure({ ...local, ...firebase, FIREBASE_PRIVATE_KEY: "" });
+    expect(message).toMatch(/needs FIREBASE_PRIVATE_KEY;/);
+    expect(message).not.toContain("secret-key-value");
+  });
+
+  it("allows firebase storage in demo (the demo deployments use it)", () => {
+    expect(() => parse({ ...local, ...firebase })).not.toThrow();
   });
 });
 

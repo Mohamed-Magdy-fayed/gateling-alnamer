@@ -20,12 +20,16 @@ export function storage(): Promise<StorageAdapter> {
   cached ??= (async () => {
     const env = serverEnv();
     if (env.providers.storage === "firebase") {
-      if (!env.FIREBASE_SERVICE_ACCOUNT || !env.FIREBASE_STORAGE_BUCKET) {
+      const {
+        FIREBASE_PROJECT_ID: projectId,
+        FIREBASE_CLIENT_EMAIL: clientEmail,
+        FIREBASE_PRIVATE_KEY: privateKey,
+        FIREBASE_STORAGE_BUCKET: bucket,
+      } = env;
+      if (!projectId || !clientEmail || !privateKey || !bucket) {
         throw new Error("STORAGE_DRIVER=firebase without its credentials");
       }
-      return firebaseStorage(
-        await firebaseBucket(env.FIREBASE_SERVICE_ACCOUNT, env.FIREBASE_STORAGE_BUCKET),
-      );
+      return firebaseStorage(await firebaseBucket({ projectId, clientEmail, privateKey }, bucket));
     }
     return localStorage(path.resolve(env.STORAGE_LOCAL_DIR ?? DEFAULT_LOCAL_DIR));
   })().catch((error: unknown) => {

@@ -71,7 +71,9 @@ const schema = z.object({
   MYFATOORAH_LIVE: optionalText,
   MYFATOORAH_API_KEY: optionalText,
   BUNNY_STREAM_API_KEY: optionalText,
-  FIREBASE_SERVICE_ACCOUNT: optionalText,
+  FIREBASE_PROJECT_ID: optionalText,
+  FIREBASE_CLIENT_EMAIL: optionalText,
+  FIREBASE_PRIVATE_KEY: optionalText,
   FIREBASE_STORAGE_BUCKET: optionalText,
   /** The local storage driver's directory (default `.storage` in the project). */
   STORAGE_LOCAL_DIR: optionalText,
@@ -101,6 +103,13 @@ export type ResolvedProviders = {
 export type ServerEnv = RawEnv & { readonly providers: ResolvedProviders };
 
 type Source = Record<string, string | undefined>;
+
+const FIREBASE_KEYS = [
+  "FIREBASE_PROJECT_ID",
+  "FIREBASE_CLIENT_EMAIL",
+  "FIREBASE_PRIVATE_KEY",
+  "FIREBASE_STORAGE_BUCKET",
+] as const;
 
 const FIX_HINT = "set it in .env (local) or the Vercel project environment variables";
 
@@ -209,11 +218,6 @@ function demoProblems(env: RawEnv): string[] {
       "BUNNY_STREAM_API_KEY is a live credential and is refused when APP_MODE=demo; unset it.",
     );
   }
-  if (env.FIREBASE_SERVICE_ACCOUNT) {
-    problems.push(
-      "FIREBASE_SERVICE_ACCOUNT is a live credential and is refused when APP_MODE=demo; unset it.",
-    );
-  }
   if (env.VERCEL_ENV === "production") {
     const allowed = (env.DEMO_HOSTS ?? "")
       .split(",")
@@ -291,13 +295,11 @@ function crossProblems(
   if (Boolean(env.GOOGLE_CLIENT_ID) !== Boolean(env.GOOGLE_CLIENT_SECRET)) {
     problems.push("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET go together; set both or neither.");
   }
-  if (
-    env.STORAGE_DRIVER === "firebase" &&
-    !(env.FIREBASE_SERVICE_ACCOUNT && env.FIREBASE_STORAGE_BUCKET)
-  ) {
-    problems.push(
-      `STORAGE_DRIVER=firebase needs FIREBASE_SERVICE_ACCOUNT and FIREBASE_STORAGE_BUCKET; ${FIX_HINT}.`,
-    );
+  if (env.STORAGE_DRIVER === "firebase") {
+    const missing = FIREBASE_KEYS.filter((key) => !env[key]);
+    if (missing.length > 0) {
+      problems.push(`STORAGE_DRIVER=firebase needs ${missing.join(", ")}; ${FIX_HINT}.`);
+    }
   }
   if (env.APP_MODE === "live" && env.DEMO_ACCOUNTS_PASSWORD) {
     problems.push("DEMO_ACCOUNTS_PASSWORD is refused when APP_MODE=live; unset it.");
