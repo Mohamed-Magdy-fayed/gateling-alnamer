@@ -1,5 +1,5 @@
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { asc, count, eq } from "drizzle-orm";
 import { writeAudit } from "@/server/audit/repository";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
@@ -90,4 +90,13 @@ export async function decideTeacherApplication(input: {
       recipient: { email: row.email, name: row.name, locale: row.locale },
     } as const;
   });
+}
+
+/** How many applications wait for a decision (the admin landing card). */
+export async function countTeacherApplications(): Promise<number> {
+  const [row] = await db()
+    .select({ count: count() })
+    .from(teacherProfiles)
+    .where(eq(teacherProfiles.status, "applied"));
+  return row?.count ?? 0;
 }

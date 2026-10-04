@@ -20,7 +20,7 @@ import type { RecentResult } from "@/server/access/quiz";
 import type { PendingCourse, TeacherCourseRow } from "@/server/catalog/authoring";
 import type { TeacherOnboardingState } from "@/server/catalog/teachers/profile";
 import type { StudentCourse } from "@/server/orders/my-courses";
-import { Badge, ButtonLink, Card } from "@/ui";
+import { Badge, ButtonLink, Card, Ltr } from "@/ui";
 
 /**
  * Real-user landings (A7a screen map), built only from data that exists today. Anything not built
@@ -238,10 +238,13 @@ export function AdminLanding({
   t,
   locale,
   pending,
+  applications,
 }: {
   t: Dictionary;
   locale: Locale;
   pending: PendingCourse[];
+  /** Teacher applications waiting for a decision. */
+  applications: number;
 }) {
   const a = t.dashboard.admin;
   return (
@@ -280,11 +283,26 @@ export function AdminLanding({
         </Card>
       </section>
       <div className={grid}>
-        <EmptyState
-          icon={UserCheck}
-          title={a.teacherApplications}
-          comingSoon={t.shell.comingSoon}
-        />
+        <section aria-labelledby="teacher-applications">
+          <Card className="flex h-full flex-col gap-4 p-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <UserCheck aria-hidden className="size-5 text-fg-2" strokeWidth={1.75} />
+              <h2 id="teacher-applications" className="text-lg font-semibold">
+                {a.teacherApplications}
+              </h2>
+              <Badge tone={applications > 0 ? "warning" : "neutral"}>
+                <Ltr>{applications}</Ltr>
+              </Badge>
+            </div>
+            <ButtonLink
+              href="/dashboard/admin/teachers"
+              variant="outline"
+              className="min-h-11 self-start"
+            >
+              {t.teachers.admin.review}
+            </ButtonLink>
+          </Card>
+        </section>
         <EmptyState icon={ReceiptText} title={a.orders} comingSoon={t.shell.comingSoon} />
       </div>
     </div>

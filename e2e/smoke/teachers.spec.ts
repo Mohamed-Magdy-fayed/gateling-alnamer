@@ -1,6 +1,8 @@
+import type { Browser, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { uniqueClientIpPerTest } from "../helpers/client-ip";
+import { nextClientIp, uniqueClientIpPerTest } from "../helpers/client-ip";
 import {
+  createStudent,
   FIELD_EMAIL,
   FIELD_NAME,
   FIELD_PASSWORD,
@@ -19,6 +21,52 @@ test.describe.configure({ mode: "serial" });
 uniqueClientIpPerTest();
 
 const applicantEmail = `smoke-apply-${runId}@alnamer.local`;
+const rejectedEmail = `smoke-rejected-${runId}@alnamer.local`;
+const adminEmail = `smoke-teachers-admin-${runId}@alnamer.local`;
+const REASON = "نحتاج إلى شهادة تدريس سارية.";
+
+test.beforeAll(async ({ browser, baseURL }) => {
+  // Sign-up makes students; the test database promotes one to an admin and turns another into a
+  // pending teacher application (the apply form itself is covered by the first test).
+  await createStudent(browser, baseURL, {
+    name: "Smoke Teachers Admin",
+    email: adminEmail,
+    password,
+  });
+  await createStudent(browser, baseURL, { name: "Smoke Rejected", email: rejectedEmail, password });
+  await withDb(async (sql) => {
+    await sql`update users set role = 'admin', email_verified_at = now() where email = ${adminEmail}`;
+    await sql`update users set role = 'teacher', email_verified_at = now() where email = ${rejectedEmail}`;
+    await sql`
+      insert into teacher_profiles (user_id, public_name, bio, status, application_note)
+      select id, '{"ar":"مرفوض","en":"Rejected"}'::jsonb, '{"ar":"","en":""}'::jsonb, 'applied', 'أدرّس الكيمياء للثانوية.'
+      from users where email = ${rejectedEmail}`;
+  });
+});
+
+/** Runs `steps` as the admin in a separate browser context (its own client IP). */
+async function asAdmin(
+  browser: Browser,
+  baseURL: string | undefined,
+  steps: (page: Page) => Promise<void>,
+): Promise<void> {
+  const admin = await browser.newContext({
+    baseURL: baseURL as string,
+    extraHTTPHeaders: { "x-real-ip": nextClientIp() },
+  });
+  try {
+    const page = await admin.newPage();
+    await signInStaff(page, adminEmail, password);
+    await page.goto("/dashboard/admin/teachers");
+    await steps(page);
+  } finally {
+    await admin.close();
+  }
+}
+
+/** The application card on the admin page for the given email. */
+const applicationOf = (page: Page, email: string) =>
+  page.getByRole("article").filter({ hasText: email });
 
 test("someone applies to teach, enrols two-factor and sees the review status", async ({ page }) => {
   await page.goto("/teach/apply");
@@ -42,13 +90,18 @@ test("someone applies to teach, enrols two-factor and sees the review status", a
   await page.waitForURL(/\/dashboard$/);
 });
 
-test("once approved, the teacher accepts the terms and authoring opens", async ({ page }) => {
-  // The admin approval screen is C1.3; here the database approves the application.
-  await withDb(
-    (sql) => sql`
-      update teacher_profiles set status = 'approved', decided_at = now()
-      where user_id = (select id from users where email = ${applicantEmail})`,
-  );
+test("an admin approves; the teacher accepts the terms and authoring opens", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  await asAdmin(browser, baseURL, async (admin) => {
+    const card = applicationOf(admin, applicantEmail);
+    await expect(card.getByText("أدرّس الرياضيات للصف العاشر في عمّان.")).toBeVisible();
+    await card.getByRole("button", { name: "اعتماد" }).click();
+    await expect(admin.getByText("تم اعتماد الطلب وأُرسل بريد إلى المعلّم.")).toBeVisible();
+    await expect(applicationOf(admin, applicantEmail)).toHaveCount(0);
+  });
   await signInStaff(page, applicantEmail, password);
   await expect(page.getByRole("heading", { name: "شروط المعلّمين" })).toBeVisible();
   await expect(page.getByText("نص مؤقت إلى أن تصل الشروط الرسمية.")).toBeVisible();
@@ -84,4 +137,23 @@ test("a short note and an under-18 date of birth are refused with field errors",
     "يجب أن يكون عمر المعلّم 18 سنة أو أكثر",
   );
   await expect(page).toHaveURL(/\/teach\/apply$/);
+});
+
+test("a rejection needs a reason, and the applicant sees it", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  await asAdmin(browser, baseURL, async (admin) => {
+    const card = applicationOf(admin, rejectedEmail);
+    await card.getByRole("button", { name: "رفض" }).click();
+    await expect(card.getByText("اكتب السبب قبل الرفض.")).toBeVisible();
+    await card.getByLabel("السبب").fill(REASON);
+    await card.getByRole("button", { name: "رفض" }).click();
+    await expect(admin.getByText("تم رفض الطلب وأُرسل السبب إلى المتقدّم بالبريد.")).toBeVisible();
+    await expect(applicationOf(admin, rejectedEmail)).toHaveCount(0);
+  });
+  await signInStaff(page, rejectedEmail, password);
+  await expect(page.getByRole("heading", { name: "لم تتم الموافقة على طلبك" })).toBeVisible();
+  await expect(page.getByText(REASON)).toBeVisible();
 });

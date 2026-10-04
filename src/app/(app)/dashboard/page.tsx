@@ -24,6 +24,7 @@ import { shouldPromptParentLink } from "@/server/auth/profile";
 import { listPendingReview, listTeacherCourses } from "@/server/catalog/authoring";
 import { listCoursesForDashboard } from "@/server/catalog/repository";
 import { teacherOnboardingState } from "@/server/catalog/teachers/profile";
+import { countTeacherApplications } from "@/server/catalog/teachers/review";
 import { clock } from "@/server/clock";
 import { serverEnv } from "@/server/env";
 import { listStudentCourses } from "@/server/orders/my-courses";
@@ -50,6 +51,7 @@ export default async function DashboardPage({
     teaching,
     pending,
     onboard,
+    applications,
   ] = await Promise.all([
     sample ? listCoursesForDashboard() : [],
     shouldPromptParentLink(user),
@@ -59,6 +61,7 @@ export default async function DashboardPage({
     !sample && user.role === "teacher" ? listTeacherCourses(user.id) : [],
     !sample && user.role === "admin" ? listPendingReview() : [],
     !sample && user.role === "teacher" ? teacherOnboardingState(user.id) : null,
+    !sample && user.role === "admin" ? countTeacherApplications() : 0,
   ]);
   // A teacher who can author has nothing left to deal with: no gate.
   const onboarding =
@@ -119,7 +122,7 @@ export default async function DashboardPage({
         ) : null}
         {sample === null && user.role === "reviewer" ? <ReviewerLanding t={t} /> : null}
         {sample === null && user.role === "admin" ? (
-          <AdminLanding t={t} locale={locale} pending={pending} />
+          <AdminLanding t={t} locale={locale} pending={pending} applications={applications} />
         ) : null}
       </div>
     </Container>

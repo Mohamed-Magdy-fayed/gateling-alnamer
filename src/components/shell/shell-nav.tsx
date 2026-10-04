@@ -1,6 +1,6 @@
 "use client";
 
-import { CirclePlus, House, Link2, type LucideIcon, UserRound } from "lucide-react";
+import { CirclePlus, House, Link2, type LucideIcon, UserRound, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ const ICONS: Record<NavIconName, LucideIcon> = {
   account: UserRound,
   link: Link2,
   plus: CirclePlus,
+  teachers: UsersRound,
 };
 
 export type ShellNavItem = { href: string; label: string; icon: NavIconName };
