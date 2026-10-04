@@ -48,7 +48,13 @@ export async function GET() {
   }
   const env = serverEnv();
   return NextResponse.json(
-    { status, checks, appMode: env.APP_MODE, jobsMode: env.providers.jobs },
+    {
+      status,
+      checks,
+      appMode: env.APP_MODE,
+      jobsMode: env.providers.jobs,
+      storageDriver: env.providers.storage,
+    },
     { status: httpStatus, headers },
   );
 }

@@ -72,6 +72,9 @@ const schema = z.object({
   MYFATOORAH_API_KEY: optionalText,
   BUNNY_STREAM_API_KEY: optionalText,
   FIREBASE_SERVICE_ACCOUNT: optionalText,
+  FIREBASE_STORAGE_BUCKET: optionalText,
+  /** The local storage driver's directory (default `.storage` in the project). */
+  STORAGE_LOCAL_DIR: optionalText,
   SMTP_HOST: optionalText,
   SMTP_PORT: z.preprocess(blankAsUnset, z.coerce.number().int().positive().optional()),
   SMTP_USER: optionalText,
@@ -285,6 +288,14 @@ function crossProblems(
   }
   if (Boolean(env.GOOGLE_CLIENT_ID) !== Boolean(env.GOOGLE_CLIENT_SECRET)) {
     problems.push("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET go together; set both or neither.");
+  }
+  if (
+    env.STORAGE_DRIVER === "firebase" &&
+    !(env.FIREBASE_SERVICE_ACCOUNT && env.FIREBASE_STORAGE_BUCKET)
+  ) {
+    problems.push(
+      `STORAGE_DRIVER=firebase needs FIREBASE_SERVICE_ACCOUNT and FIREBASE_STORAGE_BUCKET; ${FIX_HINT}.`,
+    );
   }
   if (env.APP_MODE === "live" && env.DEMO_ACCOUNTS_PASSWORD) {
     problems.push("DEMO_ACCOUNTS_PASSWORD is refused when APP_MODE=live; unset it.");

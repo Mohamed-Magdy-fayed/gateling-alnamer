@@ -128,6 +128,8 @@ describe("parseServerEnv", () => {
       PAYMENT_PROVIDER: "myfatoorah",
       VIDEO_PROVIDER: "bunny",
       STORAGE_DRIVER: "firebase",
+      FIREBASE_SERVICE_ACCOUNT: "{}",
+      FIREBASE_STORAGE_BUCKET: "alnamer.appspot.com",
       EMAIL_TRANSPORT: "smtp",
       SMTP_HOST: "smtp.example",
       JOBS_MODE: "inngest",
@@ -376,6 +378,17 @@ describe("Google sign-in keys", () => {
     ).not.toThrow();
     expect(failure({ ...local, GOOGLE_CLIENT_ID: "id" })).toMatch(
       /GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET go together/,
+    );
+  });
+});
+
+describe("storage driver (F5b)", () => {
+  it("firebase needs its service account and bucket; local needs nothing", () => {
+    expect(() =>
+      parse({ ...local, STORAGE_DRIVER: "local", STORAGE_LOCAL_DIR: "/tmp/s" }),
+    ).not.toThrow();
+    expect(failure({ ...local, STORAGE_DRIVER: "firebase" })).toMatch(
+      /STORAGE_DRIVER=firebase needs FIREBASE_SERVICE_ACCOUNT and FIREBASE_STORAGE_BUCKET/,
     );
   });
 });

@@ -21,3 +21,6 @@ AGENTS.md
 .claude/
 scripts/autobuild.ps1
 *.ogg
+
+# Local object storage (F5b, STORAGE_DRIVER=local)
+/.storage/
