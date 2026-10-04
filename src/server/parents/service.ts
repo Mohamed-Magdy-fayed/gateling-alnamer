@@ -504,7 +504,17 @@ export async function resetChildPassword(
     return decision.result;
   }
 
-  const { facts, email } = decision;
+  await sendChildResetEmail({ parentId, childId, ...decision }, ctx, deps);
+  return { ok: true, mode: "email", maskedEmail: maskEmail(decision.email) };
+}
+
+/** Email mode: audit `{mode:"email"}`, then a `password_reset` code to the child's verified email. */
+async function sendChildResetEmail(
+  input: { parentId: string; childId: string; facts: ChildFacts; email: string },
+  ctx: { locale: Locale },
+  deps: ParentDeps,
+): Promise<void> {
+  const { parentId, childId, facts, email } = input;
   await db().transaction(async (tx) => {
     await writeAudit(tx, {
       actorId: parentId,
@@ -520,7 +530,6 @@ export async function resetChildPassword(
     "password_reset",
     ctx.locale,
   );
-  return { ok: true, mode: "email", maskedEmail: maskEmail(email) };
 }
 
 /**

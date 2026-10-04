@@ -324,22 +324,33 @@ export async function resetPasswordAction(
     return { status: "error", message: t.auth.states.codeInvalid };
   }
 
-  // Consuming the code and writing the credential commit together: a failed write leaves the code
-  // usable, and a code can never be spent without the password changing.
-  const reset = await db().transaction(async (tx) => {
-    const verified = await verifyCode(user.id, "password_reset", input.code, tx, requester);
-    if (!verified.ok) return null;
-    await setPasswordIn(tx, user.id, await hashPassword(input.password));
-    // A password reset signs the account out everywhere (pre-sessions included) in the same
-    // transaction, so a failure after the credential write rolls the write back.
-    return { sessionHashes: await deleteUserSessionsIn(tx, user.id) };
-  });
+  const reset = await resetWithCode(user.id, input.code, input.password, requester);
   if (!reset) return { status: "error", message: t.auth.states.codeInvalid };
   await clearCodeVerifyFailures(who);
   // The cache is purged only after the commit.
   await purgeSessionCache(user.id, reset.sessionHashes);
   await clearPendingReset();
   return { status: "success", message: t.auth.reset.done };
+}
+
+/**
+ * Consuming the code and writing the credential commit together: a failed write leaves the code
+ * usable, and a code can never be spent without the password changing. A password reset signs the
+ * account out everywhere (pre-sessions included) in the same transaction, so a failure after the
+ * credential write rolls the write back. Null when the code is wrong.
+ */
+async function resetWithCode(
+  userId: string,
+  code: string,
+  password: string,
+  requester: string | null,
+): Promise<{ sessionHashes: string[] } | null> {
+  return db().transaction(async (tx) => {
+    const verified = await verifyCode(userId, "password_reset", code, tx, requester);
+    if (!verified.ok) return null;
+    await setPasswordIn(tx, userId, await hashPassword(password));
+    return { sessionHashes: await deleteUserSessionsIn(tx, userId) };
+  });
 }
 
 /** Confirms the signed-in user's email with the code that was mailed to them. */

@@ -61,12 +61,18 @@ export async function resolveOAuthSignIn(identity: OAuthIdentity): Promise<OAuth
     return { kind: "needs_password" };
   }
 
+  await linkGoogleAccount(account.id, identity);
+  return { kind: "signin", userId: account.id };
+}
+
+/** Links the Google identity to an account; a new link is audit-logged (`oauth.linked`). */
+async function linkGoogleAccount(userId: string, identity: OAuthIdentity): Promise<void> {
   await db().transaction(async (tx) => {
     const inserted = await tx
       .insert(oauthAccounts)
       .values({
         id: uuidv7(),
-        userId: account.id,
+        userId,
         provider: PROVIDER,
         subject: identity.subject,
         email: identity.email,
@@ -75,14 +81,13 @@ export async function resolveOAuthSignIn(identity: OAuthIdentity): Promise<OAuth
       .returning({ id: oauthAccounts.id });
     if (inserted.length === 0) return;
     await writeAudit(tx, {
-      actorId: account.id,
+      actorId: userId,
       action: "oauth.linked",
       subjectType: "user",
-      subjectId: account.id,
+      subjectId: userId,
       after: { provider: PROVIDER },
     });
   });
-  return { kind: "signin", userId: account.id };
 }
 
 export type GoogleSignUpForm = {
@@ -123,28 +128,14 @@ export async function completeGoogleSignUp(
   try {
     const userId = await db().transaction(async (tx) => {
       if (!(await consumePendingSignup(tx, ctx.pendingId, ctx.now))) return null;
-      const [user] = await tx
-        .insert(users)
-        .values({
-          name,
-          email: identity.email,
-          role: form.role,
-          dateOfBirth: age.dateOfBirth,
-          guardianConsentAt: age.guardianConsentAt,
-          locale: ctx.locale,
-          emailVerifiedAt: ctx.now,
-          publicNumber: await nextPublicNumber(tx),
-        })
-        .returning({ id: users.id });
-      if (!user) throw new Error("user insert returned no row");
-      await tx.insert(oauthAccounts).values({
-        id: uuidv7(),
-        userId: user.id,
-        provider: PROVIDER,
-        subject: identity.subject,
-        email: identity.email,
+      return insertGoogleUser(tx, identity, {
+        name,
+        role: form.role,
+        dateOfBirth: age.dateOfBirth,
+        guardianConsentAt: age.guardianConsentAt,
+        locale: ctx.locale,
+        now: ctx.now,
       });
-      return user.id;
     });
     return userId ? { ok: true, userId } : { ok: false, decision: { kind: "refused" } };
   } catch (error) {
@@ -155,4 +146,43 @@ export async function completeGoogleSignUp(
     }
     return { ok: false, decision: await resolveOAuthSignIn(identity) };
   }
+}
+
+type Tx = Parameters<Parameters<ReturnType<typeof db>["transaction"]>[0]>[0];
+
+/** The new user (verified email, a public number, no password) and its Google link. */
+async function insertGoogleUser(
+  tx: Tx,
+  identity: OAuthIdentity,
+  fields: {
+    name: string;
+    role: "student" | "parent";
+    dateOfBirth: string;
+    guardianConsentAt: Date | null;
+    locale: Locale;
+    now: Date;
+  },
+): Promise<string> {
+  const [user] = await tx
+    .insert(users)
+    .values({
+      name: fields.name,
+      email: identity.email,
+      role: fields.role,
+      dateOfBirth: fields.dateOfBirth,
+      guardianConsentAt: fields.guardianConsentAt,
+      locale: fields.locale,
+      emailVerifiedAt: fields.now,
+      publicNumber: await nextPublicNumber(tx),
+    })
+    .returning({ id: users.id });
+  if (!user) throw new Error("user insert returned no row");
+  await tx.insert(oauthAccounts).values({
+    id: uuidv7(),
+    userId: user.id,
+    provider: PROVIDER,
+    subject: identity.subject,
+    email: identity.email,
+  });
+  return user.id;
 }
