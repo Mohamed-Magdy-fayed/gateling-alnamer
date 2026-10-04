@@ -1,4 +1,4 @@
-import { type Browser, expect, type Page } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "@playwright/test";
 import postgres from "postgres";
 import { base32Decode, totpAt } from "../../src/server/auth/totp";
 import { nextClientIp } from "../helpers/client-ip";
@@ -211,6 +211,10 @@ export async function signInStaff(page: Page, address: string, withPassword: str
     // The server refuses a step at or before the last one used (replays). Use the next step; if
     // that one was already spent, wait for the window to move on.
     const used = lastSteps.get(address) ?? 0;
+    if (Math.floor(nowS() / 30) + 1 <= used) {
+      // Waiting out a window can take up to 30 s: the test gets that time on top of its budget.
+      test.info().setTimeout(test.info().timeout + 31_000);
+    }
     while (Math.floor(nowS() / 30) + 1 <= used) await page.waitForTimeout(1000);
     const step = Math.floor(nowS() / 30) + 1;
     lastSteps.set(address, step);
