@@ -50,6 +50,11 @@ function fieldErrors(
   return out;
 }
 
+/** The admin went over the hourly write budget; nothing was changed. */
+function limitedState(a: CategoriesText["admin"], values?: Record<string, string>): FormState {
+  return { status: "error", tone: "warning", message: a.limited, values };
+}
+
 function values(raw: Record<string, unknown>, keys: string[]): Record<string, string> {
   return Object.fromEntries(
     keys.flatMap((key) => (typeof raw[key] === "string" ? [[key, raw[key] as string]] : [])),
@@ -79,6 +84,7 @@ export async function createCategoryAction(
     slug: input.slug,
   });
   if (!result.ok) {
+    if (result.reason === "rate_limited") return limitedState(a, echoed);
     if (result.reason === "invalid") {
       return {
         status: "error",
@@ -131,6 +137,7 @@ export async function updateCategoryAction(
         values: echoed,
       };
     }
+    if (result.reason === "rate_limited") return limitedState(a, echoed);
     revalidatePath(ADMIN_CATEGORIES_PATH);
     return { status: "error", message: a.notFound };
   }
@@ -138,7 +145,7 @@ export async function updateCategoryAction(
   return { status: "success", message: a.saved };
 }
 
-/** Moves a category one place among its siblings. Success needs no message: the list shows it. */
+/** Moves a category one place among its siblings. Success has no message: the list shows it. */
 export async function moveCategoryAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const admin = await actingAdmin();
   if (!admin) redirect("/dashboard");
@@ -147,9 +154,10 @@ export async function moveCategoryAction(_prev: FormState, formData: FormData): 
   const parsed = moveSchema.safeParse(fields(formData));
   if (!parsed.success) return { status: "error", message: a.error };
   const result = await moveCategory({ actorId: admin.id, ...parsed.data });
+  if (!result.ok && result.reason === "rate_limited") return limitedState(a);
   revalidatePath(ADMIN_CATEGORIES_PATH);
   if (!result.ok) return { status: "error", message: a.notFound };
-  return { status: "idle" };
+  return { status: "success" };
 }
 
 /** Deletes an unused category; the notice shows at the top since the row is gone. */
@@ -166,6 +174,7 @@ export async function deleteCategoryAction(
   const result = await deleteCategory({ actorId: admin.id, id: parsed.data.id });
   if (!result.ok) {
     if (result.reason === "in_use") return { status: "error", message: a.inUse };
+    if (result.reason === "rate_limited") return limitedState(a);
     revalidatePath(ADMIN_CATEGORIES_PATH);
     return { status: "error", message: a.notFound };
   }

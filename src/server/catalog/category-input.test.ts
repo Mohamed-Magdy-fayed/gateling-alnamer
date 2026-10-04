@@ -45,6 +45,17 @@ describe("categoryNamesInput", () => {
     expect(parsed).toEqual({ nameAr: "الرياضيات", nameEn: "Maths" });
   });
 
+  it("strips control and invisible formatting characters", () => {
+    const hidden = [0x00, 0x1f, 0x7f, 0x9f, 0x200b, 0x200e, 0x200f, 0x061c, 0x2066, 0xfeff]
+      .map((code) => String.fromCharCode(code))
+      .join("");
+    const parsed = categoryNamesInput.parse({
+      nameAr: `عل${hidden}وم`,
+      nameEn: `Sci${hidden}ence`,
+    });
+    expect(parsed).toEqual({ nameAr: "علوم", nameEn: "Science" });
+  });
+
   it("requires both names", () => {
     const parsed = categoryNamesInput.safeParse({ nameAr: "  ", nameEn: "" });
     expect(parsed.success).toBe(false);

@@ -5,6 +5,7 @@ import * as schema from "@/server/db/schema";
 /** Right-to-left override, written as an escape so no invisible control sits in the source. */
 const RLO = String.fromCharCode(0x202e);
 
+vi.mock("@/server/redis", () => ({ getRedis: () => null }));
 vi.mock("@/server/db", async () => {
   const { drizzle } = await import("drizzle-orm/postgres-js");
   const postgres = (await import("postgres")).default;
@@ -20,6 +21,7 @@ const dbModule = (await import("@/server/db")) as unknown as {
 };
 const conn = dbModule.db();
 const { createUser } = await import("@/server/orders/test-fixtures");
+const { MemoryLimiter } = await import("../../../test/fake-limiter");
 const {
   createCategory,
   deleteCategory,
@@ -230,7 +232,71 @@ describe("createCategory", () => {
   });
 });
 
+describe("sample curricula", () => {
+  it("marks a grade added to a sample curriculum as sample, so it hides with it", async () => {
+    const grade = await newGrade(UAE_MOE, `extra ${unique()}`);
+    const [row] = await conn
+      .select()
+      .from(schema.categories)
+      .where(eq(schema.categories.id, grade));
+    expect(row?.isSample).toBe(true);
+    expect(await deleteCategory({ actorId: admin.id, id: grade })).toEqual({ ok: true });
+  });
+});
+
+describe("rate limit", () => {
+  it("allows 120 category writes an hour per admin", async () => {
+    const deps = { limiter: new MemoryLimiter(), key: Buffer.alloc(32, 7) };
+    const curriculum = await newCurriculum();
+    for (let i = 0; i < 120; i++) {
+      const result = await updateCategory(
+        { actorId: admin.id, id: curriculum, nameAr: `اسم ${i}`, nameEn: `Name ${i}` },
+        deps,
+      );
+      expect(result.ok).toBe(true);
+    }
+    const input = { actorId: admin.id, id: curriculum, nameAr: "أخير", nameEn: "Last" };
+    expect(await updateCategory(input, deps)).toEqual({ ok: false, reason: "rate_limited" });
+    expect(
+      await moveCategory({ actorId: admin.id, id: curriculum, direction: "up" }, deps),
+    ).toEqual({
+      ok: false,
+      reason: "rate_limited",
+    });
+    expect(await deleteCategory({ actorId: admin.id, id: curriculum }, deps)).toEqual({
+      ok: false,
+      reason: "rate_limited",
+    });
+    const create = {
+      actorId: admin.id,
+      type: "subject" as const,
+      parentId: null,
+      nameAr: "س",
+      nameEn: `S ${unique()}`,
+      slug: "",
+    };
+    expect(await createCategory(create, deps)).toEqual({ ok: false, reason: "rate_limited" });
+  });
+});
+
 describe("updateCategory", () => {
+  it("writes nothing when the names did not change", async () => {
+    const curriculum = await newCurriculum();
+    const [row] = await conn
+      .select()
+      .from(schema.categories)
+      .where(eq(schema.categories.id, curriculum));
+    expect(
+      await updateCategory({
+        actorId: admin.id,
+        id: curriculum,
+        nameAr: ` ${row?.nameAr} `,
+        nameEn: row?.nameEn ?? "",
+      }),
+    ).toEqual({ ok: true });
+    expect(await auditFor("category.updated", curriculum)).toHaveLength(0);
+  });
+
   it("renames, keeps the slug and audits before and after", async () => {
     const curriculum = await newCurriculum();
     const [before] = await conn

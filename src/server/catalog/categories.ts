@@ -2,6 +2,7 @@ import "server-only";
 import { and, asc, count, eq, isNull, max, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { writeAudit } from "@/server/audit/repository";
+import { type AbuseDeps, guardCategoryWrite } from "@/server/auth/abuse";
 import { type DbExecutor, db } from "@/server/db";
 import { isForeignKeyViolation, isUniqueViolation } from "@/server/db/errors";
 import { categories, courseCategories } from "@/server/db/schema";
@@ -88,6 +89,13 @@ export async function listCategoriesForAdmin(): Promise<CategoryTree<AdminCatego
 }
 
 type FieldName = "nameAr" | "nameEn" | "slug";
+type RateLimited = { ok: false; reason: "rate_limited" };
+
+/** Every category write counts against the admin's hourly budget (CATEGORY_WRITE_LIMIT). */
+async function limited(actorId: string, deps: AbuseDeps): Promise<boolean> {
+  const guard = await guardCategoryWrite({ userId: actorId }, deps);
+  return !("ok" in guard);
+}
 type Invalid = { ok: false; reason: "invalid"; fields: Partial<Record<FieldName, string>> };
 
 function parseNames(input: { nameAr: string; nameEn: string }) {
@@ -104,21 +112,26 @@ function parseNames(input: { nameAr: string; nameEn: string }) {
 export type CreateCategoryResult =
   | { ok: true; id: string }
   | Invalid
+  | RateLimited
   | { ok: false; reason: "parent_invalid" | "slug_taken" };
 
 /**
  * Adds a category at the end of its siblings. A grade needs a curriculum parent; curricula and
  * subjects have none. The slug, when left empty, comes from the English name (a grade's is
- * prefixed with its curriculum's), and never changes afterwards.
+ * prefixed with its curriculum's), and never changes afterwards. A grade of a sample curriculum
+ * is a sample too, so it hides with its curriculum.
  */
-export async function createCategory(input: {
-  actorId: string;
-  type: CategoryType;
-  parentId: string | null;
-  nameAr: string;
-  nameEn: string;
-  slug: string;
-}): Promise<CreateCategoryResult> {
+export async function createCategory(
+  input: {
+    actorId: string;
+    type: CategoryType;
+    parentId: string | null;
+    nameAr: string;
+    nameEn: string;
+    slug: string;
+  },
+  deps: AbuseDeps = {},
+): Promise<CreateCategoryResult> {
   const names = parseNames(input);
   const typed = input.slug.trim();
   const slugError =
@@ -132,19 +145,22 @@ export async function createCategory(input: {
   }
   const isGrade = input.type === "grade";
   if (isGrade !== (input.parentId !== null)) return { ok: false, reason: "parent_invalid" };
+  if (await limited(input.actorId, deps)) return { ok: false, reason: "rate_limited" };
 
   try {
     return await db().transaction(async (tx) => {
       let prefix = "";
+      let isSample = false;
       if (input.parentId) {
         // Locked so the curriculum cannot be deleted while its new grade is added.
         const [parent] = await tx
-          .select({ type: categories.type, slug: categories.slug })
+          .select({ type: categories.type, slug: categories.slug, isSample: categories.isSample })
           .from(categories)
           .where(eq(categories.id, input.parentId))
           .for("update");
         if (parent?.type !== "curriculum") return { ok: false, reason: "parent_invalid" } as const;
         prefix = `${parent.slug}-`;
+        isSample = parent.isSample;
       }
       const slug = typed || slugify(`${prefix}${slugify(names.names.nameEn)}`);
       if (!slug || slug === slugify(prefix)) {
@@ -167,6 +183,7 @@ export async function createCategory(input: {
         nameAr: names.names.nameAr,
         nameEn: names.names.nameEn,
         sort: (last?.sort ?? 0) + 1,
+        isSample,
       };
       await tx.insert(categories).values(values);
       await writeAudit(tx, {
@@ -191,17 +208,20 @@ function siblingsOf(type: CategoryType, parentId: string | null) {
   );
 }
 
-export type UpdateCategoryResult = { ok: true } | Invalid | { ok: false; reason: "not_found" };
+export type UpdateCategoryResult =
+  | { ok: true }
+  | Invalid
+  | RateLimited
+  | { ok: false; reason: "not_found" };
 
 /** Renames a category (both languages). The slug stays: it is in catalogue links. */
-export async function updateCategory(input: {
-  actorId: string;
-  id: string;
-  nameAr: string;
-  nameEn: string;
-}): Promise<UpdateCategoryResult> {
+export async function updateCategory(
+  input: { actorId: string; id: string; nameAr: string; nameEn: string },
+  deps: AbuseDeps = {},
+): Promise<UpdateCategoryResult> {
   const names = parseNames(input);
   if (!names.ok) return { ok: false, reason: "invalid", fields: names.fields };
+  if (await limited(input.actorId, deps)) return { ok: false, reason: "rate_limited" };
   return db().transaction(async (tx) => {
     const [row] = await tx
       .select({ nameAr: categories.nameAr, nameEn: categories.nameEn })
@@ -209,6 +229,9 @@ export async function updateCategory(input: {
       .where(eq(categories.id, input.id))
       .for("update");
     if (!row) return { ok: false, reason: "not_found" } as const;
+    if (row.nameAr === names.names.nameAr && row.nameEn === names.names.nameEn) {
+      return { ok: true } as const;
+    }
     await tx.update(categories).set(names.names).where(eq(categories.id, input.id));
     await writeAudit(tx, {
       actorId: input.actorId,
@@ -222,17 +245,20 @@ export async function updateCategory(input: {
   });
 }
 
-export type MoveCategoryResult = { ok: true; moved: boolean } | { ok: false; reason: "not_found" };
+export type MoveCategoryResult =
+  | { ok: true; moved: boolean }
+  | RateLimited
+  | { ok: false; reason: "not_found" };
 
 /**
  * Moves a category one place up or down among its siblings. The siblings are locked and
  * renumbered 1..n, so equal sort values (old data, concurrent adds) cannot make a swap a no-op.
  */
-export async function moveCategory(input: {
-  actorId: string;
-  id: string;
-  direction: "up" | "down";
-}): Promise<MoveCategoryResult> {
+export async function moveCategory(
+  input: { actorId: string; id: string; direction: "up" | "down" },
+  deps: AbuseDeps = {},
+): Promise<MoveCategoryResult> {
+  if (await limited(input.actorId, deps)) return { ok: false, reason: "rate_limited" };
   return db().transaction(async (tx) => {
     const [row] = await tx
       .select({ type: categories.type, parentId: categories.parentId })
@@ -243,7 +269,7 @@ export async function moveCategory(input: {
       .select({ id: categories.id, sort: categories.sort })
       .from(categories)
       .where(siblingsOf(row.type, row.parentId))
-      .orderBy(...order, asc(categories.id))
+      .orderBy(...order)
       .for("update");
     const from = siblings.findIndex((sibling) => sibling.id === input.id);
     const to = input.direction === "up" ? from - 1 : from + 1;
@@ -257,8 +283,9 @@ export async function moveCategory(input: {
       action: "category.moved",
       subjectType: "category",
       subjectId: input.id,
-      before: { position: from + 1 },
-      after: { position: to + 1 },
+      // The whole sibling order, since renumbering rewrites the other rows' sort too.
+      before: { position: from + 1, order: siblings.map((sibling) => sibling.id) },
+      after: { position: to + 1, order: ids },
     });
     return { ok: true, moved: true } as const;
   });
@@ -280,17 +307,21 @@ async function renumber(
   }
 }
 
-export type DeleteCategoryResult = { ok: true } | { ok: false; reason: "not_found" | "in_use" };
+export type DeleteCategoryResult =
+  | { ok: true }
+  | RateLimited
+  | { ok: false; reason: "not_found" | "in_use" };
 
 /**
  * Deletes a category nothing uses. A course link or a grade under a curriculum makes it
  * `in_use`; the foreign keys restrict too, so a link added concurrently fails the delete
  * instead of being removed with it.
  */
-export async function deleteCategory(input: {
-  actorId: string;
-  id: string;
-}): Promise<DeleteCategoryResult> {
+export async function deleteCategory(
+  input: { actorId: string; id: string },
+  deps: AbuseDeps = {},
+): Promise<DeleteCategoryResult> {
+  if (await limited(input.actorId, deps)) return { ok: false, reason: "rate_limited" };
   try {
     return await db().transaction(async (tx) => {
       const [row] = await tx

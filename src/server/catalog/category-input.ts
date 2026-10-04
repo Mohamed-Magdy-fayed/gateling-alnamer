@@ -5,13 +5,18 @@ import { z } from "zod";
 const MAX_NAME = 80;
 const MAX_SLUG = 60;
 
-/** Bidi override and isolate controls: they can visually reorder text around a name. */
-const BIDI_CONTROLS = /[‪-‮⁦-⁩]/g;
+/**
+ * Characters nobody sees: C0/C1 controls (NUL breaks the insert), zero-width and direction marks,
+ * bidi overrides and isolates, and the BOM. They can reorder or spoof a name, so they are dropped.
+ * Written as escapes so no invisible character sits in the source.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point.
+const HIDDEN = /[\u0000-\u001F\u007F-\u009F\u061C\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g;
 
 const name = (field: "nameAr" | "nameEn") =>
   z
     .string()
-    .transform((value) => value.replace(BIDI_CONTROLS, "").trim())
+    .transform((value) => value.replace(HIDDEN, "").trim())
     .pipe(
       z
         .string()
@@ -21,8 +26,6 @@ const name = (field: "nameAr" | "nameEn") =>
 
 /** Both names are required: the catalogue filters show them in either language. */
 export const categoryNamesInput = z.object({ nameAr: name("nameAr"), nameEn: name("nameEn") });
-
-export type CategoryNames = z.infer<typeof categoryNamesInput>;
 
 /** Lowercase words joined by single hyphens; it ends up in catalogue URLs (C6). */
 export const slugInput = z

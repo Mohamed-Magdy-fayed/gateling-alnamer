@@ -122,6 +122,9 @@ export const QUIZ_LIMIT: LimitRule = { max: 30, windowSec: 10 * 60 };
 /** T5: draft courses created per teacher. */
 export const DRAFT_COURSE_LIMIT: LimitRule = { max: 20, windowSec: 60 * 60 };
 
+/** C3: category writes (add, rename, move, delete) per admin. */
+export const CATEGORY_WRITE_LIMIT: LimitRule = { max: 120, windowSec: 60 * 60 };
+
 /** A4: two-factor code attempts per user (every attempt counts; a success clears the count). */
 export const TWO_FACTOR_LIMIT: LimitRule = { max: 5, windowSec: 15 * 60 };
 

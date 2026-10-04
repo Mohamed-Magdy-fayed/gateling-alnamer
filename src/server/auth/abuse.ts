@@ -1,6 +1,7 @@
 import {
   AUTH_LIMITS,
   type AuthLimits,
+  CATEGORY_WRITE_LIMIT,
   CHECKOUT_LIMIT,
   CSP_REPORT_LIMIT,
   DRAFT_COURSE_LIMIT,
@@ -337,6 +338,18 @@ export async function guardDraftCourse(
     limiterOf(deps),
     `rl:draftcourse:user:${hasherOf(deps).hash(input.userId)}`,
     DRAFT_COURSE_LIMIT,
+  );
+}
+
+/** C3: category writes, 120 an hour per admin. */
+export async function guardCategoryWrite(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:categorywrite:user:${hasherOf(deps).hash(input.userId)}`,
+    CATEGORY_WRITE_LIMIT,
   );
 }
 

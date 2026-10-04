@@ -127,6 +127,26 @@ describe("sample catalogue seed", () => {
     expect(await fingerprint()).toEqual(before);
   });
 
+  it("skips exactly one superseded statement of 0008", () => {
+    const skipped = readFileSync(MIGRATION, "utf8")
+      .split("--> statement-breakpoint")
+      .filter((statement) => SUPERSEDED.test(statement.trim()));
+    expect(skipped).toHaveLength(1);
+  });
+
+  it("keeps an admin's rename of a reused grade when the taxonomy SQL reruns", async () => {
+    const GRADE = "00000000-0000-7000-8000-000000000208";
+    const [before] = await client`select name_en from categories where id = ${GRADE}`;
+    try {
+      await client`update categories set name_en = 'Year Twelve' where id = ${GRADE}`;
+      await rerunMigration(TAXONOMY);
+      const [after] = await client`select name_en, slug from categories where id = ${GRADE}`;
+      expect(after).toEqual({ name_en: "Year Twelve", slug: "uae-moe-grade-12" });
+    } finally {
+      await client`update categories set name_en = ${before?.name_en} where id = ${GRADE}`;
+    }
+  });
+
   it("changes nothing when the taxonomy SQL runs a second time", async () => {
     const before = await fingerprint();
     await rerunMigration(TAXONOMY);

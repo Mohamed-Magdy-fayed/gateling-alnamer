@@ -519,6 +519,7 @@ export const en: Dictionary = {
       deleted: "Category deleted.",
       inUse:
         "This category cannot be deleted: a course uses it, or it still has grades. Remove those first.",
+      limited: "You have made many category changes in the last hour. Try again later.",
       slugTaken: "This link name is already used. Choose another.",
       parentInvalid: "That curriculum no longer exists. The list has been refreshed.",
       notFound: "This category no longer exists. The list has been refreshed.",

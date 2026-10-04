@@ -40,9 +40,13 @@ test("an admin manages subjects; a subject a course uses cannot be deleted", asy
   await expect(row.getByText(`smoke-subject-${runId}`.toLowerCase())).toBeVisible();
 
   // New rows go last: it can move up, not down.
-  await expect(row.getByRole("button", { name: `نقل ${nameAr} إلى الأسفل` })).toBeDisabled();
-  await row.getByRole("button", { name: `نقل ${nameAr} إلى الأعلى` }).click();
-  await expect(row.getByRole("button", { name: `نقل ${nameAr} إلى الأسفل` })).toBeEnabled();
+  const down = row.getByRole("button", { name: `نقل ${nameAr} إلى الأسفل` });
+  const up = row.getByRole("button", { name: `نقل ${nameAr} إلى الأعلى` });
+  await expect(down).toHaveAttribute("aria-disabled", "true");
+  await up.click();
+  await expect(down).not.toHaveAttribute("aria-disabled");
+  // Focus stays on the arrow pressed after the row changes place.
+  await expect(up).toBeFocused();
 
   // Rename.
   await row.getByRole("button", { name: `إعادة تسمية ${nameAr}` }).click();
@@ -65,4 +69,10 @@ test("an admin manages subjects; a subject a course uses cannot be deleted", asy
   await page.getByRole("alertdialog").getByRole("button", { name: "حذف" }).click();
   await expect(maths.getByText(/لا يمكن حذف هذا التصنيف/)).toBeVisible();
   await expect(maths).toBeVisible();
+
+  // Cancelling a later dialog hands focus back to its trigger as usual.
+  const deleteMaths = maths.getByRole("button", { name: "حذف الرياضيات" });
+  await deleteMaths.click();
+  await page.keyboard.press("Escape");
+  await expect(deleteMaths).toBeFocused();
 });

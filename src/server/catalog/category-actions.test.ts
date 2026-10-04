@@ -137,6 +137,18 @@ describe("createCategoryAction", () => {
   });
 });
 
+describe("over the hourly limit", () => {
+  it.each([
+    ["create", () => createCategoryAction(idle, form({ type: "subject", name_en: "Art" }))],
+    ["update", () => updateCategoryAction(idle, form({ id: ID, name_ar: "a", name_en: "b" }))],
+    ["move", () => moveCategoryAction(idle, form({ id: ID, direction: "up" }))],
+    ["delete", () => deleteCategoryAction(idle, form({ id: ID }))],
+  ])("%s explains the limit as a warning", async (_name, run) => {
+    h.result = { ok: false, reason: "rate_limited" };
+    expect(await run()).toMatchObject({ status: "error", tone: "warning", message: a.limited });
+  });
+});
+
 describe("updateCategoryAction", () => {
   it("saves and refreshes", async () => {
     const state = await updateCategoryAction(
@@ -163,7 +175,9 @@ describe("updateCategoryAction", () => {
 describe("moveCategoryAction", () => {
   it("moves quietly", async () => {
     h.result = { ok: true, moved: true };
-    expect(await moveCategoryAction(idle, form({ id: ID, direction: "down" }))).toEqual(idle);
+    expect(await moveCategoryAction(idle, form({ id: ID, direction: "down" }))).toEqual({
+      status: "success",
+    });
     expect(h.calls[0]?.[1]).toEqual({ actorId: "admin-1", id: ID, direction: "down" });
   });
 

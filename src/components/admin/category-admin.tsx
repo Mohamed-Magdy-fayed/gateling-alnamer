@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { type ReactNode, useActionState, useEffect, useId, useState } from "react";
+import { type ReactNode, useActionState, useEffect, useId, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { type AuthText, idle, Message } from "@/components/auth-parts";
 import {
@@ -65,52 +65,69 @@ function Submit({
   );
 }
 
+const moveButtonId = (rowId: string, direction: "up" | "down") => `move-${direction}-${rowId}`;
+
 function MoveButton({
   id,
   direction,
   label,
-  disabled,
+  atEdge,
   action,
+  onMove,
 }: {
   id: string;
   direction: "up" | "down";
   label: string;
-  disabled: boolean;
+  /** First (up) or last (down) among its siblings: nowhere to go. */
+  atEdge: boolean;
   action: (formData: FormData) => void;
+  onMove: (direction: "up" | "down") => void;
 }) {
   const Icon = direction === "up" ? ChevronUp : ChevronDown;
   return (
-    <form action={action}>
+    <form action={action} onSubmit={() => onMove(direction)}>
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="direction" value={direction} />
       <MoveSubmit
+        id={moveButtonId(id, direction)}
         label={label}
-        disabled={disabled}
+        atEdge={atEdge}
         icon={<Icon aria-hidden className="size-4" />}
       />
     </form>
   );
 }
 
+/**
+ * `aria-disabled` rather than `disabled`: a move can bring the row to an edge while its button
+ * has focus, and a disabled button would drop that focus to the page.
+ */
 function MoveSubmit({
+  id,
   label,
-  disabled,
+  atEdge,
   icon,
 }: {
+  id: string;
   label: string;
-  disabled: boolean;
+  atEdge: boolean;
   icon: ReactNode;
 }) {
   const { pending } = useFormStatus();
+  const inert = atEdge || pending;
   return (
     <Button
+      id={id}
       type="submit"
       variant="ghost"
       size="sm"
-      className="min-h-11 min-w-11"
+      className="min-h-11 min-w-11 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
       aria-label={label}
-      disabled={disabled || pending}
+      aria-disabled={inert || undefined}
       aria-busy={pending || undefined}
+      onClick={(event) => {
+        if (inert) event.preventDefault();
+      }}
     >
       <LoadingSwap pending={pending}>{icon}</LoadingSwap>
     </Button>
@@ -189,10 +206,13 @@ function DeleteButton({
 }) {
   const a = t.admin;
   const [open, setOpen] = useState(false);
-  // An error closes the dialog and the row shows the message, which takes focus (so the dialog
-  // does not hand it back to the trigger). Success redirects with a notice.
+  const closedByError = useRef(false);
+  // An error closes the dialog and the row shows the message, which takes focus; only that close
+  // keeps the dialog from handing focus back to the trigger. Success redirects with a notice.
   useEffect(() => {
-    if (state.status === "error") setOpen(false);
+    if (state.status !== "error") return;
+    closedByError.current = true;
+    setOpen(false);
   }, [state]);
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
@@ -208,7 +228,9 @@ function DeleteButton({
       </AlertDialogTrigger>
       <AlertDialogContent
         onCloseAutoFocus={(event) => {
-          if (state.status === "error") event.preventDefault();
+          if (!closedByError.current) return;
+          closedByError.current = false;
+          event.preventDefault();
         }}
       >
         <form action={action} className="flex flex-col gap-4">
@@ -251,6 +273,15 @@ export function CategoryRow({
 }) {
   const a = t.admin;
   const [moveState, moveAction] = useActionState(moveCategoryAction, idle);
+  const lastMove = useRef<"up" | "down" | null>(null);
+  // The row changes place in the list, which can drop focus: put it back on the arrow pressed.
+  useEffect(() => {
+    if (moveState.status !== "success" || !lastMove.current) return;
+    document.getElementById(moveButtonId(row.id, lastMove.current))?.focus();
+  }, [moveState, row.id]);
+  const onMove = (direction: "up" | "down") => {
+    lastMove.current = direction;
+  };
   const [deleteState, deleteAction] = useActionState(deleteCategoryAction, idle);
   const [editing, setEditing] = useState(false);
   const Name = headingLevel ?? "p";
@@ -287,15 +318,17 @@ export function CategoryRow({
             id={row.id}
             direction="up"
             label={format(a.moveUp, { name: row.label })}
-            disabled={first}
+            atEdge={first}
             action={moveAction}
+            onMove={onMove}
           />
           <MoveButton
             id={row.id}
             direction="down"
             label={format(a.moveDown, { name: row.label })}
-            disabled={last}
+            atEdge={last}
             action={moveAction}
+            onMove={onMove}
           />
           <Button
             variant="outline"
