@@ -645,6 +645,22 @@ export const ar = {
     removePasskey: "إزالة",
     regenerateHint: "أدخل رمزًا من التطبيق. ستتوقف رموز الاسترداد القديمة عن العمل.",
   },
+  google: {
+    continue: "المتابعة باستخدام Google",
+    or: "أو",
+    completeTitle: "أكمل إنشاء حسابك",
+    completeIntro: "أنت تنشئ حسابك باستخدام حساب Google التالي:",
+    create: "إنشاء حسابي",
+    failed: "تعذّر تسجيل الدخول باستخدام Google. حاول مرة أخرى، أو استخدم بريدك وكلمة المرور.",
+    needsPassword:
+      "يوجد حساب بهذا البريد بالفعل. سجّل الدخول بكلمة المرور أولًا؛ يعمل الدخول باستخدام Google بعد تأكيد البريد.",
+    mockTitle: "تسجيل دخول تجريبي باستخدام Google",
+    mockBanner: "صفحة تجريبية: لا يُستخدم حساب Google حقيقي.",
+    mockEmail: "البريد الإلكتروني",
+    mockName: "الاسم",
+    mockVerified: "أكّدت Google هذا البريد",
+    mockContinue: "متابعة",
+  },
   devices: {
     blockedTitle: "وصلت إلى الحد الأقصى للأجهزة",
     blockedBody: {

@@ -13,6 +13,7 @@ export function currentProvider(): OAuthProvider | null {
     GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
     APP_MODE: env.APP_MODE,
     VERCEL: process.env.VERCEL,
+    OAUTH_FORCE_MOCK: process.env.OAUTH_FORCE_MOCK,
   });
 }
 

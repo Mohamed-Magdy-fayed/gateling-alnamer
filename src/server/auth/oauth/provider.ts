@@ -132,10 +132,14 @@ export function oauthProvider(env: {
   GOOGLE_CLIENT_SECRET?: string;
   APP_MODE?: string;
   VERCEL?: string;
+  OAUTH_FORCE_MOCK?: string;
 }): OAuthProvider | null {
+  const localDemo = env.APP_MODE === "demo" && !env.VERCEL;
+  // The smoke run forces the mock even when .env holds real keys (never on a deployed site).
+  if (localDemo && env.OAUTH_FORCE_MOCK === "1") return mockProvider();
   if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
     return googleProvider(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET);
   }
-  if (env.APP_MODE === "demo" && !env.VERCEL) return mockProvider();
+  if (localDemo) return mockProvider();
   return null;
 }

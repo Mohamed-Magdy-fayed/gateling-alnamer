@@ -20,7 +20,12 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: false,
     // x-real-ip is trusted only here: each test sets its own address (e2e/helpers/client-ip.ts).
-    env: { PORT: String(PORT), TRUST_PROXY_HEADERS: "1" },
+    // Google sign-in uses the local mock in the smoke run, even when .env carries real keys.
+    env: {
+      PORT: String(PORT),
+      TRUST_PROXY_HEADERS: "1",
+      OAUTH_FORCE_MOCK: "1",
+    },
     timeout: 120_000,
     gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
   },

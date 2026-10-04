@@ -190,5 +190,7 @@ if (!process.argv.includes("--no-build") && buildIsStale())
 // Linux CI, so CI runs the functional smoke only (SMOKE_SKIP_VISUAL=1).
 const playwrightArgs = ["node_modules/@playwright/test/cli.js", "test"];
 if (process.env.SMOKE_SKIP_VISUAL === "1") playwrightArgs.push("--grep-invert", "@visual");
+// Extra arguments go to Playwright (e.g. `npm run smoke -- --update-snapshots --grep sign-in`).
+playwrightArgs.push(...process.argv.slice(2).filter((arg) => arg !== "--no-build"));
 run(playwrightArgs, "the smoke spec");
 console.log("smoke: OK");

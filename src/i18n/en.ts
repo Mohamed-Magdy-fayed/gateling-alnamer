@@ -625,6 +625,22 @@ export const en: Dictionary = {
     removePasskey: "Remove",
     regenerateHint: "Enter a code from your app. Your old recovery codes stop working.",
   },
+  google: {
+    continue: "Continue with Google",
+    or: "or",
+    completeTitle: "Finish creating your account",
+    completeIntro: "You are signing up with your Google account:",
+    create: "Create my account",
+    failed: "Google sign-in did not work. Try again, or use your email and password.",
+    needsPassword:
+      "An account with this email already exists. Sign in with your password first; Google sign-in works after the email is confirmed.",
+    mockTitle: "Test Google sign-in",
+    mockBanner: "Test page: no real Google account is used.",
+    mockEmail: "Email",
+    mockName: "Name",
+    mockVerified: "Google has verified this email",
+    mockContinue: "Continue",
+  },
   devices: {
     blockedTitle: "You've reached your device limit",
     blockedBody: {
