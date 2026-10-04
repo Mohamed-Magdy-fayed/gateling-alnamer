@@ -50,7 +50,8 @@ export type SetupResult =
 
 /**
  * Starts (or restarts) enrolment: a fresh unconfirmed secret, bound to the calling session.
- * Refused once enrolled.
+ * Refused once enrolled. The "not enrolled" check is part of the upsert itself, so a setup that
+ * races a confirm can never replace the confirmed secret (A8 re-review).
  */
 export async function beginTotpSetup(
   userId: string,
@@ -58,21 +59,18 @@ export async function beginTotpSetup(
   deps: TwoFactorDeps = {},
   account = "",
 ): Promise<SetupResult> {
-  const [existing] = await db()
-    .select({ confirmedAt: totpSecrets.confirmedAt })
-    .from(totpSecrets)
-    .where(eq(totpSecrets.userId, userId))
-    .limit(1);
-  if (existing?.confirmedAt) return { ok: false, reason: "already_enrolled" };
   const secret = newTotpSecret();
   const sealed = seal(totpKey(deps), secret);
-  await db()
+  const written = await db()
     .insert(totpSecrets)
     .values({ userId, secretEnc: sealed, setupSessionHash: sessionTokenHash })
     .onConflictDoUpdate({
       target: totpSecrets.userId,
       set: { secretEnc: sealed, lastStep: null, setupSessionHash: sessionTokenHash },
-    });
+      setWhere: isNull(totpSecrets.confirmedAt),
+    })
+    .returning({ userId: totpSecrets.userId });
+  if (written.length === 0) return { ok: false, reason: "already_enrolled" };
   return { ok: true, secret, uri: otpauthUri(secret, account || "account") };
 }
 

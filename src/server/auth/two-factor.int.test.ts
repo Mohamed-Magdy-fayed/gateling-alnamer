@@ -99,10 +99,17 @@ describe("two-factor enrolment", () => {
       reason: "invalid",
     });
     const { user: done } = await enrolled();
+    const read = () =>
+      conn.select().from(schema.totpSecrets).where(eq(schema.totpSecrets.userId, done.id));
+    const [before] = await read();
     expect(await tf.beginTotpSetup(done.id, await sessionFor(done.id), deps())).toEqual({
       ok: false,
       reason: "already_enrolled",
     });
+    // The upsert itself refuses a confirmed row: the secret is never replaced (A8 re-review).
+    const [after] = await read();
+    expect(after?.secretEnc).toBe(before?.secretEnc);
+    expect(after?.lastStep).toBe(before?.lastStep);
   });
 
   it("a pending secret belongs to the session that started it (A8 H1)", async () => {
