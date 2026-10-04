@@ -21,6 +21,7 @@ import {
   guardSignIn,
   guardSignUp,
 } from "./abuse";
+import { getActingUser } from "./acting-user";
 import { verifyCaptcha } from "./captcha";
 import { latestCodeRow } from "./code-status";
 import { type CodePurpose, verifyCode, verifyCodeDecoy } from "./codes";
@@ -31,7 +32,7 @@ import { hashPassword } from "./password";
 import { clearPendingReset, readPendingReset, setPendingReset } from "./pending-reset";
 import { requestContext } from "./request-context";
 import { sendCode } from "./send-code";
-import { createSession, destroySession, getCurrentUser } from "./session";
+import { createSession, destroySession } from "./session";
 import { deleteUserSessionsIn, purgeSessionCache } from "./session-invalidate";
 import { type SignUpField, signUpUser } from "./sign-up";
 
@@ -183,6 +184,8 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
     return { status: "error", message: t.auth.errors.invalid, fieldErrors, values: echo(raw) };
   }
 
+  // A session of a previous account on this browser is ended, not orphaned (A8 review L5).
+  await destroySession();
   await createSession(result.userId);
   await sendVerificationCode(result.userId, locale);
   redirect("/verify-email");
@@ -328,7 +331,7 @@ export async function resetPasswordAction(
 /** Confirms the signed-in user's email with the code that was mailed to them. */
 export async function verifyEmailAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const { t, locale } = await getDictionary();
-  const user = await getCurrentUser();
+  const user = await getActingUser();
   if (!user) redirect("/sign-in");
   const raw = fields(formData);
   const parsed = verifySchema.safeParse(raw);
@@ -363,7 +366,7 @@ type ResendTarget = { email: string; id: string | null; nextAt: number };
 
 async function resendTarget(purpose: CodePurpose): Promise<ResendTarget | "anonymous" | null> {
   if (purpose === "email_verify") {
-    const user = await getCurrentUser();
+    const user = await getActingUser();
     if (!user) return "anonymous";
     if (!user.email) return null;
     const row = await latestCodeRow(user.id, purpose);

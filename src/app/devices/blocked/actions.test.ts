@@ -41,6 +41,9 @@ vi.mock("@/server/auth/abuse", () => ({
   },
 }));
 vi.mock("@/server/auth/session", () => ({
+  destroySession: async () => {
+    h.created.push(["destroy"]);
+  },
   createSession: async (...args: unknown[]) => {
     h.created.push(args);
   },
@@ -146,7 +149,8 @@ describe("removeDeviceAction", () => {
         preSessionTokenHash: "t",
       },
     ]);
-    expect(h.created).toEqual([["u1", { deviceId: "dev-new" }]]);
+    // Any earlier session on this browser ends first (A8 L5).
+    expect(h.created).toEqual([["destroy"], ["u1", { deviceId: "dev-new" }]]);
     expect(h.cleared).toBe(1);
   });
 

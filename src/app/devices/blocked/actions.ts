@@ -7,7 +7,7 @@ import { getDictionary } from "@/i18n/server";
 import { guardSupportRequest } from "@/server/auth/abuse";
 import type { FormState } from "@/server/auth/actions";
 import { requestContext } from "@/server/auth/request-context";
-import { createSession } from "@/server/auth/session";
+import { createSession, destroySession } from "@/server/auth/session";
 import { clock } from "@/server/clock";
 import { cairoDay } from "@/server/devices/day";
 import { clearPreSession, getPreSession } from "@/server/devices/pre-session";
@@ -50,6 +50,8 @@ export async function removeDeviceAction(_prev: FormState, formData: FormData): 
     };
   }
 
+  // A session of a previous account on this browser is ended, not orphaned (A8 review L5).
+  await destroySession();
   await createSession(pre.userId, { deviceId: removal.deviceId });
   await clearPreSession();
   redirect("/dashboard");

@@ -1,6 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
-import type { db } from "@/server/db";
+import { db } from "@/server/db";
 import { preSessions } from "@/server/db/schema";
 import { cacheDeleteUser } from "./session-cache";
 import { deleteUserSessions } from "./session-repo";
@@ -11,14 +11,17 @@ export type SessionTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
 /**
  * The revocation body shared by `invalidateUserSessions` and the demo seed (a script cannot load
- * `session.ts`, which pulls in `next/headers`): deletes the user's session rows and cache keys,
- * optionally sparing one session.
+ * `session.ts`, which pulls in `next/headers`): deletes the user's session rows and pre-sessions
+ * in one transaction (A8 review L1: "sign out other sessions" and the admin two-factor reset must
+ * also end a pending device removal), then the cache keys. One session can be spared.
  */
 export async function invalidateUserSessionsCore(
   userId: string,
   options: { exceptTokenHash?: string } = {},
 ): Promise<void> {
-  const deleted = await deleteUserSessions(userId, options.exceptTokenHash);
+  const deleted = await db().transaction((tx) =>
+    deleteUserSessionsIn(tx, userId, options.exceptTokenHash),
+  );
   await cacheDeleteUser(userId, deleted, options.exceptTokenHash);
 }
 

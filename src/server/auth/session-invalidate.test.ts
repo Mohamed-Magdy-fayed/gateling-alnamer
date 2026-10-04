@@ -3,6 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const h = vi.hoisted(() => ({
   deleteUserSessions: vi.fn(async (..._args: unknown[]) => ["a", "b"]),
   cacheDeleteUser: vi.fn(async (..._args: unknown[]) => {}),
+  preDeletes: 0,
+}));
+vi.mock("@/server/db", () => ({
+  db: () => ({
+    transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({
+        marker: "tx",
+        delete: () => ({
+          where: async () => {
+            h.preDeletes += 1;
+          },
+        }),
+      }),
+  }),
 }));
 vi.mock("./session-repo", () => ({ deleteUserSessions: h.deleteUserSessions }));
 vi.mock("./session-cache", () => ({ cacheDeleteUser: h.cacheDeleteUser }));
@@ -12,13 +26,20 @@ const { invalidateUserSessionsCore, deleteUserSessionsIn } = await import("./ses
 beforeEach(() => {
   h.deleteUserSessions.mockClear();
   h.cacheDeleteUser.mockClear();
+  h.preDeletes = 0;
 });
 
 describe("invalidateUserSessionsCore", () => {
-  it("deletes the rows then purges the cache for those hashes", async () => {
-    await invalidateUserSessionsCore("u1");
-    expect(h.deleteUserSessions).toHaveBeenCalledWith("u1", undefined);
-    expect(h.cacheDeleteUser).toHaveBeenCalledWith("u1", ["a", "b"], undefined);
+  it("deletes the rows and pre-sessions in one tx, then purges the cache for those hashes", async () => {
+    await invalidateUserSessionsCore("u1", { exceptTokenHash: "keep" });
+    expect(h.deleteUserSessions).toHaveBeenCalledWith(
+      "u1",
+      "keep",
+      expect.objectContaining({ marker: "tx" }),
+    );
+    // A8 L1: "sign out other sessions" also ends pre-sessions.
+    expect(h.preDeletes).toBe(1);
+    expect(h.cacheDeleteUser).toHaveBeenCalledWith("u1", ["a", "b"], "keep");
   });
 
   it("with a tx the rows go through it, and the cache purge is left to the caller", async () => {

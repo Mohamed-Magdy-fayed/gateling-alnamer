@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getCurrentSession } from "@/server/auth/session";
+import { passesTwoFactor } from "@/server/auth/staff-session";
 import { clock } from "@/server/clock";
 import { isSignedForAsset, serveSample } from "@/server/video/serve-sample";
 
@@ -15,7 +16,9 @@ export async function GET(
   if (!isSignedForAsset(assetId, query, nowS)) {
     return new Response(null, { status: 403, headers: { "Cache-Control": "private, no-store" } });
   }
-  const session = await getCurrentSession();
+  // A staff session that has not passed two-factor plays nothing (A8 review L4).
+  const current = await getCurrentSession();
+  const session = passesTwoFactor(current) ? current : null;
   const response = await serveSample({
     assetId,
     params: query,

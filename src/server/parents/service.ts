@@ -410,7 +410,9 @@ async function childFacts(
       parentLinks,
       and(eq(parentLinks.studentId, users.id), eq(parentLinks.parentId, parentId)),
     )
-    .where(eq(users.id, childId))
+    // Only a student can be a child here: a link row never makes any other role resettable by a
+    // parent, even if roles ever change (A8 review hardening).
+    .where(and(eq(users.id, childId), eq(users.role, "student")))
     .limit(1);
   const mode = row
     ? resetMode({

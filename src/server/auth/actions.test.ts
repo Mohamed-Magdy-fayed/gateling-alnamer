@@ -32,7 +32,8 @@ const h = vi.hoisted(() => ({
     | { kind: "allowed"; deviceId: string | null; overLimit: boolean }
     | { kind: "blocked" },
   gateCalls: [] as unknown[],
-  sessionUser: null as null | { id: string; email: string | null },
+  sessionUser: null as null | { id: string; email: string | null; role?: string },
+  sessionVerified: false,
   pending: null as null | { email: string; issuedAt: number },
   pendingSet: [] as string[],
   pendingCleared: 0,
@@ -158,7 +159,13 @@ vi.mock("./codes", () => ({
   deleteCode: async () => undefined,
 }));
 vi.mock("./session", () => ({
-  getCurrentUser: async () => h.sessionUser,
+  getCurrentSession: async () =>
+    h.sessionUser
+      ? {
+          user: { role: "student", ...h.sessionUser },
+          twoFactorVerified: h.sessionVerified,
+        }
+      : null,
   createSession: async (userId: string, options?: { deviceId?: string | null }) => {
     h.calls.push(options?.deviceId ? `create:${userId}:${options.deviceId}` : `create:${userId}`);
   },
@@ -204,6 +211,7 @@ beforeEach(() => {
   h.ip = "203.0.113.5";
   h.deviceId = "dev-1";
   h.sessionUser = null;
+  h.sessionVerified = false;
   h.pending = null;
   h.pendingSet.length = 0;
   h.pendingCleared = 0;
@@ -710,7 +718,11 @@ describe("sign-up issues an email verification code", () => {
     h.user = { id: "u1", name: "Sam", email: "sam@example.test", locale: null };
     const result = await followRedirect(() => signUpAction({ status: "idle" }, signUpForm()));
     expect(result).toEqual({ status: "redirected", to: "/verify-email" });
-    expect(h.calls).toContain("create:u1");
+    // Any earlier session on this browser ends first (A8 L5).
+    expect(h.calls.filter((c) => c === "destroy" || c.startsWith("create"))).toEqual([
+      "destroy",
+      "create:u1",
+    ]);
     expect(h.issue).toHaveBeenCalledWith("u1", "email_verify");
     expect(h.sent).toEqual([
       [
@@ -734,6 +746,15 @@ describe("verifyEmailAction", () => {
 
   it("sends anonymous visitors to sign in", async () => {
     await expect(submit("123456")).rejects.toThrow("redirect:/sign-in");
+  });
+
+  it("does not act for a staff session that has not passed two-factor (A8 L4)", async () => {
+    h.sessionUser = { id: "t1", email: "t@example.test", role: "teacher" };
+    await expect(submit("123456")).rejects.toThrow("redirect:/sign-in");
+    expect(h.verify).not.toHaveBeenCalled();
+    h.sessionVerified = true;
+    h.verify.mockResolvedValueOnce({ ok: true, codeId: "c1" });
+    expect(await submit("123456")).toMatchObject({ status: "success" });
   });
 
   it("answers codeInvalid for a wrong code and for anything that is not 6 digits", async () => {
@@ -791,6 +812,12 @@ describe("verifyEmailAction", () => {
 describe("resendCodeAction", () => {
   const resend = (purpose: string) => resendCodeAction({ status: "idle" }, form({ purpose }));
   const known = { id: "u1", name: "U", email: "u@example.test", locale: null };
+
+  it("does not send for a staff session that has not passed two-factor (A8 L4)", async () => {
+    h.sessionUser = { id: "t1", email: "t@example.test", role: "admin" };
+    await expect(resend("email_verify")).rejects.toThrow("redirect:/sign-in");
+    expect(h.issue).not.toHaveBeenCalled();
+  });
 
   it("refuses a resend inside the cooldown and tells the form when it opens", async () => {
     h.sessionUser = { id: "u1", email: "u@example.test" };

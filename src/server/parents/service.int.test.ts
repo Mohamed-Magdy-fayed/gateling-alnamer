@@ -767,6 +767,19 @@ describe("resetChildPassword", () => {
     expect(result).toEqual({ ok: false, reason: "forbidden" });
     expect(await auditFor("parent.reset_password", child)).toHaveLength(0);
   });
+
+  it("forbidden for a linked account that is not a student (A8 hardening)", async () => {
+    const parent = await makeUser("parent");
+    const childId = await createOk(parent);
+    await db().update(users).set({ role: "teacher" }).where(eq(users.id, childId));
+    const result = await svc.resetChildPassword(
+      { parentId: parent, childId, newPassword: "Brand-new-pass-9" },
+      ctx,
+      deps(),
+    );
+    expect(result).toEqual({ ok: false, reason: "forbidden" });
+    expect(await auditFor("parent.reset_password", childId)).toHaveLength(0);
+  });
 });
 
 describe("listChildrenForParent", () => {
