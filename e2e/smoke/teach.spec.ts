@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { nextClientIp, uniqueClientIpPerTest } from "../helpers/client-ip";
-import { createStudent, password, runId, signIn, withDb } from "./helpers";
+import { createStudent, password, runId, signIn, signInStaff, withDb } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -30,7 +30,7 @@ test("a teacher drafts a course, an admin publishes it, and it appears in the ca
   browser,
   baseURL,
 }) => {
-  await signIn(page, teacherEmail, password);
+  await signInStaff(page, teacherEmail, password);
   await page.goto("/dashboard/teach/new");
   await page.getByLabel("العنوان (بالعربية)").fill(courseTitle);
   await page.getByLabel("الوصف (بالعربية)").fill("دورة قصيرة لاختبار النشر.");
@@ -48,7 +48,7 @@ test("a teacher drafts a course, an admin publishes it, and it appears in the ca
   });
   try {
     const adminPage = await admin.newPage();
-    await signIn(adminPage, adminEmail, password);
+    await signInStaff(adminPage, adminEmail, password);
     const row = adminPage.getByRole("listitem").filter({ hasText: courseTitle });
     await expect(row).toBeVisible();
     await row.getByRole("button", { name: "نشر" }).click();

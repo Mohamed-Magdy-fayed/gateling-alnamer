@@ -176,3 +176,25 @@ describe("admin two-factor reset", () => {
     expect(unused).toHaveLength(0);
   });
 });
+
+describe("finish token", () => {
+  it("binds the user, the session and a 10-minute expiry", () => {
+    const d = deps();
+    const token = tf.finishToken("user-1", "session-a", NOW_S, d);
+    expect(tf.verifyFinishToken(token, "user-1", "session-a", NOW_S + 60, d)).toBe(true);
+    expect(tf.verifyFinishToken(token, "user-1", "session-a", NOW_S + 601, d)).toBe(false);
+    expect(tf.verifyFinishToken(token, "user-1", "session-b", NOW_S, d)).toBe(false);
+    expect(tf.verifyFinishToken(token, "user-2", "session-a", NOW_S, d)).toBe(false);
+    const [expires] = token.split(".");
+    expect(
+      tf.verifyFinishToken(
+        `${Number(expires) + 600}.${token.split(".")[1]}`,
+        "user-1",
+        "session-a",
+        NOW_S,
+        d,
+      ),
+    ).toBe(false);
+    expect(tf.verifyFinishToken("garbage", "user-1", "session-a", NOW_S, d)).toBe(false);
+  });
+});

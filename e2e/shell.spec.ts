@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import postgres from "postgres";
 import { uniqueClientIpPerTest } from "./helpers/client-ip";
+import { signInStaff } from "./smoke/helpers";
 
 // A7a.3: per-role app shells and landings. Arabic is the default locale; labels are `ar` values.
 const SIGN_UP = "إنشاء الحساب";
@@ -70,6 +71,11 @@ async function setRole(who: Person, role: string) {
 }
 
 async function signInTo(page: Page, who: Person, expectedPath = "/dashboard") {
+  // Staff pass two-factor (A4): enrolment the first time, the challenge after that.
+  if (who === "teacher" || who === "admin") {
+    await signInStaff(page, people[who].email, password);
+    return;
+  }
   await page.getByLabel(FIELD_IDENTIFIER).fill(people[who].email);
   await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
   await page.getByRole("button", { name: SIGN_IN, exact: true }).click();

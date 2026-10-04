@@ -34,6 +34,10 @@ const { drizzle } = await import("drizzle-orm/postgres-js");
 const { default: postgres } = await import("postgres");
 const { upsertAccount } = await import("./lib/seed-accounts.mts");
 const { seedSampleAttempt, seedSampleOrder } = await import("./lib/seed-orders.mts");
+const { seedStaffTotp } = await import("./lib/seed-two-factor.mts");
+// Demo staff share one authenticator entry: DEMO_TOTP_SECRET (base32, never printed).
+const demoTotp = process.env.DEMO_TOTP_SECRET;
+const STAFF_ROLES = new Set(["teacher", "reviewer", "admin"]);
 // Fixed order number (Crockford base32) so every deploy finds the same sample order.
 const DEMO_SAMPLE_ORDER = "SAMPE002";
 
@@ -48,6 +52,13 @@ try {
       refresh: true,
     });
     // The demo student owns one sample course, so a paid lesson opens without a purchase.
+    if (STAFF_ROLES.has(account.role)) {
+      if (demoTotp) await seedStaffTotp(db, userId, demoTotp);
+      else
+        console.warn(
+          `db:seed:demo: DEMO_TOTP_SECRET is not set; ${account.role} cannot pass two-factor.`,
+        );
+    }
     if (account.role === "student") {
       await seedSampleOrder(db, userId, DEMO_SAMPLE_ORDER);
       await seedSampleAttempt(db, userId);

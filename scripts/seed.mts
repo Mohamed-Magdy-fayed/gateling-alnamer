@@ -9,6 +9,10 @@ import type { SeedAccount } from "./lib/seed-accounts.mts";
 const SEED_PASSWORD = "Alnamer-local-1";
 // Fixed order number (Crockford base32) so re-running the seed finds the same sample order.
 const LOCAL_SAMPLE_ORDER = "SAMPE001";
+// Local development TOTP for seeded staff (teacher, reviewer, admins): add it to an authenticator
+// app as a manual key. Local only, like SEED_PASSWORD.
+const LOCAL_STAFF_TOTP = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+const STAFF_ROLES = new Set(["teacher", "reviewer", "admin"]);
 const ACCOUNTS = [
   { name: "Local Student", email: "student@alnamer.local", role: "student" },
   { name: "Local Parent", email: "parent@alnamer.local", role: "parent" },
@@ -44,6 +48,7 @@ const { drizzle } = await import("drizzle-orm/postgres-js");
 const { default: postgres } = await import("postgres");
 const { upsertAccount } = await import("./lib/seed-accounts.mts");
 const { seedSampleAttempt, seedSampleOrder } = await import("./lib/seed-orders.mts");
+const { seedStaffTotp } = await import("./lib/seed-two-factor.mts");
 
 const client = postgres(url, { max: 1, onnotice: () => {} });
 const db = drizzle(client);
@@ -57,6 +62,7 @@ try {
     });
     if (result.created) created += 1;
     // The local student owns one sample course, so a paid lesson opens without a purchase.
+    if (STAFF_ROLES.has(account.role)) await seedStaffTotp(db, result.userId, LOCAL_STAFF_TOTP);
     if (account.role === "student") {
       await seedSampleOrder(db, result.userId, LOCAL_SAMPLE_ORDER);
       await seedSampleAttempt(db, result.userId);

@@ -1,4 +1,5 @@
 import "server-only";
+import { timingSafeEqual } from "node:crypto";
 import { and, count, eq, isNull } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { writeAudit } from "@/server/audit/repository";
@@ -245,4 +246,68 @@ export async function seedConfirmedTotp(
       target: totpSecrets.userId,
       set: { secretEnc: sealed, confirmedAt: clock.now(), lastStep: null },
     });
+}
+
+/**
+ * The setup page's secret: the pending (unconfirmed) one if any, so a reload while scanning keeps
+ * the same QR code; otherwise a new one. Refused once enrolled.
+ */
+export async function pendingTotpSetup(
+  userId: string,
+  account: string,
+  deps: TwoFactorDeps = {},
+): Promise<SetupResult> {
+  const [row] = await db()
+    .select()
+    .from(totpSecrets)
+    .where(eq(totpSecrets.userId, userId))
+    .limit(1);
+  if (row?.confirmedAt) return { ok: false, reason: "already_enrolled" };
+  const existing = row ? open(totpKey(deps), row.secretEnc) : null;
+  if (existing) return { ok: true, secret: existing, uri: otpauthUri(existing, account) };
+  return beginTotpSetup(userId, deps, account);
+}
+
+/** Right after a confirmed enrolment: the calling session is stepped up to verified. */
+export async function stepUpSession(
+  userId: string,
+  currentTokenHash: string,
+): Promise<RotatedSession | null> {
+  const elevated = await db().transaction((tx) => elevateSessionIn(tx, userId, currentTokenHash));
+  if (!elevated) return null;
+  await cacheDelete(elevated.oldHash);
+  return elevated.rotated;
+}
+
+const FINISH_TTL_S = 10 * 60;
+
+/**
+ * After a confirmed enrolment the page still has to show the recovery codes, so the session is
+ * stepped up only when the user finishes. This short-lived token proves the confirm happened in
+ * this very session: HMAC over user, session and expiry (sub-key "totp"), valid for 10 minutes.
+ */
+export function finishToken(
+  userId: string,
+  sessionTokenHash: string,
+  nowSeconds: number,
+  deps: TwoFactorDeps = {},
+): string {
+  const expires = nowSeconds + FINISH_TTL_S;
+  const mac = keyedHash(totpKey(deps), `finish|${userId}|${sessionTokenHash}|${expires}`);
+  return `${expires}.${mac}`;
+}
+
+export function verifyFinishToken(
+  token: string,
+  userId: string,
+  sessionTokenHash: string,
+  nowSeconds: number,
+  deps: TwoFactorDeps = {},
+): boolean {
+  const [expiresText, mac] = token.split(".");
+  if (!expiresText || !mac || !/^\d{1,12}$/.test(expiresText)) return false;
+  const expires = Number(expiresText);
+  if (nowSeconds > expires) return false;
+  const expected = keyedHash(totpKey(deps), `finish|${userId}|${sessionTokenHash}|${expires}`);
+  return expected.length === mac.length && timingSafeEqual(Buffer.from(expected), Buffer.from(mac));
 }

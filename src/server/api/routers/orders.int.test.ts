@@ -36,7 +36,9 @@ const { setMockInvoiceStatus } = await import("@/server/payments/mock");
 const NOW = new Date("2030-05-01T09:00:00.000Z");
 const HEADERS = new Headers({ origin: "https://alnamer.example", host: "alnamer.example" });
 type TestUser = Awaited<ReturnType<typeof createUser>>;
-const as = (user: TestUser) => createCallerFactory(appRouter)({ user, headers: HEADERS });
+// Staff callers pass two-factor (enforced since A4); the role checks are what these tests cover.
+const as = (user: TestUser) =>
+  createCallerFactory(appRouter)({ user, headers: HEADERS, twoFactorVerified: true });
 
 beforeEach(() => setClockForTests(NOW));
 afterAll(async () => {

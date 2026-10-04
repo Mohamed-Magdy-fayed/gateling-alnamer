@@ -6,11 +6,13 @@ import { ProfileForm } from "@/components/account/profile-form";
 import { AccountSection } from "@/components/account/section";
 import { type SessionRowData, SessionsList } from "@/components/account/sessions-list";
 import { SignOutOthersForm } from "@/components/devices/sign-out-others-form";
+import { AccountTwoFactor } from "@/components/two-factor/account-two-factor";
 import { dirOf, format, formatDate, formatTime, isLocale, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { listSessions } from "@/server/account/service";
 import { requirePageUser } from "@/server/auth/page-guard";
 import { getCurrentSession } from "@/server/auth/session";
+import { twoFactorStatus } from "@/server/auth/two-factor";
 import { db } from "@/server/db";
 import { users } from "@/server/db/schema";
 import { listActiveDevices, nextSelfRemovalAt } from "@/server/devices/service";
@@ -67,6 +69,8 @@ export default async function AccountPage() {
   }));
 
   const isStudent = user.role === "student";
+  const isStaff = user.role === "teacher" || user.role === "admin" || user.role === "reviewer";
+  const twoFactor = isStaff ? await twoFactorStatus(user.id) : null;
   const deviceData = isStudent
     ? await loadDevices(user.id, session?.deviceId ?? null, template, locale)
     : null;
@@ -103,6 +107,17 @@ export default async function AccountPage() {
         <p className="max-w-md text-sm text-fg-muted">{t.devices.accountHint}</p>
         <SignOutOthersForm label={t.devices.signOutOthers} authT={t.auth} />
       </AccountSection>
+
+      {twoFactor?.enrolled ? (
+        <AccountSection id="two-factor" title={t.twoFactor.accountTitle}>
+          <AccountTwoFactor
+            t={t.twoFactor}
+            locale={locale}
+            since={twoFactor.confirmedAt ? formatDate(locale, twoFactor.confirmedAt) : ""}
+            recoveryLeft={twoFactor.recoveryLeft}
+          />
+        </AccountSection>
+      ) : null}
 
       {deviceData ? (
         <AccountSection id="devices" title={t.account.devicesTitle}>

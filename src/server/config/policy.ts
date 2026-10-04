@@ -102,8 +102,8 @@ export const MAX_CHILDREN_PER_PARENT = 10;
 export const MAX_ACTIVE_INVITES_PER_PARENT = 5;
 export const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Staff procedures require a two-factor-verified session once this is true; A7b flips it. */
-export const TWO_FACTOR_ENFORCED = false;
+/** Staff (teacher, admin, reviewer) need a two-factor-verified session for pages and tRPC (A4/A7b). */
+export const TWO_FACTOR_ENFORCED = true;
 
 /** T1: checkout starts per user (10 per 10 minutes) and order status re-checks per user. */
 export const CHECKOUT_LIMIT: LimitRule = { max: 10, windowSec: 10 * 60 };

@@ -69,7 +69,7 @@ async function makeUser(role: Role): Promise<TestUser> {
 }
 
 const callerAs = (user: TestUser | null) =>
-  createCallerFactory(appRouter)({ user, headers: HEADERS });
+  createCallerFactory(appRouter)({ user, headers: HEADERS, twoFactorVerified: true });
 
 async function addDevice(userId: string) {
   const [device] = await db()
@@ -117,7 +117,7 @@ describe("admin.devices.reset", () => {
   it("rejects a mutation without a matching Origin", async () => {
     const admin = await makeUser("admin");
     const target = await makeUser("student");
-    const bare = createCallerFactory(appRouter)({ user: admin });
+    const bare = createCallerFactory(appRouter)({ user: admin, twoFactorVerified: true });
     await expect(bare.admin.devices.reset({ userId: target.id })).rejects.toMatchObject({
       code: "FORBIDDEN",
     });

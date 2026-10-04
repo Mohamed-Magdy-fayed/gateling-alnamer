@@ -74,7 +74,8 @@ describe("staffProcedure", () => {
       code: "FORBIDDEN",
     });
   });
-  it("passes without 2FA while the stub is off", async () => {
+  it("passes without 2FA only when enforcement is switched off", async () => {
+    setTwoFactorEnforcedForTests(() => false);
     await expect(as({ user: admin, twoFactorVerified: false }).staff()).resolves.toBe("admin");
   });
   it("without 2FA is FORBIDDEN when enforced, passes when verified", async () => {
@@ -90,10 +91,12 @@ describe("staffProcedure", () => {
 describe("superAdminProcedure", () => {
   const admin = user({ role: "admin" });
   it("a plain admin is FORBIDDEN, a super admin passes", async () => {
-    await expect(as({ user: admin, isSuperAdmin: false }).superAdmin()).rejects.toMatchObject({
-      code: "FORBIDDEN",
-    });
-    await expect(as({ user: admin, isSuperAdmin: true }).superAdmin()).resolves.toBe("u1");
+    await expect(
+      as({ user: admin, isSuperAdmin: false, twoFactorVerified: true }).superAdmin(),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      as({ user: admin, isSuperAdmin: true, twoFactorVerified: true }).superAdmin(),
+    ).resolves.toBe("u1");
   });
   it("a non-admin flagged super admin is FORBIDDEN", async () => {
     await expect(
@@ -111,5 +114,24 @@ describe("superAdminProcedure", () => {
   });
   it("anonymous is UNAUTHORIZED", async () => {
     await expect(as({}).superAdmin()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+});
+
+describe("two-factor for staff on every procedure (A4)", () => {
+  it("an unverified staff session reaches no protected procedure; students are unaffected", async () => {
+    setTwoFactorEnforcedForTests(() => true);
+    for (const role of ["teacher", "admin", "reviewer"] as const) {
+      await expect(
+        as({ user: user({ role }), twoFactorVerified: false }).prot(),
+        role,
+      ).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(
+        as({ user: user({ role }), twoFactorVerified: true }).prot(),
+        role,
+      ).resolves.toBe("u1");
+    }
+    await expect(
+      as({ user: user({ role: "student" }), twoFactorVerified: false }).prot(),
+    ).resolves.toBe("u1");
   });
 });

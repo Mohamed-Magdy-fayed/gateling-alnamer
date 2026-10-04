@@ -41,6 +41,8 @@ export type GuardKind = "public" | "protected" | "role" | "staff" | "superAdmin"
 export type GuardMeta = { guard: GuardKind; twoFactor?: boolean };
 /** Roles that sign in to staff tools and therefore need two-factor (A7b). */
 export type StaffRole = Extract<UserRole, "teacher" | "admin" | "reviewer">;
+const STAFF_ROLES: readonly UserRole[] = ["teacher", "admin", "reviewer"];
+export const isStaffRole = (role: UserRole): role is StaffRole => STAFF_ROLES.includes(role);
 
 const GENERIC_INTERNAL_MESSAGE = "Internal server error";
 
@@ -144,6 +146,10 @@ const requireActiveUser = t.middleware(async ({ ctx, next }) => {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "errors.unauthenticated" });
   }
   if (ctx.user.status !== "active") throw new AppError("forbidden", { message: "status" });
+  // Staff sessions do nothing until two-factor sign-in passed (the challenge runs as server actions).
+  if (isStaffRole(ctx.user.role) && twoFactorEnforced() && ctx.twoFactorVerified !== true) {
+    throw new AppError("forbidden", { message: "two_factor" });
+  }
   return next({ ctx: { ...ctx, user: ctx.user } });
 });
 

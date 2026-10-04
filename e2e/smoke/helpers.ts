@@ -1,5 +1,6 @@
 import { type Browser, expect, type Page } from "@playwright/test";
 import postgres from "postgres";
+import { base32Decode, totpAt } from "../../src/server/auth/totp";
 import { nextClientIp } from "../helpers/client-ip";
 
 // Arabic is the default locale; labels below are the `ar` dictionary values.
@@ -176,3 +177,37 @@ export const HAS_ACCESS = /لديك صلاحية الوصول حتى/;
 export const CHILD_ACCESS = /الوصول حتى/;
 export const BUY_FOR_CHILD = /شراء الدورة لـ/;
 export const NO_LESSON_ACCESS = "ليس لديك صلاحية الوصول إلى هذا الدرس";
+
+// Two-factor (A4): staff sign-ins go through enrolment or the challenge.
+export const TOTP_CODE_LABEL = "الرمز المكوّن من 6 أرقام";
+const staffSecrets = new Map<string, Buffer>();
+
+/**
+ * Signs a teacher, admin or reviewer in. The first time it enrols through the real setup page
+ * (reads the manual key, computes the code, saves the recovery codes); later it answers the
+ * challenge with the next step's code (the current step was already used, replays are refused).
+ */
+export async function signInStaff(page: Page, address: string, withPassword: string) {
+  await page.goto("/sign-in");
+  await page.getByLabel(FIELD_EMAIL).fill(address);
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(withPassword);
+  await page.getByRole("button", { name: SIGN_IN, exact: true }).click();
+  await page.waitForURL(/\/two-factor/);
+  const nowS = () => Math.floor(Date.now() / 1000);
+  if (page.url().includes("/two-factor/setup")) {
+    const key = (await page.getByTestId("totp-secret").innerText()).replace(/\s/g, "");
+    const secret = base32Decode(key);
+    staffSecrets.set(address, secret);
+    await page.getByLabel(TOTP_CODE_LABEL).fill(totpAt(secret, nowS()));
+    await page.getByRole("button", { name: "تأكيد", exact: true }).click();
+    await expect(page.getByTestId("recovery-codes")).toBeVisible();
+    await page.getByLabel("حفظت رموز الاسترداد في مكان آمن.").click();
+    await page.getByRole("button", { name: "إنهاء", exact: true }).click();
+  } else {
+    const secret = staffSecrets.get(address);
+    if (!secret) throw new Error(`no TOTP secret recorded for ${address}`);
+    await page.getByLabel(TOTP_CODE_LABEL).fill(totpAt(secret, nowS() + 30));
+    await page.getByRole("button", { name: "تحقّق", exact: true }).click();
+  }
+  await page.waitForURL("**/dashboard");
+}
