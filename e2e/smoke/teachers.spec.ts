@@ -158,7 +158,9 @@ test("a rejection needs a reason, and the applicant sees it", async ({
   await asAdmin(browser, baseURL, async (admin) => {
     const card = applicationOf(admin, rejectedEmail);
     await card.getByRole("button", { name: "رفض" }).click();
-    await expect(card.getByText("اكتب السبب قبل الرفض.")).toBeVisible();
+    // The field shows the error and the form summary links to it.
+    await expect(card.locator('[id^="reason-"][id$="-error"]')).toHaveText("اكتب السبب قبل الرفض.");
+    await expect(card.getByRole("link", { name: "اكتب السبب قبل الرفض" })).toBeVisible();
     await card.getByLabel("السبب").fill(REASON);
     await card.getByRole("button", { name: "رفض" }).click();
     await expect(admin.getByText("تم رفض الطلب وأُرسل السبب إلى المتقدّم بالبريد.")).toBeVisible();

@@ -65,6 +65,14 @@ async function setRole(who: Person, role: string) {
   const sql = postgres(process.env.TEST_DATABASE_URL ?? "", { max: 1, onnotice: () => {} });
   try {
     await sql`update users set role = ${role} where email = ${people[who].email}`;
+    if (role === "teacher") {
+      // An approved teacher who accepted the terms (C1), so the landing is the authoring one.
+      await sql`
+        insert into teacher_profiles (user_id, public_name, bio, status, terms_version_accepted)
+        select id, '{"ar":"معلم الواجهة","en":"Shell Teacher"}'::jsonb, '{"ar":"","en":""}'::jsonb,
+          'approved', 'teacher-placeholder-1'
+        from users where email = ${people[who].email}`;
+    }
   } finally {
     await sql.end();
   }
