@@ -34,11 +34,19 @@ export const accountRouter = router({
     }),
 
   /** Always answers codeSent (when not rate limited), taken address or not. */
-  addEmail: protectedProcedure.input(z.object({ email })).mutation(async ({ ctx, input }) => {
-    const [{ ip }, locale] = await Promise.all([requestContext(), getLocale()]);
-    await requestAddedEmail({ userId: ctx.user.id, address: input.email, ip, locale });
-    return { codeSent: true as const };
-  }),
+  addEmail: protectedProcedure
+    .input(z.object({ email, currentPassword: z.string().min(1).max(128) }))
+    .mutation(async ({ ctx, input }) => {
+      const [{ ip }, locale] = await Promise.all([requestContext(), getLocale()]);
+      await requestAddedEmail({
+        userId: ctx.user.id,
+        address: input.email,
+        currentPassword: input.currentPassword,
+        ip,
+        locale,
+      });
+      return { codeSent: true as const };
+    }),
 
   verifyAddedEmail: protectedProcedure
     .input(z.object({ code }))

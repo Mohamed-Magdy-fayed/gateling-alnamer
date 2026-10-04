@@ -1,6 +1,7 @@
 import "server-only";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import type { Locale } from "@/i18n/config";
+import { writeAudit } from "@/server/audit/repository";
 import {
   clearPasswordChangeFailures,
   guardAddEmailTarget,
@@ -58,10 +59,14 @@ export async function updateProfile(
  * pending code row) and gets the same answer; only the mail is not sent, and its code can never
  * confirm because the unique index refuses the address. The form therefore cannot be used to learn
  * which emails are registered. Limits: per account and IP, plus per target address (HMAC key).
+ *
+ * The current password is required first (A8 review M1): an added email becomes the account's
+ * recovery path and ends a parent's direct reset, so a borrowed session alone cannot add one.
  */
 export async function requestAddedEmail(input: {
   userId: string;
   address: string;
+  currentPassword: string;
   ip: string;
   locale: Locale;
 }): Promise<void> {
@@ -71,6 +76,7 @@ export async function requestAddedEmail(input: {
     where: eq(users.id, userId),
   });
   if (!user || user.email) throw new AppError("invalid_input");
+  await checkCurrentPassword(userId, input.currentPassword);
 
   // Keyed on the signed-in account (3 per window) and the IP, never on the address typed.
   const guard = await guardCodeSend({ identifier: `account:${userId}`, ip });
@@ -96,6 +102,7 @@ export async function requestAddedEmail(input: {
  * written in one transaction. If the address was taken in the meantime the unique index fails the
  * statement and the whole transaction rolls back, so the code is NOT spent (it stays usable until it
  * expires or runs out of attempts); the answer is the usual invalid one and the account keeps no email.
+ * An audit row records the change (the parent email follows with the notification catalogue).
  */
 export async function confirmAddedEmail(userId: string, code: string): Promise<boolean> {
   const now = clock.now();
@@ -108,7 +115,14 @@ export async function confirmAddedEmail(userId: string, code: string): Promise<b
         .set({ email: verified.pendingEmail, emailVerifiedAt: now })
         .where(and(eq(users.id, userId), isNull(users.email)))
         .returning({ id: users.id });
-      return updated.length === 1;
+      if (updated.length !== 1) return false;
+      await writeAudit(tx, {
+        actorId: userId,
+        action: "account.email_added",
+        subjectType: "user",
+        subjectId: userId,
+      });
+      return true;
     });
     if (confirmed) await purgeUserSessionCache(userId);
     return confirmed;
@@ -132,17 +146,7 @@ export async function changePassword(input: {
   currentTokenHash: string | undefined;
 }): Promise<{ rotated: RotatedSession | null }> {
   const { userId, current, next, currentTokenHash } = input;
-  const guard = await guardPasswordChange({ userId });
-  if (!("ok" in guard)) throw new AppError("rate_limited");
-
-  const credential = await db().query.credentials.findFirst({
-    columns: { passwordHash: true, passwordSalt: true },
-    where: eq(credentials.userId, userId),
-  });
-  const matches = credential
-    ? await verifyPassword(current, credential)
-    : await verifyDummy(current);
-  if (!matches) throw new AppError("invalid_input", { i18nKey: WRONG_PASSWORD_KEY });
+  await checkCurrentPassword(userId, current);
 
   const passwordHash = await hashPassword(next);
   const { rotated, deletedHashes } = await db().transaction(async (tx) => {
@@ -155,6 +159,24 @@ export async function changePassword(input: {
   await purgeSessionCache(userId, deletedHashes);
   await clearPasswordChangeFailures({ userId });
   return { rotated };
+}
+
+/**
+ * The signed-in user's current password, under the per-user attempt limit shared by every
+ * account change that asks for it. A wrong one costs one argon2 verify, with or without a
+ * credential, and throws the wrong-password error.
+ */
+async function checkCurrentPassword(userId: string, current: string): Promise<void> {
+  const guard = await guardPasswordChange({ userId });
+  if (!("ok" in guard)) throw new AppError("rate_limited");
+  const credential = await db().query.credentials.findFirst({
+    columns: { passwordHash: true, passwordSalt: true },
+    where: eq(credentials.userId, userId),
+  });
+  const matches = credential
+    ? await verifyPassword(current, credential)
+    : await verifyDummy(current);
+  if (!matches) throw new AppError("invalid_input", { i18nKey: WRONG_PASSWORD_KEY });
 }
 
 export type SessionListItem = {

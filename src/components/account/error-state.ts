@@ -19,6 +19,10 @@ export function accountErrorState(
   if (error.data?.code === "TOO_MANY_REQUESTS") {
     return { status: "error", tone: "warning", message: t.states.rateLimited };
   }
+  if (error.message === "auth.errors.invalid") {
+    // The current password was wrong: not a fault in the field the form points at.
+    return { status: "error", message: t.errors.invalid };
+  }
   if (field && error.data?.code === "BAD_REQUEST") {
     return {
       status: "error",

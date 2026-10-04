@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useMemo, useState } from "react";
 import { CodeInput } from "@/components/al/code-input";
+import { PasswordInput } from "@/components/al/password-input";
 import { type AuthText, idle, Message } from "@/components/auth-parts";
 import type { Dictionary } from "@/i18n/ar";
 import { useTRPC } from "@/lib/trpc/client";
@@ -39,9 +40,11 @@ export function EmailSection({ t, authT, email }: Props) {
 
   function sendCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const address = String(new FormData(event.currentTarget).get("email") ?? "").trim();
+    const data = new FormData(event.currentTarget);
+    const address = String(data.get("email") ?? "").trim();
+    const currentPassword = String(data.get("current") ?? "");
     add.mutate(
-      { email: address },
+      { email: address, currentPassword },
       {
         onSuccess: () => {
           setStep("code");
@@ -91,6 +94,13 @@ export function EmailSection({ t, authT, email }: Props) {
             autoComplete="email"
             ltr
             error={state.fieldErrors?.email}
+            required
+          />
+          <PasswordInput
+            name="current"
+            label={t.currentPassword}
+            toggleLabel={authT.fields.showPassword}
+            autoComplete="current-password"
             required
           />
           <Button type="submit" size="lg" disabled={add.isPending} aria-busy={add.isPending}>

@@ -217,6 +217,8 @@ test("a parent-created child adds an email, verifies it with the mailed code and
   await kid.goto("/dashboard/account");
   const email = section(kid, EMAIL_TITLE);
   await email.getByLabel(FIELD_EMAIL, { exact: true }).fill(child.email);
+  // Adding an email asks for the current password (A8 M1).
+  await email.getByLabel(CURRENT_PASSWORD, { exact: true }).fill(child.password);
   const before = await countMail(child.email);
   await email.getByRole("button", { name: SEND_CODE }).click();
   const code = extractCode(await waitForMailText(child.email, { after: before }));

@@ -29,6 +29,13 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/server/redis", () => ({ getRedis: () => h.redis?.asRedis() ?? null }));
 vi.mock("./session-repo", () => h.repo);
+// Revocation runs in a transaction that also deletes pre-sessions (A8 L1).
+vi.mock("@/server/db", () => ({
+  db: () => ({
+    transaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ delete: () => ({ where: async () => undefined }) }),
+  }),
+}));
 vi.mock("@/server/devices/service", () => ({ touchDevice: h.touchDevice }));
 
 const {
@@ -371,7 +378,7 @@ describe("redis cache", () => {
     h.repo.deleteUserSessions.mockResolvedValue([HASH]);
     h.repo.findSession.mockResolvedValue(null);
     await invalidateUserSessions("user-1");
-    expect(h.repo.deleteUserSessions).toHaveBeenCalledWith("user-1", undefined);
+    expect(h.repo.deleteUserSessions).toHaveBeenCalledWith("user-1", undefined, expect.anything());
     expect(redis().values.has(`sess:${HASH}`)).toBe(false);
     await expect(getCurrentUser()).resolves.toBeNull();
   });
@@ -382,7 +389,7 @@ describe("redis cache", () => {
     await redis().sadd("usess:user-1", "sess:other");
     h.repo.deleteUserSessions.mockResolvedValue(["other"]);
     await invalidateUserSessions("user-1", { exceptTokenHash: HASH });
-    expect(h.repo.deleteUserSessions).toHaveBeenCalledWith("user-1", HASH);
+    expect(h.repo.deleteUserSessions).toHaveBeenCalledWith("user-1", HASH, expect.anything());
     expect(redis().values.has("sess:other")).toBe(false);
     expect(redis().values.has(`sess:${HASH}`)).toBe(true);
   });

@@ -1,7 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { setClockForTests } from "@/server/clock";
-import { credentials, devices, sessions, users, verificationCodes } from "@/server/db/schema";
+import {
+  auditLog,
+  credentials,
+  devices,
+  sessions,
+  users,
+  verificationCodes,
+} from "@/server/db/schema";
 
 const sent = vi.hoisted(() => ({
   calls: [] as Array<{ name: string; data: Record<string, unknown> }>,
@@ -339,7 +346,9 @@ describe("account.addEmail and verifyAddedEmail", () => {
   it("stores the address as pending on the code row, never on the user, until verified", async () => {
     const child = await makeUser("student", false);
     const address = `new-${crypto.randomUUID()}@example.test`;
-    await expect(as(child).account.addEmail({ email: address })).resolves.toEqual({
+    await expect(
+      as(child).account.addEmail({ email: address, currentPassword: PASSWORD }),
+    ).resolves.toEqual({
       codeSent: true,
     });
     expect(sent.calls).toHaveLength(1);
@@ -361,10 +370,12 @@ describe("account.addEmail and verifyAddedEmail", () => {
     const freeChild = await makeUser("student", false);
     const freeResult = await as(freeChild).account.addEmail({
       email: `free-${crypto.randomUUID()}@example.test`,
+      currentPassword: PASSWORD,
     });
     const mailsAfterFree = sent.calls.length;
     const takenResult = await as(takenChild).account.addEmail({
       email: (taken.email ?? "").toUpperCase(),
+      currentPassword: PASSWORD,
     });
     expect(takenResult).toEqual(freeResult);
     expect(Object.keys(takenResult)).toEqual(Object.keys(freeResult));
@@ -382,23 +393,44 @@ describe("account.addEmail and verifyAddedEmail", () => {
     const address = `shared-${crypto.randomUUID()}@example.test`;
     for (let i = 0; i < 3; i += 1) {
       const child = await makeUser("student", false);
-      await expect(as(child).account.addEmail({ email: address })).resolves.toEqual({
+      await expect(
+        as(child).account.addEmail({ email: address, currentPassword: PASSWORD }),
+      ).resolves.toEqual({
         codeSent: true,
       });
     }
     const fourth = await makeUser("student", false);
-    await expect(as(fourth).account.addEmail({ email: address })).rejects.toMatchObject({
+    await expect(
+      as(fourth).account.addEmail({ email: address, currentPassword: PASSWORD }),
+    ).rejects.toMatchObject({
       code: "TOO_MANY_REQUESTS",
     });
     await expect(
-      as(fourth).account.addEmail({ email: address.toUpperCase() }),
+      as(fourth).account.addEmail({ email: address.toUpperCase(), currentPassword: PASSWORD }),
     ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+  });
+
+  it("needs the current password: a wrong one sends nothing and stores nothing (A8 M1)", async () => {
+    const child = await makeUser("student", false);
+    await expect(
+      as(child).account.addEmail({
+        email: `m1-${crypto.randomUUID()}@example.test`,
+        currentPassword: "not-the-password",
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST", message: "auth.errors.invalid" });
+    expect(sent.calls).toHaveLength(0);
+    expect(
+      await db().select().from(verificationCodes).where(eq(verificationCodes.userId, child.id)),
+    ).toHaveLength(0);
   });
 
   it("is only for users without an email", async () => {
     const user = await makeUser("parent");
     await expect(
-      as(user).account.addEmail({ email: `x-${crypto.randomUUID()}@example.test` }),
+      as(user).account.addEmail({
+        email: `x-${crypto.randomUUID()}@example.test`,
+        currentPassword: PASSWORD,
+      }),
     ).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(sent.calls).toHaveLength(0);
   });
@@ -406,18 +438,26 @@ describe("account.addEmail and verifyAddedEmail", () => {
   it("the right code sets email and email_verified_at together", async () => {
     const child = await makeUser("student", false);
     const address = `ok-${crypto.randomUUID()}@example.test`;
-    await as(child).account.addEmail({ email: address });
+    await as(child).account.addEmail({ email: address, currentPassword: PASSWORD });
     await expect(as(child).account.verifyAddedEmail({ code: codeOf() })).resolves.toEqual({
       verified: true,
     });
     const [row] = await db().select().from(users).where(eq(users.id, child.id));
     expect(row?.email).toBe(address);
     expect(row?.emailVerifiedAt).toEqual(NOW);
+    const audit = await db()
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, "account.email_added"), eq(auditLog.subjectId, child.id)));
+    expect(audit).toHaveLength(1);
   });
 
   it("a wrong code is invalid and changes nothing", async () => {
     const child = await makeUser("student", false);
-    await as(child).account.addEmail({ email: `w-${crypto.randomUUID()}@example.test` });
+    await as(child).account.addEmail({
+      email: `w-${crypto.randomUUID()}@example.test`,
+      currentPassword: PASSWORD,
+    });
     const wrong = codeOf() === "000000" ? "111111" : "000000";
     await expect(as(child).account.verifyAddedEmail({ code: wrong })).rejects.toMatchObject({
       code: "BAD_REQUEST",
@@ -429,7 +469,7 @@ describe("account.addEmail and verifyAddedEmail", () => {
   it("fails safely when the address became taken meanwhile", async () => {
     const child = await makeUser("student", false);
     const address = `race-${crypto.randomUUID()}@example.test`;
-    await as(child).account.addEmail({ email: address });
+    await as(child).account.addEmail({ email: address, currentPassword: PASSWORD });
     const code = codeOf();
     await db()
       .insert(users)
@@ -444,7 +484,10 @@ describe("account.addEmail and verifyAddedEmail", () => {
 
   it("a pending code never verifies through the ordinary email verify path", async () => {
     const child = await makeUser("student", false);
-    await as(child).account.addEmail({ email: `p-${crypto.randomUUID()}@example.test` });
+    await as(child).account.addEmail({
+      email: `p-${crypto.randomUUID()}@example.test`,
+      currentPassword: PASSWORD,
+    });
     const result = await verifyCode(child.id, "email_verify", codeOf(), db());
     expect(result).toEqual({ ok: false, reason: "invalid" });
     const [row] = await db().select().from(users).where(eq(users.id, child.id));
@@ -455,10 +498,16 @@ describe("account.addEmail and verifyAddedEmail", () => {
   it("limits code sends per account", async () => {
     const child = await makeUser("student", false);
     for (let i = 0; i < 3; i += 1) {
-      await as(child).account.addEmail({ email: `l${i}-${crypto.randomUUID()}@example.test` });
+      await as(child).account.addEmail({
+        email: `l${i}-${crypto.randomUUID()}@example.test`,
+        currentPassword: PASSWORD,
+      });
     }
     await expect(
-      as(child).account.addEmail({ email: `l9-${crypto.randomUUID()}@example.test` }),
+      as(child).account.addEmail({
+        email: `l9-${crypto.randomUUID()}@example.test`,
+        currentPassword: PASSWORD,
+      }),
     ).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
   });
 });
