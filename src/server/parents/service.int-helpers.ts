@@ -1,10 +1,8 @@
 import { and, eq } from "drizzle-orm";
-import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import { afterAll, beforeEach, vi } from "vitest";
 import { deriveKey } from "@/server/auth/keys";
 import { setClockForTests } from "@/server/clock";
 import * as dbModule from "@/server/db";
-import type * as schema from "@/server/db/schema";
 import { auditLog, parentLinks, users } from "@/server/db/schema";
 import { MemoryLimiter } from "../../../test/fake-limiter";
 import * as svc from "./service";
@@ -20,7 +18,7 @@ export const sendCode = vi.fn(async (..._args: unknown[]) => {});
 let limiter = new MemoryLimiter();
 export const deps = () => ({ limiter, key: deriveKey("t".repeat(40), "rl"), sendCode });
 
-export const db = () => dbModule.db() as unknown as PostgresJsDatabase<typeof schema>;
+export const db = () => dbModule.db();
 
 /** Pins the clock, gives every test a fresh limiter and closes the connection at the end. */
 export function registerParentTestHooks(): void {
