@@ -47,5 +47,9 @@ describe("summarizeCspReport", () => {
     const out = summarizeCspReport(many);
     expect(out).toHaveLength(10);
     expect(out[0]).toEqual({ directive: "img-src fake", blocked: "data", page: "unknown" });
+    const forged = summarizeCspReport({
+      "csp-report": { "effective-directive": "img-src\u001b[31m\u2028x\ty", "blocked-uri": "data" },
+    });
+    expect(forged[0]?.directive).toBe("img-src [31m x y");
   });
 });

@@ -1,6 +1,11 @@
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { assertStorageKey, type StorageAdapter, type StoredObject } from "./types";
+import {
+  assertStorageContentType,
+  assertStorageKey,
+  type StorageAdapter,
+  type StoredObject,
+} from "./types";
 
 /** The content type lives next to the object (`<file>.meta.json`). */
 const metaPath = (file: string) => `${file}.meta.json`;
@@ -16,7 +21,10 @@ export function localStorage(rootDir: string): StorageAdapter {
   const root = path.resolve(rootDir);
   const fileOf = (key: string): string => {
     const file = path.resolve(root, assertStorageKey(key));
-    if (!file.startsWith(`${root}${path.sep}`)) throw new Error("invalid storage key");
+    // Inside the root only, and never another object's metadata file.
+    if (!file.startsWith(`${root}${path.sep}`) || key.endsWith(".meta.json")) {
+      throw new Error("invalid storage key");
+    }
     return file;
   };
 
@@ -24,6 +32,7 @@ export function localStorage(rootDir: string): StorageAdapter {
     driver: "local",
     async put(key, bytes, contentType) {
       const file = fileOf(key);
+      assertStorageContentType(contentType);
       await mkdir(path.dirname(file), { recursive: true });
       await writeFile(file, bytes);
       await writeFile(metaPath(file), JSON.stringify({ contentType }));

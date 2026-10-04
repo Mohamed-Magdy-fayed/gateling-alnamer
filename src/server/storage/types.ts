@@ -14,6 +14,26 @@ export interface StorageAdapter {
   exists(key: string): Promise<boolean>;
 }
 
+/**
+ * What may be stored: lesson files, images and video. Never HTML, SVG or scripts, which would run
+ * same-origin if a route ever served a stored object with its stored type.
+ */
+export const STORAGE_CONTENT_TYPES = [
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "video/mp4",
+  "video/webm",
+] as const;
+
+export function assertStorageContentType(contentType: string): string {
+  if (!(STORAGE_CONTENT_TYPES as readonly string[]).includes(contentType)) {
+    throw new Error("content type not allowed in storage");
+  }
+  return contentType;
+}
+
 const KEY = /^[a-z0-9][a-z0-9/_.-]*$/;
 const MAX_KEY = 512;
 

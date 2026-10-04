@@ -1,4 +1,9 @@
-import { assertStorageKey, type StorageAdapter, type StoredObject } from "./types";
+import {
+  assertStorageContentType,
+  assertStorageKey,
+  type StorageAdapter,
+  type StoredObject,
+} from "./types";
 
 /** The part of a Firebase / Cloud Storage bucket the driver uses; tests pass a fake. */
 export type BucketLike = {
@@ -20,7 +25,10 @@ export function firebaseStorage(bucket: BucketLike): StorageAdapter {
   return {
     driver: "firebase",
     async put(key, bytes, contentType) {
-      await fileOf(key).save(bytes, { contentType, resumable: false });
+      await fileOf(key).save(bytes, {
+        contentType: assertStorageContentType(contentType),
+        resumable: false,
+      });
     },
     async get(key): Promise<StoredObject | null> {
       const file = fileOf(key);
@@ -56,11 +64,15 @@ export async function firebaseBucket(
   const { cert, getApps, initializeApp } = await import("firebase-admin/app");
   const { getStorage } = await import("firebase-admin/storage");
   const name = "al-namer-storage";
+  let credentials: object;
+  try {
+    credentials = JSON.parse(serviceAccountJson) as object;
+  } catch {
+    // Never the parser's message: it quotes the input around the error (the private key).
+    throw new Error("FIREBASE_SERVICE_ACCOUNT is not valid JSON");
+  }
   const app =
     getApps().find((candidate) => candidate.name === name) ??
-    initializeApp(
-      { credential: cert(JSON.parse(serviceAccountJson)), storageBucket: bucketName },
-      name,
-    );
+    initializeApp({ credential: cert(credentials), storageBucket: bucketName }, name);
   return getStorage(app).bucket(bucketName) as unknown as BucketLike;
 }

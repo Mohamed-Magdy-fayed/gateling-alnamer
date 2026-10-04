@@ -49,12 +49,23 @@ describe("local storage", () => {
     expect(await readdir(path.join(root, "courses/c1"))).toEqual([]);
   });
 
+  it("stores only allowed content types (no HTML, SVG or scripts)", async () => {
+    const store = localStorage(root);
+    for (const type of ["text/html", "image/svg+xml", "application/javascript"]) {
+      await expect(store.put("x/a.bin", new Uint8Array([1]), type), type).rejects.toThrow(
+        "content type not allowed",
+      );
+    }
+    expect(await store.exists("x/a.bin")).toBe(false);
+  });
+
   it("never touches a path outside its root", async () => {
     const store = localStorage(root);
     await expect(store.put("../escape.txt", new Uint8Array([1]), "text/plain")).rejects.toThrow(
       "invalid storage key",
     );
     await expect(store.get("a/../../x")).rejects.toThrow("invalid storage key");
+    await expect(store.get("x/a.pdf.meta.json")).rejects.toThrow("invalid storage key");
   });
 });
 
@@ -118,5 +129,8 @@ describe("firebase storage", () => {
     const store = firebaseStorage(failing);
     await expect(store.get("../x")).rejects.toThrow("invalid storage key");
     await expect(store.get("ok.png")).rejects.toThrow("denied");
+    await expect(store.put("ok.svg", new Uint8Array([1]), "image/svg+xml")).rejects.toThrow(
+      "content type not allowed",
+    );
   });
 });

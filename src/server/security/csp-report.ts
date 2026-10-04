@@ -6,7 +6,10 @@ export type CspViolation = { directive: string; blocked: string; page: string };
 
 const MAX_FIELD = 120;
 
-const clip = (value: string): string => value.slice(0, MAX_FIELD).replace(/[\r\n]/g, " ");
+/** At most 120 characters, with every control or line-separator character turned into a space. */
+const clip = (value: string): string =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point
+  value.slice(0, MAX_FIELD).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, " ");
 
 /** An origin for a URL, a keyword (`inline`, `eval`, `data`) as is, else "other". */
 function blockedOf(value: unknown): string {

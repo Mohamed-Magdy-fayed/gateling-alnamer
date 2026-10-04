@@ -45,6 +45,20 @@ describe("POST /api/csp-report", () => {
     expect((await report("x".repeat(9000))).status).toBe(204);
     expect((await report(legacy, { "content-length": "100000" })).status).toBe(204);
     expect((await report("{not json")).status).toBe(204);
+    // A chunked upload (no content-length) stops being read past the limit.
+    const big = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new Uint8Array(4096).fill(32));
+      },
+    });
+    const chunked = await POST(
+      new Request("https://alnamer.example/api/csp-report", {
+        method: "POST",
+        body: big,
+        duplex: "half",
+      } as RequestInit),
+    );
+    expect(chunked.status).toBe(204);
     expect(warn).not.toHaveBeenCalled();
   });
 });

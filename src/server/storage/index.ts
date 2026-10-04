@@ -16,6 +16,7 @@ let cached: Promise<StorageAdapter> | null = null;
  * `firebase`, which the env schema enforces together with its credentials).
  */
 export function storage(): Promise<StorageAdapter> {
+  // A failed start (import or credentials) is not cached: the next call tries again.
   cached ??= (async () => {
     const env = serverEnv();
     if (env.providers.storage === "firebase") {
@@ -27,6 +28,9 @@ export function storage(): Promise<StorageAdapter> {
       );
     }
     return localStorage(path.resolve(env.STORAGE_LOCAL_DIR ?? DEFAULT_LOCAL_DIR));
-  })();
+  })().catch((error: unknown) => {
+    cached = null;
+    throw error;
+  });
   return cached;
 }
