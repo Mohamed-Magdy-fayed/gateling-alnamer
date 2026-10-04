@@ -230,6 +230,13 @@ export async function regenerateRecoveryCodes(
     if (step === null) return { ok: false, reason: "invalid" };
     await tx.update(totpSecrets).set({ lastStep: step }).where(eq(totpSecrets.userId, userId));
     const codes = await storeRecoveryCodes(tx, userId, deps);
+    // New codes void the old ones: recorded like the enrolment (A8 code review).
+    await writeAudit(tx, {
+      actorId: userId,
+      action: "two_factor.recovery_regenerated",
+      subjectType: "user",
+      subjectId: userId,
+    });
     await clearTwoFactorFailures({ userId }, deps);
     return { ok: true, recoveryCodes: codes };
   });
@@ -293,7 +300,7 @@ const FINISH_TTL_S = 10 * 60;
 /**
  * After a confirmed enrolment the page still has to show the recovery codes, so the session is
  * stepped up only when the user finishes. This short-lived token proves the confirm happened in
- * this very session: HMAC over user, session and expiry (sub-key "totp"), valid for 10 minutes.
+ * this very session: HMAC over user, session and expiry (sub-key "totp-finish"), valid for 10 minutes.
  */
 export function finishToken(
   userId: string,

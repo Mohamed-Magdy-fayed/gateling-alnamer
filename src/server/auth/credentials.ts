@@ -28,7 +28,7 @@ export async function setPasswordIn(
 }
 
 /** An identifier containing "@" is an email; anything else is a username. Both are trimmed (columns are citext). */
-export function identifierCondition(identifier: string) {
+function identifierCondition(identifier: string) {
   const value = identifier.trim();
   return value.includes("@") ? eq(users.email, value) : eq(users.username, value.toLowerCase());
 }

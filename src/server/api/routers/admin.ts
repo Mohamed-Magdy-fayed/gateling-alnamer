@@ -1,10 +1,7 @@
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { resetTwoFactor } from "@/server/auth/two-factor";
 import { listPendingReview, publishCourse } from "@/server/catalog/authoring";
-import { db } from "@/server/db";
-import { users } from "@/server/db/schema";
-import { resetDevices } from "@/server/devices/service";
+import { resetStudentDevices } from "@/server/devices/service";
 import { AppError } from "@/server/errors";
 import { router, staffProcedure, superAdminProcedure } from "../trpc";
 
@@ -30,17 +27,13 @@ export const adminRouter = router({
       .mutation(async ({ ctx, input }) => publishCourse(ctx.user.id, input.courseId)),
   }),
   devices: router({
-    reset: adminProcedure.input(z.object({ userId: z.uuid() })).mutation(async ({ ctx, input }) => {
-      const target = await db().query.users.findFirst({
-        where: eq(users.id, input.userId),
-        columns: { role: true },
-      });
-      if (target?.role !== "student") {
-        throw new AppError("invalid_input", {
-          message: "target must be a student",
-        });
-      }
-      return { revoked: await resetDevices(input.userId, ctx.user.id) };
-    }),
+    /** Revokes a student's devices and their sessions (audit-logged). */
+    reset: adminProcedure
+      .input(z.object({ userId: z.uuid({ error: "errors.invalidInput" }) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await resetStudentDevices(input.userId, ctx.user.id);
+        if (!result.ok) throw new AppError("invalid_input", { message: result.reason });
+        return { revoked: result.revoked };
+      }),
   }),
 });

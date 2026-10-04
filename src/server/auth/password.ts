@@ -7,7 +7,7 @@ const KEY_LENGTH = 64;
 const ARGON2ID_PREFIX = "$argon2id$";
 
 /** OWASP argon2id parameters; `scripts/bench-argon2.mjs` measures them. */
-export const ARGON2_OPTIONS = {
+const ARGON2_OPTIONS = {
   algorithm: 2, // Algorithm.Argon2id (a const enum, unusable under isolatedModules)
   memoryCost: 19456,
   timeCost: 2,

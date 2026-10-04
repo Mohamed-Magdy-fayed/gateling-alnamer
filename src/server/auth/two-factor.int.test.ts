@@ -135,6 +135,33 @@ describe("two-factor enrolment", () => {
   });
 });
 
+describe("regenerateRecoveryCodes", () => {
+  it("needs a current app code, replaces every old code and writes an audit row", async () => {
+    const d = deps();
+    const { user, secret, codes } = await enrolled(d);
+    // The enrolment code's step is spent: a replay is refused and changes nothing.
+    expect(await tf.regenerateRecoveryCodes(user.id, totpAt(secret, NOW_S), d)).toEqual({
+      ok: false,
+      reason: "invalid",
+    });
+    setClockForTests(new Date(NOW.getTime() + 60_000));
+    const fresh = await tf.regenerateRecoveryCodes(user.id, totpAt(secret, NOW_S + 60), d);
+    if (!fresh.ok) throw new Error(fresh.reason);
+    expect(fresh.recoveryCodes).toHaveLength(10);
+    expect(fresh.recoveryCodes.some((c) => codes.includes(c))).toBe(false);
+    const audit = await conn
+      .select()
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.action, "two_factor.recovery_regenerated"),
+          eq(schema.auditLog.subjectId, user.id),
+        ),
+      );
+    expect(audit).toHaveLength(1);
+  });
+});
+
 describe("two-factor challenge", () => {
   it("a valid code elevates the session (new token, verified) and keeps other sessions", async () => {
     const d = deps();

@@ -10,7 +10,7 @@ import { authKey, keyedHash } from "./keys";
  * a URL or in any response. It lives in a short-lived, signed, HttpOnly cookie that only the server
  * reads. The same cookie is set for known and unknown emails, so it says nothing about the account.
  */
-export const PENDING_RESET_COOKIE = "__Host-rp";
+const PENDING_RESET_COOKIE = "__Host-rp";
 /** Pre-A8 name: never read, only deleted. */
 const LEGACY_PENDING_RESET_COOKIE = "rp";
 

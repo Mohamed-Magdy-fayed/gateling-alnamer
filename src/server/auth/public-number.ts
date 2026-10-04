@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 // Anything with an `execute` (a Drizzle db or transaction).
 type SqlRunner = { execute: (query: ReturnType<typeof sql>) => PromiseLike<unknown> };
 
-export const PUBLIC_NUMBER_PREFIX = "AN";
+const PUBLIC_NUMBER_PREFIX = "AN";
 
 // Next student-facing number ("AN100001", ...) from user_public_number_seq. Call inside the sign-up transaction.
 export async function nextPublicNumber(tx: SqlRunner): Promise<string> {

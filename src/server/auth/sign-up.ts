@@ -14,7 +14,7 @@ import { usernameSchema } from "./username";
 
 type Database = ReturnType<typeof db>;
 
-export const SIGN_UP_ROLES = ["student", "parent"] as const;
+const SIGN_UP_ROLES = ["student", "parent"] as const;
 
 export type SignUpField =
   | "name"

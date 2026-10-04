@@ -42,9 +42,10 @@ export type CurrentSession = {
 type CreateOptions = { deviceId?: string | null; twoFactorVerified?: boolean };
 
 /**
- * Cookie writes live only in `createSession`, `rotateSession` and `destroySession`, which run in
- * server actions and route handlers (Next refuses `cookies().set` during a render). Deleting a
- * leftover legacy cookie and the daily cookie re-issue that sliding expiry needs happen in `src/proxy.ts`.
+ * Writes the session cookie. Callers are server actions and route handlers only (Next refuses
+ * `cookies().set` during a render): `createSession`, and the places that rotate a token (two-factor
+ * step-up, password change). Deleting a leftover legacy cookie and the daily re-issue that sliding
+ * expiry needs happen in `src/proxy.ts`.
  */
 export async function setSessionCookie(token: string, expiresAt: Date): Promise<void> {
   const store = await cookies();

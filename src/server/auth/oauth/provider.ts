@@ -27,7 +27,7 @@ const GOOGLE_USERINFO = "https://openidconnect.googleapis.com/v1/userinfo";
 const TIMEOUT_MS = 8000;
 
 /** Google: authorization code + PKCE; the identity comes from the userinfo endpoint over TLS. */
-export function googleProvider(clientId: string, clientSecret: string): OAuthProvider {
+function googleProvider(clientId: string, clientSecret: string): OAuthProvider {
   return {
     id: "google",
     authorizeUrl({ state, codeChallenge, redirectUri }) {
@@ -77,14 +77,14 @@ export function googleProvider(clientId: string, clientSecret: string): OAuthPro
   };
 }
 
-export const MOCK_AUTHORIZE_PATH = "/dev/oauth/google";
+const MOCK_AUTHORIZE_PATH = "/dev/oauth/google";
 
 /**
  * The local stand-in (tests and local runs only, never deployed): the hosted page picks a test
  * identity and returns it as a sealed code bound to the PKCE challenge, so the callback path and
  * the PKCE check are exercised exactly as with Google.
  */
-export function mockProvider(key: Buffer = authKey("oauth")): OAuthProvider {
+function mockProvider(key: Buffer = authKey("oauth")): OAuthProvider {
   return {
     id: "mock",
     authorizeUrl({ state, codeChallenge, redirectUri }) {

@@ -151,7 +151,10 @@ const requireRoles = (roles: readonly UserRole[]) =>
     return next();
   });
 
-/** Staff procedures: the session must be two-factor verified (enforced since A4). */
+/**
+ * Defence in depth for staff and super-admin procedures: `requireActiveUser` already refuses an
+ * unverified staff session, and this repeats the check so a change there cannot open them.
+ */
 const requireTwoFactor = t.middleware(async ({ ctx, next }) => {
   if (twoFactorEnforced() && ctx.twoFactorVerified !== true) {
     throw new AppError("forbidden", { message: "two_factor" });

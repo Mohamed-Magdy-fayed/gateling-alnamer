@@ -361,6 +361,20 @@ export async function capDeviceSessions(userId: string, deviceId: string): Promi
   return deleted.length;
 }
 
+/** The admin device reset, for students only (only students have devices). */
+export async function resetStudentDevices(
+  userId: string,
+  actorId: string,
+): Promise<{ ok: true; revoked: number } | { ok: false; reason: "not_student" }> {
+  const [target] = await db()
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (target?.role !== "student") return { ok: false, reason: "not_student" };
+  return { ok: true, revoked: await resetDevices(userId, actorId) };
+}
+
 /** Admin reset: revokes every active device, ends their sessions, and audits it. Returns how many devices were revoked. */
 export async function resetDevices(userId: string, actorId: string): Promise<number> {
   const { revoked, deleted } = await db().transaction(async (tx) => {
