@@ -50,13 +50,13 @@ describe("categoryNamesInput", () => {
     expect(parsed.success).toBe(false);
     const messages = parsed.error?.issues.map((issue) => [issue.path[0], issue.message]);
     expect(messages).toEqual([
-      ["nameAr", "categories.errors.nameRequired"],
-      ["nameEn", "categories.errors.nameRequired"],
+      ["nameAr", "categories.errors.nameArRequired"],
+      ["nameEn", "categories.errors.nameEnRequired"],
     ]);
   });
 
   it("refuses names longer than 80 characters", () => {
     const parsed = categoryNamesInput.safeParse({ nameAr: "ع".repeat(81), nameEn: "ok" });
-    expect(parsed.error?.issues[0]?.message).toBe("categories.errors.nameLength");
+    expect(parsed.error?.issues[0]?.message).toBe("categories.errors.nameArLength");
   });
 });

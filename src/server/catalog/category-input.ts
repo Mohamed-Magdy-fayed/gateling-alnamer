@@ -8,18 +8,19 @@ const MAX_SLUG = 60;
 /** Bidi override and isolate controls: they can visually reorder text around a name. */
 const BIDI_CONTROLS = /[‪-‮⁦-⁩]/g;
 
-const name = z
-  .string()
-  .transform((value) => value.replace(BIDI_CONTROLS, "").trim())
-  .pipe(
-    z
-      .string()
-      .min(1, "categories.errors.nameRequired")
-      .max(MAX_NAME, "categories.errors.nameLength"),
-  );
+const name = (field: "nameAr" | "nameEn") =>
+  z
+    .string()
+    .transform((value) => value.replace(BIDI_CONTROLS, "").trim())
+    .pipe(
+      z
+        .string()
+        .min(1, `categories.errors.${field}Required`)
+        .max(MAX_NAME, `categories.errors.${field}Length`),
+    );
 
 /** Both names are required: the catalogue filters show them in either language. */
-export const categoryNamesInput = z.object({ nameAr: name, nameEn: name });
+export const categoryNamesInput = z.object({ nameAr: name("nameAr"), nameEn: name("nameEn") });
 
 export type CategoryNames = z.infer<typeof categoryNamesInput>;
 

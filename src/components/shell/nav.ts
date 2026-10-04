@@ -1,7 +1,7 @@
 import type { UserRole } from "@/server/db/schema";
 
 /** Icon names the shell maps to lucide components (A7a.3); kept as data so this file stays server-safe. */
-export type NavIconName = "home" | "account" | "link" | "plus" | "teachers";
+export type NavIconName = "home" | "account" | "link" | "plus" | "teachers" | "categories";
 
 export type NavItem = {
   href: string;
@@ -26,6 +26,11 @@ const adminTeachers: NavItem = {
   labelKey: "teachers.admin.title",
   icon: "teachers",
 };
+const adminCategories: NavItem = {
+  href: "/dashboard/admin/categories",
+  labelKey: "categories.admin.title",
+  icon: "categories",
+};
 const linkParent: NavItem = {
   href: "/dashboard/link-parent",
   labelKey: "parents.linkAction",
@@ -41,6 +46,6 @@ export const NAV: Record<UserRole, NavItem[]> = {
   student: [home, linkParent, account],
   parent: [home, account],
   teacher: [home, newCourse, account],
-  admin: [home, adminTeachers, account],
+  admin: [home, adminTeachers, adminCategories, account],
   reviewer: [home, account],
 };

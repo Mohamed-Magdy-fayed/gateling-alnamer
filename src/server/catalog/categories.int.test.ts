@@ -207,7 +207,7 @@ describe("createCategory", () => {
       ok: false,
       reason: "invalid",
       fields: {
-        nameAr: "categories.errors.nameRequired",
+        nameAr: "categories.errors.nameArRequired",
         slug: "categories.errors.slugInvalid",
       },
     });
@@ -268,7 +268,7 @@ describe("updateCategory", () => {
     ).toEqual({
       ok: false,
       reason: "invalid",
-      fields: { nameEn: "categories.errors.nameRequired" },
+      fields: { nameEn: "categories.errors.nameEnRequired" },
     });
   });
 });

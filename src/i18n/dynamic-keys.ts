@@ -12,4 +12,5 @@ export const DYNAMIC_KEY_ROOTS = [
   "courses.refusals", // src/components/orders/{buy-box,order-actions}.tsx: refusals[result.reason]
   "teach.errors", // src/components/teach/new-course-form.tsx: t.errors[leaf] from the zod key
   "teach.statuses", // src/components/dashboard/landings.tsx, teach/[courseId]/page.tsx: statuses[status]
+  "categories.errors", // src/server/catalog/category-actions.ts: texts[leaf] from the zod key
 ] as const;
