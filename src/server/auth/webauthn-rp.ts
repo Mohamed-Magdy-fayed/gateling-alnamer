@@ -8,7 +8,10 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 /** The relying party for an origin: the configured site, or any localhost port when not deployed. */
 export function relyingPartyFor(
   origin: string | null,
-  env: { BASE_URL?: string; VERCEL?: string } = { ...serverEnv(), VERCEL: process.env.VERCEL },
+  env: { BASE_URL?: string; VERCEL?: string; APP_MODE?: string } = {
+    ...serverEnv(),
+    VERCEL: process.env.VERCEL,
+  },
 ): RelyingParty | null {
   if (!origin) return null;
   let url: URL;
@@ -19,7 +22,8 @@ export function relyingPartyFor(
   }
   const configured = env.BASE_URL ? new URL(env.BASE_URL).origin : null;
   if (configured && url.origin === configured) return { rpID: url.hostname, origin: url.origin };
-  if (!env.VERCEL && LOCAL_HOSTS.has(url.hostname))
+  // Localhost origins only off Vercel and never in live mode (a real deployment uses BASE_URL).
+  if (!env.VERCEL && env.APP_MODE !== "live" && LOCAL_HOSTS.has(url.hostname))
     return { rpID: url.hostname, origin: url.origin };
   return null;
 }

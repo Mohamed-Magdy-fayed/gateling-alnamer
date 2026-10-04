@@ -127,3 +127,6 @@ export const TWO_FACTOR_LIMIT: LimitRule = { max: 5, windowSec: 15 * 60 };
 
 /** A4: two-factor code attempts per user per day, on top of the 15-minute lock. */
 export const TWO_FACTOR_DAILY_LIMIT: LimitRule = { max: 30, windowSec: 24 * 60 * 60 };
+
+/** A4b: passkey challenge requests per user (each one writes a challenge row). */
+export const PASSKEY_OPTIONS_LIMIT: LimitRule = { max: 30, windowSec: 10 * 60 };

@@ -25,3 +25,20 @@ describe("relyingPartyFor", () => {
     expect(relyingPartyFor("not a url", env)).toBeNull();
   });
 });
+
+describe("relyingPartyFor off Vercel in live mode", () => {
+  it("does not accept localhost origins on a live deployment", () => {
+    expect(
+      relyingPartyFor("http://localhost:3000", {
+        BASE_URL: "https://alnamer.example",
+        APP_MODE: "live",
+      }),
+    ).toBeNull();
+    expect(
+      relyingPartyFor("https://alnamer.example", { BASE_URL: "https://alnamer.example" }),
+    ).toEqual({
+      rpID: "alnamer.example",
+      origin: "https://alnamer.example",
+    });
+  });
+});

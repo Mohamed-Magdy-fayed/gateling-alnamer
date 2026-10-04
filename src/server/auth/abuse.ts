@@ -5,6 +5,7 @@ import {
   DRAFT_COURSE_LIMIT,
   type LimitRule,
   ORDER_RECHECK_LIMIT,
+  PASSKEY_OPTIONS_LIMIT,
   PLAYBACK_LIMIT,
   QUIZ_LIMIT,
   TWO_FACTOR_DAILY_LIMIT,
@@ -358,4 +359,16 @@ export async function clearTwoFactorFailures(
   deps: AbuseDeps = {},
 ): Promise<void> {
   await limiterOf(deps).reset(twoFactorKey(hasherOf(deps), input.userId));
+}
+
+/** A4b: passkey challenge requests, 30 per 10 minutes per user. */
+export async function guardPasskeyOptions(
+  input: { userId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:passkeyopts:user:${hasherOf(deps).hash(input.userId)}`,
+    PASSKEY_OPTIONS_LIMIT,
+  );
 }

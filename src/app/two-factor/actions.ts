@@ -7,6 +7,7 @@ import type {
   RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import { revalidatePath } from "next/cache";
+import { guardPasskeyOptions } from "@/server/auth/abuse";
 import {
   authenticationOptions,
   finishRegistration,
@@ -29,6 +30,7 @@ import { clock } from "@/server/clock";
 
 const STAFF = new Set(["teacher", "admin", "reviewer"]);
 const MAX_INPUT = 32;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const nowSeconds = () => Math.floor(clock.now().getTime() / 1000);
 
 export type TwoFactorActionResult =
@@ -116,6 +118,7 @@ export async function passkeyOptionsAction(): Promise<PublicKeyCredentialRequest
   const session = await staffSession();
   const rp = await currentRelyingParty();
   if (!session || !rp) return null;
+  if (!("ok" in (await guardPasskeyOptions({ userId: session.user.id })))) return null;
   return authenticationOptions(session.user.id, rp);
 }
 
@@ -143,6 +146,7 @@ export async function addPasskeyOptionsAction(): Promise<PublicKeyCredentialCrea
   const session = await verifiedStaff();
   const rp = await currentRelyingParty();
   if (!session || !rp) return null;
+  if (!("ok" in (await guardPasskeyOptions({ userId: session.user.id })))) return null;
   return registrationOptions(
     { id: session.user.id, name: session.user.name, email: session.user.email },
     rp,
@@ -163,7 +167,7 @@ export async function addPasskeyFinishAction(
 
 export async function removePasskeyAction(passkeyId: string): Promise<TwoFactorActionResult> {
   const session = await verifiedStaff();
-  if (!session || typeof passkeyId !== "string" || passkeyId.length > 64) {
+  if (!session || typeof passkeyId !== "string" || !UUID.test(passkeyId)) {
     return { ok: false, reason: "error" };
   }
   const removed = await removePasskey(session.user.id, passkeyId);

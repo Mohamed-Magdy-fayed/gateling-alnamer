@@ -178,4 +178,19 @@ describe("passkeys", () => {
     expect(await pk.removePasskey(owner.user.id, row?.id ?? "")).toBe(true);
     expect(await pk.listPasskeys(owner.user.id)).toHaveLength(0);
   });
+
+  it("refuses a credential id that another account already has", async () => {
+    const first = await registered();
+    const { user } = await staffWithSession();
+    await pk.registrationOptions({ id: user.id, name: user.name, email: user.email }, RP);
+    const result = await pk.finishRegistration(
+      user.id,
+      { id: first.credentialId } as never,
+      RP,
+      null,
+      { verifyRegistration: registrationOk(first.credentialId) as never },
+    );
+    expect(result).toEqual({ ok: false, reason: "invalid" });
+    expect(await pk.listPasskeys(user.id)).toHaveLength(0);
+  });
 });

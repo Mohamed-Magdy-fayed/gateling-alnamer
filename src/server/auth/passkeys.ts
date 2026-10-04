@@ -53,8 +53,28 @@ async function storeChallenge(userId: string, purpose: Purpose, challenge: strin
     });
 }
 
-/** Takes (deletes) the user's live challenge for this purpose; null when none or expired. */
-async function consumeChallenge(userId: string, purpose: Purpose): Promise<string | null> {
+/** The challenge the browser signed (clientDataJSON.challenge), or null when it cannot be read. */
+function signedChallenge(response: { response?: { clientDataJSON?: unknown } }): string | null {
+  const raw = response.response?.clientDataJSON;
+  if (typeof raw !== "string" || raw.length > 4096) return null;
+  try {
+    const data: unknown = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+    const challenge = (data as { challenge?: unknown }).challenge;
+    return typeof challenge === "string" ? challenge : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Takes (deletes) the user's live challenge for this purpose: the one the browser signed when it
+ * can be read (so two tabs never consume each other's), otherwise the latest. Null when none.
+ */
+async function consumeChallenge(
+  userId: string,
+  purpose: Purpose,
+  signed: string | null,
+): Promise<string | null> {
   const [row] = await db()
     .delete(webauthnChallenges)
     .where(
@@ -62,6 +82,7 @@ async function consumeChallenge(userId: string, purpose: Purpose): Promise<strin
         eq(webauthnChallenges.userId, userId),
         eq(webauthnChallenges.purpose, purpose),
         gt(webauthnChallenges.expiresAt, clock.now()),
+        signed ? eq(webauthnChallenges.challenge, signed) : undefined,
       ),
     )
     .returning({ challenge: webauthnChallenges.challenge });
@@ -125,7 +146,7 @@ export async function finishRegistration(
   name: string | null,
   deps: PasskeyDeps = {},
 ): Promise<RegisterResult> {
-  const challenge = await consumeChallenge(userId, "register");
+  const challenge = await consumeChallenge(userId, "register", signedChallenge(response));
   if (!challenge) return { ok: false, reason: "expired" };
   const verify = deps.verifyRegistration ?? verifyRegistrationResponse;
   const result = await verify({
@@ -143,15 +164,21 @@ export async function finishRegistration(
       .from(passkeys)
       .where(eq(passkeys.userId, userId));
     if (count.length >= MAX_PASSKEYS) return { ok: false as const, reason: "limit" as const };
-    await tx.insert(passkeys).values({
-      id: uuidv7(),
-      userId,
-      credentialId: credential.id,
-      publicKey: Buffer.from(credential.publicKey).toString("base64url"),
-      counter: credential.counter,
-      transports: credential.transports ?? null,
-      name: name?.slice(0, 60) || null,
-    });
+    // A credential id already stored (another account, or a race) is refused, not thrown.
+    const inserted = await tx
+      .insert(passkeys)
+      .values({
+        id: uuidv7(),
+        userId,
+        credentialId: credential.id,
+        publicKey: Buffer.from(credential.publicKey).toString("base64url"),
+        counter: credential.counter,
+        transports: credential.transports ?? null,
+        name: name?.slice(0, 60) || null,
+      })
+      .onConflictDoNothing({ target: passkeys.credentialId })
+      .returning({ id: passkeys.id });
+    if (inserted.length === 0) return { ok: false as const, reason: "invalid" as const };
     await writeAudit(tx, {
       actorId: userId,
       action: "two_factor.passkey_added",
@@ -201,7 +228,7 @@ export async function verifyPasskeyChallenge(
 ): Promise<PasskeyChallengeResult> {
   const guard = await guardTwoFactor({ userId }, deps);
   if (!("ok" in guard)) return { ok: false, reason: "locked" };
-  const challenge = await consumeChallenge(userId, "authenticate");
+  const challenge = await consumeChallenge(userId, "authenticate", signedChallenge(response));
   if (!challenge) return { ok: false, reason: "expired" };
   const [row] = await db()
     .select()
