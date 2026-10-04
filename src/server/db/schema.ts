@@ -659,6 +659,26 @@ export const passkeys = pgTable(
   (t) => [index("passkeys_user_idx").on(t.userId)],
 );
 
+// One-time WebAuthn challenges (A4b): consumed (deleted) on use, valid 5 minutes. Server-side
+// because many passkeys report a constant signature counter, so the counter cannot stop replays.
+export const webauthnChallenges = pgTable(
+  "webauthn_challenges",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    purpose: text("purpose").notNull(),
+    challenge: text("challenge").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt,
+  },
+  (t) => [
+    check("webauthn_challenges_purpose", sql`${t.purpose} in ('register', 'authenticate')`),
+    index("webauthn_challenges_user_idx").on(t.userId),
+  ],
+);
+
 export const questionKind = pgEnum("question_kind", ["mcq", "true_false"]);
 
 /** One answer option; `true_false` questions use the ids `true` and `false`. */

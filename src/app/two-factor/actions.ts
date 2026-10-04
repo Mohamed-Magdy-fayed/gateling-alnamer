@@ -1,5 +1,19 @@
 "use server";
 
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from "@simplewebauthn/server";
+import { revalidatePath } from "next/cache";
+import {
+  authenticationOptions,
+  finishRegistration,
+  registrationOptions,
+  removePasskey,
+  verifyPasskeyChallenge,
+} from "@/server/auth/passkeys";
 import { getCurrentSession, setSessionCookie } from "@/server/auth/session";
 import {
   confirmTotpSetup,
@@ -10,6 +24,7 @@ import {
   verifyChallenge,
   verifyFinishToken,
 } from "@/server/auth/two-factor";
+import { currentRelyingParty } from "@/server/auth/webauthn-rp";
 import { clock } from "@/server/clock";
 
 const STAFF = new Set(["teacher", "admin", "reviewer"]);
@@ -92,4 +107,66 @@ export async function regenerateCodesAction(code: string): Promise<TwoFactorActi
   const result = await regenerateRecoveryCodes(session.user.id, code);
   if (!result.ok) return { ok: false, reason: result.reason === "locked" ? "locked" : "invalid" };
   return { ok: true, recoveryCodes: result.recoveryCodes };
+}
+
+// Passkeys (A4b). The browser runs the WebAuthn ceremony; these actions issue and check challenges.
+
+/** Sign-in challenge options for an unverified staff session with passkeys; null otherwise. */
+export async function passkeyOptionsAction(): Promise<PublicKeyCredentialRequestOptionsJSON | null> {
+  const session = await staffSession();
+  const rp = await currentRelyingParty();
+  if (!session || !rp) return null;
+  return authenticationOptions(session.user.id, rp);
+}
+
+/** Checks the passkey assertion; on success the session is verified. */
+export async function passkeyVerifyAction(
+  response: AuthenticationResponseJSON,
+): Promise<TwoFactorActionResult> {
+  const session = await staffSession();
+  const rp = await currentRelyingParty();
+  if (!session || !rp || typeof response?.id !== "string") return { ok: false, reason: "error" };
+  const result = await verifyPasskeyChallenge(session.user.id, session.tokenHash, response, rp);
+  if (!result.ok) return { ok: false, reason: result.reason === "locked" ? "locked" : "invalid" };
+  await setSessionCookie(result.rotated.token, result.rotated.expiresAt);
+  return { ok: true };
+}
+
+async function verifiedStaff() {
+  const session = await getCurrentSession();
+  if (!session || !STAFF.has(session.user.role) || !session.twoFactorVerified) return null;
+  return session;
+}
+
+/** Options to add a passkey from the account page (verified staff only). */
+export async function addPasskeyOptionsAction(): Promise<PublicKeyCredentialCreationOptionsJSON | null> {
+  const session = await verifiedStaff();
+  const rp = await currentRelyingParty();
+  if (!session || !rp) return null;
+  return registrationOptions(
+    { id: session.user.id, name: session.user.name, email: session.user.email },
+    rp,
+  );
+}
+
+export async function addPasskeyFinishAction(
+  response: RegistrationResponseJSON,
+): Promise<TwoFactorActionResult> {
+  const session = await verifiedStaff();
+  const rp = await currentRelyingParty();
+  if (!session || !rp || typeof response?.id !== "string") return { ok: false, reason: "error" };
+  const result = await finishRegistration(session.user.id, response, rp, null);
+  if (!result.ok) return { ok: false, reason: "invalid" };
+  revalidatePath("/dashboard/account");
+  return { ok: true };
+}
+
+export async function removePasskeyAction(passkeyId: string): Promise<TwoFactorActionResult> {
+  const session = await verifiedStaff();
+  if (!session || typeof passkeyId !== "string" || passkeyId.length > 64) {
+    return { ok: false, reason: "error" };
+  }
+  const removed = await removePasskey(session.user.id, passkeyId);
+  revalidatePath("/dashboard/account");
+  return removed ? { ok: true } : { ok: false, reason: "invalid" };
 }

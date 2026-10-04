@@ -6,11 +6,13 @@ import { ProfileForm } from "@/components/account/profile-form";
 import { AccountSection } from "@/components/account/section";
 import { type SessionRowData, SessionsList } from "@/components/account/sessions-list";
 import { SignOutOthersForm } from "@/components/devices/sign-out-others-form";
+import { AccountPasskeys } from "@/components/two-factor/account-passkeys";
 import { AccountTwoFactor } from "@/components/two-factor/account-two-factor";
 import { dirOf, format, formatDate, formatTime, isLocale, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { listSessions } from "@/server/account/service";
 import { requirePageUser } from "@/server/auth/page-guard";
+import { listPasskeys } from "@/server/auth/passkeys";
 import { getCurrentSession } from "@/server/auth/session";
 import { twoFactorStatus } from "@/server/auth/two-factor";
 import { db } from "@/server/db";
@@ -71,6 +73,7 @@ export default async function AccountPage() {
   const isStudent = user.role === "student";
   const isStaff = user.role === "teacher" || user.role === "admin" || user.role === "reviewer";
   const twoFactor = isStaff ? await twoFactorStatus(user.id) : null;
+  const passkeyRows = isStaff ? await listPasskeys(user.id) : [];
   const deviceData = isStudent
     ? await loadDevices(user.id, session?.deviceId ?? null, template, locale)
     : null;
@@ -115,6 +118,13 @@ export default async function AccountPage() {
             locale={locale}
             since={twoFactor.confirmedAt ? formatDate(locale, twoFactor.confirmedAt) : ""}
             recoveryLeft={twoFactor.recoveryLeft}
+          />
+          <AccountPasskeys
+            t={t.twoFactor}
+            items={passkeyRows.map((row) => ({
+              id: row.id,
+              addedText: formatDate(locale, row.createdAt),
+            }))}
           />
         </AccountSection>
       ) : null}

@@ -181,6 +181,7 @@ export const NO_LESSON_ACCESS = "ليس لديك صلاحية الوصول إل�
 // Two-factor (A4): staff sign-ins go through enrolment or the challenge.
 export const TOTP_CODE_LABEL = "الرمز المكوّن من 6 أرقام";
 const staffSecrets = new Map<string, Buffer>();
+const lastSteps = new Map<string, number>();
 
 /**
  * Signs a teacher, admin or reviewer in. The first time it enrols through the real setup page
@@ -198,6 +199,7 @@ export async function signInStaff(page: Page, address: string, withPassword: str
     const key = (await page.getByTestId("totp-secret").innerText()).replace(/\s/g, "");
     const secret = base32Decode(key);
     staffSecrets.set(address, secret);
+    lastSteps.set(address, Math.floor(nowS() / 30));
     await page.getByLabel(TOTP_CODE_LABEL).fill(totpAt(secret, nowS()));
     await page.getByRole("button", { name: "تأكيد", exact: true }).click();
     await expect(page.getByTestId("recovery-codes")).toBeVisible();
@@ -206,7 +208,13 @@ export async function signInStaff(page: Page, address: string, withPassword: str
   } else {
     const secret = staffSecrets.get(address);
     if (!secret) throw new Error(`no TOTP secret recorded for ${address}`);
-    await page.getByLabel(TOTP_CODE_LABEL).fill(totpAt(secret, nowS() + 30));
+    // The server refuses a step at or before the last one used (replays). Use the next step; if
+    // that one was already spent, wait for the window to move on.
+    const used = lastSteps.get(address) ?? 0;
+    while (Math.floor(nowS() / 30) + 1 <= used) await page.waitForTimeout(1000);
+    const step = Math.floor(nowS() / 30) + 1;
+    lastSteps.set(address, step);
+    await page.getByLabel(TOTP_CODE_LABEL).fill(totpAt(secret, step * 30));
     await page.getByRole("button", { name: "تحقّق", exact: true }).click();
   }
   await page.waitForURL("**/dashboard");

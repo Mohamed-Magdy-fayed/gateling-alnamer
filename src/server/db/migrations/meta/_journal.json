@@ -183,6 +183,13 @@
       "when": 1791070889675,
       "tag": "0025_swift_spot",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791084968494,
+      "tag": "0026_mushy_celestials",
+      "breakpoints": true
     }
   ]
 }
