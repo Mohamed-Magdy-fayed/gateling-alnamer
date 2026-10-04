@@ -23,6 +23,14 @@ const dbModule = (await import("@/server/db")) as unknown as {
 const conn = dbModule.db();
 const { completeGoogleSignUp, resolveOAuthSignIn } = await import("./decide");
 const { createUser } = await import("@/server/orders/test-fixtures");
+const { createPendingSignup } = await import("./pending-store");
+
+/** A live one-time pending sign-up, as the callback creates it. */
+const pendingCtx = async () => ({
+  locale: "ar" as const,
+  now: NOW,
+  pendingId: await createPendingSignup(new Date(NOW.getTime() + 15 * 60_000), NOW),
+});
 
 const NOW = new Date("2030-05-01T09:00:00.000Z");
 const identity = (
@@ -116,7 +124,7 @@ describe("completeGoogleSignUp", () => {
 
   it("creates a verified account without a password, linked to Google", async () => {
     const id = identity();
-    const result = await completeGoogleSignUp(id, form(), { locale: "ar", now: NOW });
+    const result = await completeGoogleSignUp(id, form(), await pendingCtx());
     if (!result.ok) throw new Error(JSON.stringify(result));
     const [user] = await conn.select().from(schema.users).where(eq(schema.users.id, result.userId));
     expect(user).toMatchObject({ email: id.email, role: "student" });
@@ -131,7 +139,7 @@ describe("completeGoogleSignUp", () => {
   });
 
   it("applies the age and consent rules", async () => {
-    const ctx = { locale: "ar" as const, now: NOW };
+    const ctx = await pendingCtx();
     expect(
       (await completeGoogleSignUp(identity(), form({ dateOfBirth: "2025-01-01" }), ctx)).ok,
     ).toBe(false);
@@ -148,5 +156,31 @@ describe("completeGoogleSignUp", () => {
       false,
     );
     expect((await completeGoogleSignUp(identity(), form({ name: "x" }), ctx)).ok).toBe(false);
+  });
+
+  it("works once: a replay of the same pending sign-up is refused, never signed in (A8 L3)", async () => {
+    const id = identity();
+    const ctx = await pendingCtx();
+    const first = await completeGoogleSignUp(id, form(), ctx);
+    expect(first.ok).toBe(true);
+    // The account exists now, so a replay would hit the unique email: still refused.
+    expect(await completeGoogleSignUp(id, form(), ctx)).toEqual({
+      ok: false,
+      decision: { kind: "refused" },
+    });
+    // A fresh pending sign-up for the same identity follows the linking rules.
+    expect(await completeGoogleSignUp(id, form(), await pendingCtx())).toEqual({
+      ok: false,
+      decision: { kind: "signin", userId: first.ok ? first.userId : "" },
+    });
+  });
+
+  it("refuses an expired pending sign-up", async () => {
+    const ctx = await pendingCtx();
+    const late = { ...ctx, now: new Date(NOW.getTime() + 16 * 60_000) };
+    expect(await completeGoogleSignUp(identity(), form(), late)).toEqual({
+      ok: false,
+      decision: { kind: "refused" },
+    });
   });
 });

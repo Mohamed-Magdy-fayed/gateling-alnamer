@@ -51,7 +51,7 @@ export async function GET(request: NextRequest): Promise<never> {
     case "signin":
       return completeSignIn(decision.userId, device, flow.next);
     case "new":
-      await setPendingCookie(identity, flow.next, device.secure);
+      await setPendingCookie(identity, flow.next);
       redirect("/sign-up/google");
       break;
     case "needs_password":

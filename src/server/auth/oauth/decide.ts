@@ -8,6 +8,7 @@ import { oauthAccounts, users } from "@/server/db/schema";
 import { nextPublicNumber } from "../public-number";
 import { checkSignUpAge, isUniqueViolation } from "../sign-up";
 import { isStaffRole } from "../staff-session";
+import { consumePendingSignup } from "./pending-store";
 import type { OAuthIdentity } from "./provider";
 
 const PROVIDER = "google";
@@ -98,12 +99,13 @@ export type GoogleSignUpResult =
 /**
  * Creates the account for a new Google user: verified email (Google verified it), no password,
  * a public number and the Google link, in one transaction; the D31 age rules apply. If the email
- * was taken meanwhile, the usual linking rules decide.
+ * was taken meanwhile, the usual linking rules decide. Either way the pending sign-up is spent:
+ * a second use of the same cookie is refused (A8 review L3).
  */
 export async function completeGoogleSignUp(
   identity: OAuthIdentity,
   form: GoogleSignUpForm,
-  ctx: { locale: Locale; now: Date },
+  ctx: { locale: Locale; now: Date; pendingId: string },
 ): Promise<GoogleSignUpResult> {
   const name = form.name.trim();
   if (name.length < 2 || name.length > 80) return { ok: false, fields: ["name"] };
@@ -119,6 +121,7 @@ export async function completeGoogleSignUp(
 
   try {
     const userId = await db().transaction(async (tx) => {
+      if (!(await consumePendingSignup(tx, ctx.pendingId, ctx.now))) return null;
       const [user] = await tx
         .insert(users)
         .values({
@@ -142,9 +145,13 @@ export async function completeGoogleSignUp(
       });
       return user.id;
     });
-    return { ok: true, userId };
+    return userId ? { ok: true, userId } : { ok: false, decision: { kind: "refused" } };
   } catch (error) {
     if (!isUniqueViolation(error)) throw error;
+    // The transaction rolled back, so the pending sign-up is spent here instead.
+    if (!(await consumePendingSignup(db(), ctx.pendingId, ctx.now))) {
+      return { ok: false, decision: { kind: "refused" } };
+    }
     return { ok: false, decision: await resolveOAuthSignIn(identity) };
   }
 }

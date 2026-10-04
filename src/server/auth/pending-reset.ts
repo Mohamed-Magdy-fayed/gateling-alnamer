@@ -1,9 +1,8 @@
 import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { clock } from "@/server/clock";
 import { PENDING_RESET_TTL_MS } from "@/server/config/policy";
-import { serverEnv } from "@/server/env";
 import { authKey, keyedHash } from "./keys";
 
 /**
@@ -11,7 +10,9 @@ import { authKey, keyedHash } from "./keys";
  * a URL or in any response. It lives in a short-lived, signed, HttpOnly cookie that only the server
  * reads. The same cookie is set for known and unknown emails, so it says nothing about the account.
  */
-export const PENDING_RESET_COOKIE = "rp";
+export const PENDING_RESET_COOKIE = "__Host-rp";
+/** Pre-A8 name: never read, only deleted. */
+const LEGACY_PENDING_RESET_COOKIE = "rp";
 
 /**
  * `nonce` is random per reset request: the codes sent for it carry its keyed hash, so only this
@@ -73,15 +74,13 @@ const pendingKey = () => authKey("rp");
 
 /** Server actions only: remembers that a reset code was just requested for `email` by this browser. */
 export async function setPendingReset(email: string, nonce: string): Promise<void> {
-  const [store, requestHeaders] = await Promise.all([cookies(), headers()]);
-  const env = serverEnv();
-  const secure =
-    requestHeaders.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https" ||
-    Boolean(env.VERCEL);
+  const store = await cookies();
   const value = signPendingReset({ email, issuedAt: clock.now().getTime(), nonce }, pendingKey());
   store.set(PENDING_RESET_COOKIE, value, {
     httpOnly: true,
-    secure,
+    // `__Host-` (A8 review L3): Secure, Path=/, no Domain, so a sibling subdomain cannot plant
+    // it. Localhost counts as secure.
+    secure: true,
     sameSite: "lax",
     path: "/",
     maxAge: Math.floor(PENDING_RESET_TTL_MS / 1000),
@@ -96,5 +95,12 @@ export async function readPendingReset(): Promise<PendingReset | null> {
 
 export async function clearPendingReset(): Promise<void> {
   const store = await cookies();
-  store.delete(PENDING_RESET_COOKIE);
+  store.set(PENDING_RESET_COOKIE, "", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
+  store.delete(LEGACY_PENDING_RESET_COOKIE);
 }

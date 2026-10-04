@@ -37,7 +37,7 @@ export async function completeGoogleAction(
       dateOfBirth: values.date_of_birth,
       guardianConsent: values.guardian_consent === "on",
     },
-    { locale, now: clock.now() },
+    { locale, now: clock.now(), pendingId: pending.id },
   );
   if (!result.ok) {
     if ("decision" in result) {

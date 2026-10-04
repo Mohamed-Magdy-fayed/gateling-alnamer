@@ -690,6 +690,14 @@ export const webauthnChallenges = pgTable(
   ],
 );
 
+// A Google sign-up in progress (A8 review L3): the sealed pending cookie names one row, which
+// completing the sign-up consumes, so the cookie works once.
+export const oauthPendingSignups = pgTable("oauth_pending_signups", {
+  id: uuid("id").primaryKey(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt,
+});
+
 // External sign-in identities (A3): one row per provider account linked to a user.
 export const oauthAccounts = pgTable(
   "oauth_accounts",
