@@ -16,6 +16,7 @@ import {
   verifyPasskeyChallenge,
 } from "@/server/auth/passkeys";
 import { getCurrentSession, setSessionCookie } from "@/server/auth/session";
+import { staffSessionOrNull } from "@/server/auth/staff-session";
 import {
   confirmTotpSetup,
   finishToken,
@@ -28,7 +29,6 @@ import {
 import { currentRelyingParty } from "@/server/auth/webauthn-rp";
 import { clock } from "@/server/clock";
 
-const STAFF = new Set(["teacher", "admin", "reviewer"]);
 const MAX_INPUT = 32;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const nowSeconds = () => Math.floor(clock.now().getTime() / 1000);
@@ -37,10 +37,9 @@ export type TwoFactorActionResult =
   | { ok: true; recoveryCodes?: string[]; finish?: string }
   | { ok: false; reason: "invalid" | "locked" | "error" };
 
+/** An active staff session (the two-factor screens: not verified yet is fine). */
 async function staffSession() {
-  const session = await getCurrentSession();
-  if (!session || !STAFF.has(session.user.role) || session.user.status !== "active") return null;
-  return session;
+  return staffSessionOrNull(await getCurrentSession(), { verified: false });
 }
 
 /**
@@ -96,14 +95,8 @@ export async function challengeAction(input: string): Promise<TwoFactorActionRes
 
 /** New recovery codes from the account page (needs a current app code; the session is verified). */
 export async function regenerateCodesAction(code: string): Promise<TwoFactorActionResult> {
-  const session = await getCurrentSession();
-  if (
-    !session ||
-    !STAFF.has(session.user.role) ||
-    !session.twoFactorVerified ||
-    typeof code !== "string" ||
-    code.length > MAX_INPUT
-  ) {
+  const session = await verifiedStaff();
+  if (!session || typeof code !== "string" || code.length > MAX_INPUT) {
     return { ok: false, reason: "error" };
   }
   const result = await regenerateRecoveryCodes(session.user.id, code);
@@ -135,10 +128,9 @@ export async function passkeyVerifyAction(
   return { ok: true };
 }
 
+/** An active staff session that passed two-factor (account-page actions). */
 async function verifiedStaff() {
-  const session = await getCurrentSession();
-  if (!session || !STAFF.has(session.user.role) || !session.twoFactorVerified) return null;
-  return session;
+  return staffSessionOrNull(await getCurrentSession(), { verified: true });
 }
 
 /** Options to add a passkey from the account page (verified staff only). */

@@ -1,9 +1,9 @@
 import "server-only";
 import { redirect } from "next/navigation";
-import { TWO_FACTOR_ENFORCED } from "@/server/config/policy";
 import type { UserRole } from "@/server/db/schema";
 import { safeNextPath } from "@/server/devices/next-path";
 import { getCurrentSession, getCurrentUser, type SessionUser } from "./session";
+import { isStaffRole, passesTwoFactor, twoFactorEnforced } from "./staff-session";
 import { twoFactorStatus } from "./two-factor";
 
 /**
@@ -18,16 +18,14 @@ export async function requirePageUser(next?: string): Promise<SessionUser> {
   return user;
 }
 
-const STAFF: readonly UserRole[] = ["teacher", "admin", "reviewer"];
-
 /**
  * Staff (teacher, admin, reviewer) reach app pages only with a two-factor-verified session: to the
  * challenge when enrolled, otherwise to enrolment, keeping where they were going.
  */
 async function requireTwoFactorForStaff(user: SessionUser, next?: string): Promise<void> {
-  if (!TWO_FACTOR_ENFORCED || !STAFF.includes(user.role)) return;
+  if (!twoFactorEnforced() || !isStaffRole(user.role)) return;
   const session = await getCurrentSession();
-  if (session?.twoFactorVerified) return;
+  if (passesTwoFactor(session)) return;
   const { enrolled } = await twoFactorStatus(user.id);
   const target = enrolled ? "/two-factor" : "/two-factor/setup";
   redirect(`${target}?next=${encodeURIComponent(safeNextPath(next))}`);

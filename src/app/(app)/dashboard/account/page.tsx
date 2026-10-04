@@ -14,6 +14,7 @@ import { listSessions } from "@/server/account/service";
 import { requirePageUser } from "@/server/auth/page-guard";
 import { listPasskeys } from "@/server/auth/passkeys";
 import { getCurrentSession } from "@/server/auth/session";
+import { isStaffRole } from "@/server/auth/staff-session";
 import { twoFactorStatus } from "@/server/auth/two-factor";
 import { db } from "@/server/db";
 import { users } from "@/server/db/schema";
@@ -71,7 +72,7 @@ export default async function AccountPage() {
   }));
 
   const isStudent = user.role === "student";
-  const isStaff = user.role === "teacher" || user.role === "admin" || user.role === "reviewer";
+  const isStaff = isStaffRole(user.role);
   const twoFactor = isStaff ? await twoFactorStatus(user.id) : null;
   const passkeyRows = isStaff ? await listPasskeys(user.id) : [];
   const deviceData = isStudent

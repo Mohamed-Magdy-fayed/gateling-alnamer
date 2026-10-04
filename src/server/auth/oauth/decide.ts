@@ -7,6 +7,7 @@ import { db } from "@/server/db";
 import { oauthAccounts, users } from "@/server/db/schema";
 import { nextPublicNumber } from "../public-number";
 import { checkSignUpAge, isUniqueViolation } from "../sign-up";
+import { isStaffRole } from "../staff-session";
 import type { OAuthIdentity } from "./provider";
 
 const PROVIDER = "google";
@@ -54,7 +55,7 @@ export async function resolveOAuthSignIn(identity: OAuthIdentity): Promise<OAuth
   if (!account.emailVerifiedAt) return { kind: "needs_password" };
   // Staff accounts are never linked by email alone (a domain admin can create a Google account for
   // any address on the domain): sign in with the password first.
-  if (account.role === "teacher" || account.role === "admin" || account.role === "reviewer") {
+  if (isStaffRole(account.role)) {
     return { kind: "needs_password" };
   }
 

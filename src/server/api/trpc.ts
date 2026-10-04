@@ -3,7 +3,7 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import superjson from "superjson";
 import { getCurrentSession, type SessionUser } from "@/server/auth/session";
-import { TWO_FACTOR_ENFORCED } from "@/server/config/policy";
+import { passesTwoFactor, type StaffRole, twoFactorEnforced } from "@/server/auth/staff-session";
 import { db } from "@/server/db";
 import { type UserRole, users } from "@/server/db/schema";
 import { serverEnv } from "@/server/env";
@@ -39,10 +39,6 @@ export async function createTrpcContext({ req }: { req: Request }): Promise<Trpc
 /** Every procedure declares one guard; `guards.test.ts` enumerates them. */
 export type GuardKind = "public" | "protected" | "role" | "staff" | "superAdmin";
 export type GuardMeta = { guard: GuardKind; twoFactor?: boolean };
-/** Roles that sign in to staff tools and therefore need two-factor (A7b). */
-export type StaffRole = Extract<UserRole, "teacher" | "admin" | "reviewer">;
-const STAFF_ROLES: readonly UserRole[] = ["teacher", "admin", "reviewer"];
-export const isStaffRole = (role: UserRole): role is StaffRole => STAFF_ROLES.includes(role);
 
 const GENERIC_INTERNAL_MESSAGE = "Internal server error";
 
@@ -131,14 +127,8 @@ export function logTrpcError({
   }
 }
 
-let twoFactorEnforced: () => boolean = () => TWO_FACTOR_ENFORCED;
-/** Test hook: pass a getter to override `TWO_FACTOR_ENFORCED`, or null to restore it. Throws outside tests. */
-export function setTwoFactorEnforcedForTests(getter: (() => boolean) | null): void {
-  if (process.env.NODE_ENV !== "test") {
-    throw new Error('setTwoFactorEnforcedForTests is only available when NODE_ENV is "test"');
-  }
-  twoFactorEnforced = getter ?? (() => TWO_FACTOR_ENFORCED);
-}
+// The two-factor switch and its test hook live with the staff rule (src/server/auth/staff-session.ts).
+export { setTwoFactorEnforcedForTests } from "@/server/auth/staff-session";
 
 /** Signed-in and active: no user is UNAUTHORIZED, a suspended one is FORBIDDEN. */
 const requireActiveUser = t.middleware(async ({ ctx, next }) => {
@@ -147,7 +137,7 @@ const requireActiveUser = t.middleware(async ({ ctx, next }) => {
   }
   if (ctx.user.status !== "active") throw new AppError("forbidden", { message: "status" });
   // Staff sessions do nothing until two-factor sign-in passed (the challenge runs as server actions).
-  if (isStaffRole(ctx.user.role) && twoFactorEnforced() && ctx.twoFactorVerified !== true) {
+  if (!passesTwoFactor({ user: ctx.user, twoFactorVerified: ctx.twoFactorVerified === true })) {
     throw new AppError("forbidden", { message: "two_factor" });
   }
   return next({ ctx: { ...ctx, user: ctx.user } });
@@ -161,7 +151,7 @@ const requireRoles = (roles: readonly UserRole[]) =>
     return next();
   });
 
-/** Passes when the session is two-factor verified, or while `TWO_FACTOR_ENFORCED` is false (A7b flips it). */
+/** Staff procedures: the session must be two-factor verified (enforced since A4). */
 const requireTwoFactor = t.middleware(async ({ ctx, next }) => {
   if (twoFactorEnforced() && ctx.twoFactorVerified !== true) {
     throw new AppError("forbidden", { message: "two_factor" });

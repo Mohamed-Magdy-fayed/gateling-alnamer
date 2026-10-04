@@ -1,9 +1,8 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "@/server/auth/session";
+import { isStaffRole } from "@/server/auth/staff-session";
 import { safeNextPath } from "@/server/devices/next-path";
-
-const STAFF = new Set(["teacher", "admin", "reviewer"]);
 
 /**
  * The two-factor pages are for a signed-in staff member whose session is not verified yet.
@@ -14,6 +13,6 @@ export async function requireUnverifiedStaff(rawNext: string | undefined) {
   const next = safeNextPath(rawNext);
   const session = await getCurrentSession();
   if (!session) redirect(`/sign-in?next=${encodeURIComponent(next)}`);
-  if (!STAFF.has(session.user.role) || session.twoFactorVerified) redirect(next);
+  if (!isStaffRole(session.user.role) || session.twoFactorVerified) redirect(next);
   return { session, next };
 }
