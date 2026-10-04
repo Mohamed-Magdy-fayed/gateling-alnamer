@@ -18,6 +18,8 @@ export type CatalogTeacher = {
   id: string;
   name: LocalizedText;
   bio: LocalizedText;
+  /** The public profile path segment (`/teachers/<number>`); null until one is assigned. */
+  publicNumber: string | null;
 };
 
 export type CourseSummary = {

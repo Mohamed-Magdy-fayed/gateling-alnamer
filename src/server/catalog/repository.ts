@@ -39,6 +39,7 @@ const courseSummaryColumns = {
   teacherId: teacherProfiles.userId,
   teacherName: teacherProfiles.publicName,
   teacherBio: teacherProfiles.bio,
+  teacherNumber: users.publicNumber,
 };
 
 function toAccess(row: {
@@ -125,7 +126,12 @@ function toSummary(row: SummaryRow, cats: CatalogCategory[]): CourseSummary {
     priceMinor: row.priceMinor,
     access: toAccess(row),
     estimatedHours: row.estimatedHours,
-    teacher: { id: row.teacherId, name: row.teacherName, bio: row.teacherBio },
+    teacher: {
+      id: row.teacherId,
+      name: row.teacherName,
+      bio: row.teacherBio,
+      publicNumber: row.teacherNumber,
+    },
     categories: cats,
   };
 }

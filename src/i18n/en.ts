@@ -458,6 +458,22 @@ export const en: Dictionary = {
       inviteInvalid: "Check the name and the email.",
       inviteLimited: "You have sent the most invitations for today. Try again tomorrow.",
     },
+    invite: {
+      title: "Accept your invitation",
+      subtitle: "Set a password and your date of birth to create your teacher account.",
+      invitedAs: "You were invited as",
+      invalid:
+        "This invitation link is invalid, already used or expired. Ask the platform team for a new one.",
+      taken: "This email already has an account. Sign in instead.",
+      submit: "Create my teacher account",
+      signedIn: "You are signed in. Sign out first to accept this invitation.",
+    },
+    profile: {
+      teacher: "Teacher",
+      courses: "Courses",
+      noCourses: "No published courses yet.",
+      viewProfile: "Teacher profile",
+    },
   },
   dashboard: {
     hello: "Hello,",

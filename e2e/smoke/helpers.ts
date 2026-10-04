@@ -184,6 +184,23 @@ const staffSecrets = new Map<string, Buffer>();
 const lastSteps = new Map<string, number>();
 
 /**
+ * Completes two-factor enrolment on the setup page (reads the manual key, computes the code, saves
+ * the recovery codes) and records the secret for later sign-ins.
+ */
+export async function enrolStaff(page: Page, address: string) {
+  const nowS = Math.floor(Date.now() / 1000);
+  const key = (await page.getByTestId("totp-secret").innerText()).replace(/\s/g, "");
+  const secret = base32Decode(key);
+  staffSecrets.set(address, secret);
+  lastSteps.set(address, Math.floor(nowS / 30));
+  await page.getByLabel(TOTP_CODE_LABEL).fill(totpAt(secret, nowS));
+  await page.getByRole("button", { name: "تأكيد", exact: true }).click();
+  await expect(page.getByTestId("recovery-codes")).toBeVisible();
+  await page.getByLabel("حفظت رموز الاسترداد في مكان آمن.").click();
+  await page.getByRole("button", { name: "إنهاء", exact: true }).click();
+}
+
+/**
  * Signs a teacher, admin or reviewer in. The first time it enrols through the real setup page
  * (reads the manual key, computes the code, saves the recovery codes); later it answers the
  * challenge with the next step's code (the current step was already used, replays are refused).
@@ -196,15 +213,7 @@ export async function signInStaff(page: Page, address: string, withPassword: str
   await page.waitForURL(/\/two-factor/);
   const nowS = () => Math.floor(Date.now() / 1000);
   if (page.url().includes("/two-factor/setup")) {
-    const key = (await page.getByTestId("totp-secret").innerText()).replace(/\s/g, "");
-    const secret = base32Decode(key);
-    staffSecrets.set(address, secret);
-    lastSteps.set(address, Math.floor(nowS() / 30));
-    await page.getByLabel(TOTP_CODE_LABEL).fill(totpAt(secret, nowS()));
-    await page.getByRole("button", { name: "تأكيد", exact: true }).click();
-    await expect(page.getByTestId("recovery-codes")).toBeVisible();
-    await page.getByLabel("حفظت رموز الاسترداد في مكان آمن.").click();
-    await page.getByRole("button", { name: "إنهاء", exact: true }).click();
+    await enrolStaff(page, address);
   } else {
     const secret = staffSecrets.get(address);
     if (!secret) throw new Error(`no TOTP secret recorded for ${address}`);

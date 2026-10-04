@@ -1,12 +1,9 @@
-import { Clock, PlayCircle } from "lucide-react";
 import Link from "next/link";
-import { plural } from "@/i18n/config";
+import { CourseCard } from "@/components/courses/course-card";
 import { getDictionary } from "@/i18n/server";
 import { pickText } from "@/lib/localized-text";
-import { formatPrice } from "@/lib/money-format";
 import { listCoursesForDashboard, listPublishedCourses } from "@/server/catalog/repository";
-import type { CatalogCategory, CategoryType } from "@/server/catalog/types";
-import { Badge, Card, Container, cn, Ltr } from "@/ui";
+import { Badge, Card, Container, cn } from "@/ui";
 
 export default async function CoursesPage({
   searchParams,
@@ -17,10 +14,6 @@ export default async function CoursesPage({
   const { subject } = await searchParams;
   const [all, counts] = await Promise.all([listPublishedCourses(), listCoursesForDashboard()]);
   const lessonCounts = new Map(counts.map((course) => [course.id, course.lessonCount]));
-  const categoryName = (categories: CatalogCategory[], type: CategoryType) => {
-    const found = categories.find((category) => category.type === type);
-    return found ? pickText(found.name, locale) : "";
-  };
   const subjects = [
     ...new Map(
       all
@@ -79,57 +72,16 @@ export default async function CoursesPage({
         </Card>
       ) : null}
       <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {courses.map((course) => {
-          const subjectName = categoryName(course.categories, "subject");
-          const gradeName = categoryName(course.categories, "grade");
-          const curriculumName = categoryName(course.categories, "curriculum");
-          const lessonCount = lessonCounts.get(course.id);
-          return (
-            <li key={course.slug}>
-              <Link
-                href={`/courses/${course.slug}`}
-                className="group block h-full rounded-[var(--radius-md)]"
-              >
-                <Card className="flex h-full flex-col gap-3 p-5 transition-shadow group-hover:shadow-e2">
-                  {subjectName || gradeName ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {subjectName ? <Badge tone="primary">{subjectName}</Badge> : null}
-                      {gradeName ? <Badge>{gradeName}</Badge> : null}
-                    </div>
-                  ) : null}
-                  <h2 className="text-lg font-semibold">
-                    <bdi>{pickText(course.title, locale)}</bdi>
-                  </h2>
-                  {curriculumName ? (
-                    <p className="text-sm text-fg-muted">{curriculumName}</p>
-                  ) : null}
-                  <p className="text-sm text-fg-2">
-                    {t.courses.by} <bdi>{pickText(course.teacher.name, locale)}</bdi>
-                  </p>
-                  <div className="mt-auto flex items-center justify-between gap-2 border-t border-line pt-3 text-sm">
-                    <span className="flex items-center gap-3 text-fg-muted">
-                      {lessonCount ? (
-                        <span className="flex items-center gap-1">
-                          <PlayCircle aria-hidden className="size-4" strokeWidth={1.75} />
-                          {plural(locale, t.courses.lessonsCount, lessonCount)}
-                        </span>
-                      ) : null}
-                      {course.estimatedHours ? (
-                        <span className="flex items-center gap-1">
-                          <Clock aria-hidden className="size-4" strokeWidth={1.75} />
-                          {plural(locale, t.courses.hours, course.estimatedHours)}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="font-semibold text-primary">
-                      <Ltr>{formatPrice(locale, course.priceMinor, t.common.currency)}</Ltr>
-                    </span>
-                  </div>
-                </Card>
-              </Link>
-            </li>
-          );
-        })}
+        {courses.map((course) => (
+          <li key={course.slug}>
+            <CourseCard
+              t={t}
+              locale={locale}
+              course={course}
+              lessonCount={lessonCounts.get(course.id)}
+            />
+          </li>
+        ))}
       </ul>
     </Container>
   );

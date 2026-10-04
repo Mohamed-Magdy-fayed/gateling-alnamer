@@ -1,8 +1,10 @@
 import type { Browser, Page } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { nextClientIp, uniqueClientIpPerTest } from "../helpers/client-ip";
+import { countMail, waitForMailText } from "../helpers/mailpit";
 import {
   createStudent,
+  enrolStaff,
   FIELD_EMAIL,
   FIELD_NAME,
   FIELD_PASSWORD,
@@ -14,7 +16,7 @@ import {
   withDb,
 } from "./helpers";
 
-// C1 teacher onboarding: apply, the review status, then the terms once approved.
+// C1 teacher onboarding: apply, admin review, terms, invitations and the public profile.
 
 test.describe.configure({ mode: "serial" });
 
@@ -24,6 +26,7 @@ const applicantEmail = `smoke-apply-${runId}@alnamer.local`;
 const rejectedEmail = `smoke-rejected-${runId}@alnamer.local`;
 const adminEmail = `smoke-teachers-admin-${runId}@alnamer.local`;
 const REASON = "نحتاج إلى شهادة تدريس سارية.";
+const invitedEmail = `smoke-invited-${runId}@alnamer.local`;
 
 test.beforeAll(async ({ browser, baseURL }) => {
   // Sign-up makes students; the test database promotes one to an admin and turns another into a
@@ -156,4 +159,74 @@ test("a rejection needs a reason, and the applicant sees it", async ({
   await signInStaff(page, rejectedEmail, password);
   await expect(page.getByRole("heading", { name: "لم تتم الموافقة على طلبك" })).toBeVisible();
   await expect(page.getByText(REASON)).toBeVisible();
+});
+
+test("an invited teacher joins approved, accepts the terms and gets a public profile", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  const before = await countMail(invitedEmail);
+  await asAdmin(browser, baseURL, async (admin) => {
+    await admin.getByLabel(FIELD_NAME).fill("Smoke Invited");
+    await admin.getByLabel(FIELD_EMAIL).fill(invitedEmail);
+    await admin.getByRole("button", { name: "إرسال الدعوة" }).click();
+    await expect(admin.getByText("تم إرسال الدعوة.")).toBeVisible();
+    // An address that already has an account is refused.
+    await admin.getByLabel(FIELD_NAME).fill("Smoke Admin Again");
+    await admin.getByLabel(FIELD_EMAIL).fill(adminEmail);
+    await admin.getByRole("button", { name: "إرسال الدعوة" }).click();
+    await expect(admin.getByText("لهذا البريد حساب بالفعل.")).toBeVisible();
+  });
+  const mail = await waitForMailText(invitedEmail, { after: before });
+  const link = mail.match(/https?:\/\/\S+\/teach\/invite\/[A-Za-z0-9_-]+/)?.[0];
+  expect(link, "the invite mail carries the link").toBeTruthy();
+  const path = new URL(link as string).pathname;
+
+  await page.goto(path);
+  await expect(page.getByText("Smoke Invited")).toBeVisible();
+  await page.getByLabel(FIELD_PASSWORD, { exact: true }).fill(password);
+  await pickDate(page, 30, 2, 5);
+  await page.getByRole("button", { name: "إنشاء حساب المعلّم" }).click();
+  await page.waitForURL(/\/two-factor\/setup/);
+  await enrolStaff(page, invitedEmail);
+  await page.waitForURL("**/dashboard");
+  // Approved by the invitation; the terms still come first.
+  await page.getByRole("button", { name: "أوافق على الشروط" }).click();
+  await expect(
+    page.getByRole("main").getByRole("link", { name: "دورة جديدة" }).first(),
+  ).toBeVisible();
+  await page.getByRole("button", { name: SIGN_OUT }).first().click();
+
+  // The link is single use.
+  await page.goto(path);
+  await expect(page.getByText(/رابط الدعوة غير صالح/)).toBeVisible();
+
+  // The public profile shows the approved teacher, nothing private.
+  const number = await withDb(
+    async (sql) =>
+      (
+        await sql<
+          { n: string }[]
+        >`select public_number as n from users where email = ${invitedEmail}`
+      )[0]?.n,
+  );
+  await page.goto(`/teachers/${number}`);
+  await expect(page.getByRole("heading", { name: "Smoke Invited", level: 1 })).toBeVisible();
+  await expect(page.getByText(invitedEmail)).toHaveCount(0);
+});
+
+test("a pending or unknown teacher has no public profile", async ({ page }) => {
+  const number = await withDb(
+    async (sql) =>
+      (
+        await sql<
+          { n: string }[]
+        >`select public_number as n from users where email = ${rejectedEmail}`
+      )[0]?.n,
+  );
+  const rejected = await page.goto(`/teachers/${number}`);
+  expect(rejected?.status()).toBe(404);
+  const unknown = await page.goto("/teachers/NOPE-0");
+  expect(unknown?.status()).toBe(404);
 });

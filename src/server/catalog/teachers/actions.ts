@@ -21,6 +21,7 @@ import { twoFactorEnforced } from "@/server/auth/staff-session";
 import { clock } from "@/server/clock";
 import { applyAsTeacher } from "./apply";
 import { sendTeacherEmail } from "./emails";
+import { redeemTeacherInvite } from "./invites";
 import { acceptTeacherTerms } from "./terms";
 
 /**
@@ -83,4 +84,42 @@ export async function acceptTermsAction(versionId: string): Promise<AcceptTermsA
     return { ok: false, reason: result.reason === "stale_version" ? "stale" : "error" };
   revalidatePath("/dashboard");
   return { ok: true };
+}
+
+/**
+ * Redeems a teacher invitation (C1): the sign-up limits by IP (each try hashes a password), then
+ * the approved teacher account, a session and two-factor enrolment. The token comes from the page
+ * URL as a hidden field; a bad, used or expired one gets one message.
+ */
+export async function redeemInviteAction(_prev: FormState, formData: FormData): Promise<FormState> {
+  if (await getCurrentUser()) redirect("/dashboard");
+  const { t, locale } = await getDictionary();
+  const raw = fields(formData);
+  const { ip } = await requestContext();
+  const guard = await guardSignUp({ ip });
+  if (!("ok" in guard)) return { ...blockedState(guard, t, locale), values: echo(raw) };
+  const result = await redeemTeacherInvite({
+    token: typeof raw.token === "string" ? raw.token : "",
+    password: typeof raw.password === "string" ? raw.password : "",
+    dateOfBirth: typeof raw.date_of_birth === "string" ? raw.date_of_birth : "",
+    locale,
+  });
+  if (!result.ok) {
+    if (result.reason === "fields") {
+      const messages = {
+        password: t.auth.errors.field.password,
+        date_of_birth: t.teachers.apply.dobError,
+      };
+      const fieldErrors = Object.fromEntries(
+        result.fields.map((field) => [field, messages[field]]),
+      );
+      return { status: "error", message: t.auth.errors.invalid, fieldErrors, values: echo(raw) };
+    }
+    const message = result.reason === "taken" ? t.teachers.invite.taken : t.teachers.invite.invalid;
+    return { status: "error", message, offerReset: result.reason === "taken" };
+  }
+  await destroySession();
+  await createSession(result.userId);
+  // Staff: two-factor enrolment before anything else (the email is already verified).
+  redirect(twoFactorEnforced() ? "/two-factor/setup?next=%2Fdashboard" : "/dashboard");
 }

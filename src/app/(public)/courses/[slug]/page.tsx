@@ -114,8 +114,23 @@ export default async function CoursePage({ params }: { params: Promise<{ slug: s
               {t.courses.aboutTeacher}
             </h2>
             <p className="font-medium">
-              <bdi>{pickText(course.teacher.name, locale)}</bdi>
+              {course.teacher.publicNumber ? (
+                <Link
+                  href={`/teachers/${course.teacher.publicNumber}`}
+                  className="underline underline-offset-4 hover:text-primary"
+                  aria-describedby="teacher-profile-hint"
+                >
+                  <bdi>{pickText(course.teacher.name, locale)}</bdi>
+                </Link>
+              ) : (
+                <bdi>{pickText(course.teacher.name, locale)}</bdi>
+              )}
             </p>
+            {course.teacher.publicNumber ? (
+              <span id="teacher-profile-hint" className="sr-only">
+                {t.teachers.profile.viewProfile}
+              </span>
+            ) : null}
             <p className="text-fg-2">
               <bdi>{pickText(course.teacher.bio, locale)}</bdi>
             </p>
