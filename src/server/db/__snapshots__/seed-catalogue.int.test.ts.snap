@@ -104,6 +104,7 @@ exports[`sample catalogue seed > repository output for chemistry-grade-10-founda
       "ar": "أ. معلم تجريبي 3",
       "en": "Sample Teacher 3",
     },
+    "publicNumber": "AN100003",
   },
   "title": {
     "ar": "أساسيات الكيمياء للصف العاشر",
@@ -216,6 +217,7 @@ exports[`sample catalogue seed > repository output for english-grade-9-writing i
       "ar": "أ. معلم تجريبي 4",
       "en": "Sample Teacher 4",
     },
+    "publicNumber": "AN100004",
   },
   "title": {
     "ar": "الكتابة باللغة الإنجليزية للصف التاسع",
@@ -377,6 +379,7 @@ exports[`sample catalogue seed > repository output for math-grade-12-calculus is
       "ar": "أ. معلم تجريبي 1",
       "en": "Sample Teacher 1",
     },
+    "publicNumber": "AN100001",
   },
   "title": {
     "ar": "التفاضل والتكامل للصف الثاني عشر",
@@ -489,6 +492,7 @@ exports[`sample catalogue seed > repository output for physics-grade-11-mechanic
       "ar": "أ. معلم تجريبي 2",
       "en": "Sample Teacher 2",
     },
+    "publicNumber": "AN100002",
   },
   "title": {
     "ar": "الميكانيكا للصف الحادي عشر",
