@@ -22,3 +22,13 @@ describe("secret box", () => {
     expect(open(KEY, "garbage")).toBeNull();
   });
 });
+
+describe("secret box tag length", () => {
+  it("refuses a truncated authentication tag", () => {
+    const [version, iv, tag, body] = seal(KEY, "secret").split(".");
+    const short = Buffer.from(tag ?? "", "base64url")
+      .subarray(0, 4)
+      .toString("base64url");
+    expect(open(KEY, [version, iv, short, body].join("."))).toBeNull();
+  });
+});

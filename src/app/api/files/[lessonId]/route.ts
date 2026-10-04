@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getCurrentSession } from "@/server/auth/session";
+import { passesTwoFactor } from "@/server/auth/staff-session";
 import { clock } from "@/server/clock";
 import { serveLessonFile } from "@/server/files/serve";
 
@@ -10,8 +11,10 @@ export async function GET(
 ): Promise<Response> {
   const { lessonId } = await params;
   const session = await getCurrentSession();
+  // Staff who have not passed two-factor sign-in act as nobody here (A4 review).
+  const viewer = session && passesTwoFactor(session) ? session : null;
   const response = await serveLessonFile(
-    session ? { id: session.user.id, role: session.user.role, deviceId: session.deviceId } : null,
+    viewer ? { id: viewer.user.id, role: viewer.user.role, deviceId: viewer.deviceId } : null,
     lessonId,
     clock.now(),
   );

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/server/auth/session";
+import { getCurrentSession } from "@/server/auth/session";
+import { passesTwoFactor } from "@/server/auth/staff-session";
 import { db } from "@/server/db";
 import { serverEnv } from "@/server/env";
 import { getRedis } from "@/server/redis";
@@ -41,8 +42,8 @@ export async function GET() {
   const headers = { "Cache-Control": "no-store" };
   const httpStatus = status === "ok" ? 200 : 503;
 
-  const user = await getCurrentUser().catch(() => null);
-  if (user?.role !== "admin") {
+  const session = await getCurrentSession().catch(() => null);
+  if (session?.user.role !== "admin" || !passesTwoFactor(session)) {
     return NextResponse.json({ status }, { status: httpStatus, headers });
   }
   const env = serverEnv();

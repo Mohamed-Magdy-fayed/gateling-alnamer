@@ -7,6 +7,7 @@ import {
   ORDER_RECHECK_LIMIT,
   PLAYBACK_LIMIT,
   QUIZ_LIMIT,
+  TWO_FACTOR_DAILY_LIMIT,
   TWO_FACTOR_LIMIT,
 } from "@/server/config/policy";
 import { createRateLimiter, type RateLimiter } from "@/server/rate-limit";
@@ -342,11 +343,14 @@ export async function guardTwoFactor(
   input: { userId: string },
   deps: AbuseDeps = {},
 ): Promise<GuardResult> {
-  const lock = await limiterOf(deps).limit(
-    twoFactorKey(hasherOf(deps), input.userId),
-    TWO_FACTOR_LIMIT,
-  );
-  return lock.allowed ? OK : { blocked: "locked", until: lock.resetAt };
+  const limiter = limiterOf(deps);
+  const userKey = hasherOf(deps).hash(input.userId);
+  const daily = await limiter.limit(`rl:twofactorday:user:${userKey}`, TWO_FACTOR_DAILY_LIMIT);
+  const lock = await limiter.limit(twoFactorKey(hasherOf(deps), input.userId), TWO_FACTOR_LIMIT);
+  if (daily.allowed && lock.allowed) return OK;
+  // Someone may be guessing a staff member's codes: worth an operator's attention.
+  console.warn(`[alert] two-factor attempts locked for user ${userKey.slice(0, 12)}`);
+  return { blocked: "locked", until: daily.allowed ? lock.resetAt : daily.resetAt };
 }
 
 export async function clearTwoFactorFailures(

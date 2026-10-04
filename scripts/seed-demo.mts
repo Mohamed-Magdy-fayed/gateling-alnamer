@@ -10,6 +10,12 @@ if (password && mode === "live") {
   );
   process.exit(1);
 }
+if (password && mode === "demo" && !process.env.AUTH_SECRET) {
+  // Staff TOTP seeds are sealed with an AUTH_SECRET sub-key; a per-process fallback secret would
+  // seal them with a key the app never sees, and staff could not pass two-factor.
+  console.error("db:seed:demo: AUTH_SECRET is required to seed staff two-factor; set it first.");
+  process.exit(1);
+}
 if (!password || mode !== "demo") {
   console.log("db:seed:demo: skipped (needs APP_MODE=demo and DEMO_ACCOUNTS_PASSWORD).");
   process.exit(0);

@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const getCurrentUser = vi.fn();
+const getCurrentSession = vi.fn();
 const getRedis = vi.fn();
-vi.mock("@/server/auth/session", () => ({ getCurrentUser: () => getCurrentUser() }));
+vi.mock("@/server/auth/session", () => ({ getCurrentSession: () => getCurrentSession() }));
+const sessionOf = (role: string, twoFactorVerified = true) => ({
+  user: { id: "u", name: "n", email: "e@x.com", role, status: "active" },
+  twoFactorVerified,
+});
 vi.mock("@/server/redis", () => ({ getRedis: () => getRedis() }));
 
 const okRedis = { ping: async () => "PONG" };
@@ -15,7 +19,7 @@ const brokenRedis = {
 beforeEach(() => {
   process.env.APP_MODE = "demo";
   process.env.BASE_URL = "http://localhost:3400";
-  getCurrentUser.mockResolvedValue(null);
+  getCurrentSession.mockResolvedValue(null);
   getRedis.mockReturnValue(okRedis);
 });
 afterEach(() => vi.clearAllMocks());
@@ -42,13 +46,19 @@ describe("GET /api/health", () => {
   });
 
   it("does not expose details to a non-admin user", async () => {
-    getCurrentUser.mockResolvedValue({ id: "u", name: "n", email: "e@x.com", role: "student" });
+    getCurrentSession.mockResolvedValue(sessionOf("student"));
+    const { body } = await call();
+    expect(body).toEqual({ status: "ok" });
+  });
+
+  it("hides details from an admin who has not passed two-factor sign-in", async () => {
+    getCurrentSession.mockResolvedValue(sessionOf("admin", false));
     const { body } = await call();
     expect(body).toEqual({ status: "ok" });
   });
 
   it("adds details for an admin", async () => {
-    getCurrentUser.mockResolvedValue({ id: "u", name: "n", email: "e@x.com", role: "admin" });
+    getCurrentSession.mockResolvedValue(sessionOf("admin"));
     const { body } = await call();
     expect(body).toMatchObject({
       status: "ok",

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/server/auth/session", () => ({ getCurrentUser: vi.fn(async () => null) }));
+vi.mock("@/server/auth/session", () => ({ getCurrentSession: vi.fn(async () => null) }));
 vi.mock("@/server/redis", () => ({ getRedis: () => ({ ping: async () => "PONG" }) }));
 vi.mock("@/server/db", () => ({
   db: () => ({

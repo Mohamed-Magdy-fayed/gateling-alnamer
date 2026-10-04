@@ -76,6 +76,16 @@ describe("two-factor enrolment", () => {
     expect(stored).toHaveLength(10);
     for (const code of codes) expect(stored.some((s) => s.codeHash.includes(code))).toBe(false);
     expect(await tf.twoFactorStatus(user.id)).toMatchObject({ enrolled: true, recoveryLeft: 10 });
+    const enrolledAudit = await conn
+      .select()
+      .from(schema.auditLog)
+      .where(
+        and(
+          eq(schema.auditLog.action, "two_factor.enrolled"),
+          eq(schema.auditLog.subjectId, user.id),
+        ),
+      );
+    expect(enrolledAudit).toHaveLength(1);
   });
 
   it("refuses a wrong confirm code and a second setup once enrolled", async () => {

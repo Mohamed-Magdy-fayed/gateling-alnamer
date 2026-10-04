@@ -18,10 +18,11 @@ import { base32Decode, newTotpSecret, otpauthUri, verifyTotp } from "./totp";
 // Two-factor sign-in for staff (A4): TOTP with sealed secrets, single-use recovery codes, and the
 // session step-up after a passed challenge.
 
-export type TwoFactorDeps = AbuseDeps & { totp?: Buffer; recovery?: Buffer };
+export type TwoFactorDeps = AbuseDeps & { totp?: Buffer; recovery?: Buffer; finish?: Buffer };
 
 const totpKey = (deps: TwoFactorDeps) => deps.totp ?? authKey("totp");
 const recoveryKey = (deps: TwoFactorDeps) => deps.recovery ?? authKey("recovery");
+const finishKey = (deps: TwoFactorDeps) => deps.finish ?? authKey("totp-finish");
 const nowS = () => Math.floor(clock.now().getTime() / 1000);
 
 export type TwoFactorStatus = { enrolled: boolean; confirmedAt: Date | null; recoveryLeft: number };
@@ -113,6 +114,14 @@ export async function confirmTotpSetup(
       .set({ confirmedAt: clock.now(), lastStep: step })
       .where(eq(totpSecrets.userId, userId));
     const codes = await storeRecoveryCodes(tx, userId, deps);
+    // The first enrolment is recorded: anyone holding the password could enrol on an account that
+    // has none (A4 review). The owner email for it comes with the notification catalogue.
+    await writeAudit(tx, {
+      actorId: userId,
+      action: "two_factor.enrolled",
+      subjectType: "user",
+      subjectId: userId,
+    });
     await clearTwoFactorFailures({ userId }, deps);
     return { ok: true, recoveryCodes: codes };
   });
@@ -293,7 +302,7 @@ export function finishToken(
   deps: TwoFactorDeps = {},
 ): string {
   const expires = nowSeconds + FINISH_TTL_S;
-  const mac = keyedHash(totpKey(deps), `finish|${userId}|${sessionTokenHash}|${expires}`);
+  const mac = keyedHash(finishKey(deps), `finish|${userId}|${sessionTokenHash}|${expires}`);
   return `${expires}.${mac}`;
 }
 
@@ -308,6 +317,6 @@ export function verifyFinishToken(
   if (!expiresText || !mac || !/^\d{1,12}$/.test(expiresText)) return false;
   const expires = Number(expiresText);
   if (nowSeconds > expires) return false;
-  const expected = keyedHash(totpKey(deps), `finish|${userId}|${sessionTokenHash}|${expires}`);
+  const expected = keyedHash(finishKey(deps), `finish|${userId}|${sessionTokenHash}|${expires}`);
   return expected.length === mac.length && timingSafeEqual(Buffer.from(expected), Buffer.from(mac));
 }

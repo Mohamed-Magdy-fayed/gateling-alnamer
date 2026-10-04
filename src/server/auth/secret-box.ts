@@ -4,6 +4,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const VERSION = "v1";
 const IV_BYTES = 12;
+const TAG_BYTES = 16;
 
 /** Encrypts `plaintext` under a 32-byte key. */
 export function seal(key: Buffer, plaintext: string): string {
@@ -22,8 +23,8 @@ export function open(key: Buffer, sealed: string): string | null {
   if (parts.length !== 4 || parts[0] !== VERSION) return null;
   try {
     const [, iv, tag, body] = parts.map((part) => Buffer.from(part, "base64url"));
-    if (!iv || !tag || !body || iv.length !== IV_BYTES) return null;
-    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    if (!iv || !tag || !body || iv.length !== IV_BYTES || tag.length !== TAG_BYTES) return null;
+    const decipher = createDecipheriv("aes-256-gcm", key, iv, { authTagLength: TAG_BYTES });
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
   } catch {
