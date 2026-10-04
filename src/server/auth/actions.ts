@@ -3,10 +3,7 @@
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { after } from "next/server";
 import { z } from "zod";
-import type { Dictionary } from "@/i18n/ar";
-import { format, formatTime, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { clock } from "@/server/clock";
 import { CODE_RESEND_COOLDOWN_MS } from "@/server/config/policy";
@@ -16,7 +13,6 @@ import { serverEnv } from "@/server/env";
 import {
   clearCodeVerifyFailures,
   clearSignInFailures,
-  type GuardResult,
   guardCodeSend,
   guardCodeVerify,
   guardSignIn,
@@ -28,6 +24,16 @@ import { latestCodeRow } from "./code-status";
 import { type CodePurpose, verifyCode, verifyCodeDecoy } from "./codes";
 import { completeSignIn } from "./complete-sign-in";
 import { authenticate, setPasswordIn } from "./credentials";
+import {
+  blockedState,
+  captchaToken,
+  echo,
+  type FormState,
+  fields,
+  sendAfterResponse,
+  sendVerificationCode,
+  verifyBlockedState,
+} from "./form-kit";
 import { isKnownDevice } from "./known-device";
 import { hashPassword } from "./password";
 import {
@@ -45,91 +51,7 @@ import { createSession, destroySession } from "./session";
 import { deleteUserSessionsIn, purgeSessionCache } from "./session-invalidate";
 import { type SignUpField, signUpUser } from "./sign-up";
 
-/** How the form-level message looks and sounds: danger is an error, warning a wait or a delay. */
-export type MessageTone = "info" | "success" | "warning" | "danger";
-
-export type FormState = {
-  status: "idle" | "error" | "success";
-  /** Overrides the tone the status implies (error = danger, success = success). */
-  tone?: MessageTone;
-  message?: string;
-  /** Per-field messages (already translated) for the sign-up form. */
-  fieldErrors?: Partial<Record<SignUpField, string>>;
-  /** Set when the form-level error should offer the forgot-password link. */
-  offerReset?: boolean;
-  /** Set when the form-level error should link to the email confirmation page. */
-  offerVerify?: boolean;
-  /** Non-secret values echoed back so a failed submit does not clear the form. */
-  values?: Record<string, string>;
-  /** Epoch ms when a lockout or rate limit ends; the form keeps its submit button disabled until then. */
-  retryAt?: number;
-  /** Set when sign-in needs a captcha: the form shows the widget and the next submit carries a token. */
-  captchaRequired?: boolean;
-};
-
-type Blocked = Exclude<GuardResult, { ok: true }>;
-
-/**
- * The one message for a guard block. A captcha step-up shows the captchaFailed copy and tells the
- * form to render the widget; everything here depends only on counters, never on whether an account
- * exists.
- */
-function blockedState(blocked: Blocked, t: Dictionary, locale: Locale): FormState {
-  const retryAt = blocked.until?.getTime();
-  if (blocked.blocked === "locked") {
-    const time = formatTime(locale, blocked.until ?? clock.now());
-    return {
-      status: "error",
-      tone: "danger",
-      message: format(t.auth.states.lockout, { time }),
-      offerReset: true,
-      retryAt,
-    };
-  }
-  if (blocked.blocked === "rateLimited") {
-    return { status: "error", tone: "warning", message: t.auth.states.rateLimited, retryAt };
-  }
-  return {
-    status: "error",
-    tone: "danger",
-    message: t.auth.states.captchaFailed,
-    captchaRequired: true,
-  };
-}
-
-/**
- * A code-verify block. The pair lock reads as a rate limit with its end time (the sign-in lockout
- * copy talks about signing in); a captcha step-up is the usual one.
- */
-function verifyBlockedState(blocked: Blocked, t: Dictionary, locale: Locale): FormState {
-  if (blocked.blocked === "locked") {
-    return {
-      status: "error",
-      tone: "warning",
-      message: t.auth.states.rateLimited,
-      retryAt: blocked.until?.getTime(),
-    };
-  }
-  return blockedState(blocked, t, locale);
-}
-
-/**
- * Runs a code send once the response has gone out, so a registered and an unregistered email return
- * in the same time. A failure is logged by name only (never the code or the address).
- */
-function sendAfterResponse(task: () => Promise<void>): void {
-  after(async () => {
-    try {
-      await task();
-    } catch (error: unknown) {
-      console.error("Deferred code send failed", error instanceof Error ? error.name : "unknown");
-    }
-  });
-}
-
-function captchaToken(raw: Record<string, unknown>): string | undefined {
-  return typeof raw.captcha_token === "string" ? raw.captcha_token : undefined;
-}
+export type { FormState, MessageTone } from "./form-kit";
 
 const email = z.string().trim().pipe(z.email()).pipe(z.string().max(254));
 const password = z.string().min(8).max(128);
@@ -148,21 +70,6 @@ const resetSchema = z.object({
 });
 const verifySchema = z.object({ code: codeField });
 const resendSchema = z.object({ purpose: z.enum(["email_verify", "password_reset"]) });
-
-function fields(formData: FormData): Record<string, unknown> {
-  return Object.fromEntries(formData.entries());
-}
-
-const ECHOED_FIELDS = ["name", "email", "username", "role", "date_of_birth", "guardian_consent"];
-
-function echo(raw: Record<string, unknown>): Record<string, string> {
-  const values: Record<string, string> = {};
-  for (const key of ECHOED_FIELDS) {
-    const value = raw[key];
-    if (typeof value === "string") values[key] = value;
-  }
-  return values;
-}
 
 export async function signUpAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const { t, locale } = await getDictionary();
@@ -198,19 +105,6 @@ export async function signUpAction(_prev: FormState, formData: FormData): Promis
   await createSession(result.userId);
   await sendVerificationCode(result.userId, locale);
   redirect("/verify-email");
-}
-
-/** Sign-up still succeeds when the code cannot be issued: /verify-email offers a resend. */
-async function sendVerificationCode(userId: string, locale: Locale): Promise<void> {
-  try {
-    const created = await db().query.users.findFirst({
-      columns: { id: true, name: true, email: true, locale: true },
-      where: eq(users.id, userId),
-    });
-    if (created) await sendCode(created, "email_verify", locale);
-  } catch (error: unknown) {
-    console.error("Verification code failed", error instanceof Error ? error.name : "unknown");
-  }
 }
 
 export async function signInAction(_prev: FormState, formData: FormData): Promise<FormState> {

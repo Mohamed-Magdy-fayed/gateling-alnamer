@@ -1,13 +1,17 @@
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { NewCourseForm } from "@/components/teach/new-course-form";
 import { getDictionary } from "@/i18n/server";
 import { requirePageRole } from "@/server/auth/page-guard";
+import { canAuthor } from "@/server/catalog/teachers/terms";
 import { getPlatformSettings } from "@/server/settings/repository";
 import { Container } from "@/ui";
 
 export default async function NewCoursePage() {
-  await requirePageRole("teacher");
+  const user = await requirePageRole("teacher");
+  // Not approved yet, or the terms still to accept: the dashboard shows what to do (C1).
+  if (!(await canAuthor(user.id))) redirect("/dashboard");
   const [{ t }, settings] = await Promise.all([getDictionary(), getPlatformSettings()]);
   return (
     <Container className="py-8">

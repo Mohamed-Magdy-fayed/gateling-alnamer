@@ -1,6 +1,7 @@
 import { ar, type Dictionary } from "@/i18n/ar";
 import { dirOf, format, type Locale } from "@/i18n/config";
 import { en } from "@/i18n/en";
+import { escapeHtml } from "@/server/email-html";
 import type { CodePurpose } from "./codes";
 
 const dictionaries: Record<Locale, Dictionary> = { ar, en };
@@ -13,10 +14,6 @@ export type CodeEmailInput = {
   link?: string;
 };
 export type RenderedMail = { subject: string; text: string; html: string };
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-}
 
 /** Renders the code email in the recipient's locale: HTML (code in an LTR island) plus plain text. */
 export function renderCodeEmail(locale: Locale, input: CodeEmailInput): RenderedMail {

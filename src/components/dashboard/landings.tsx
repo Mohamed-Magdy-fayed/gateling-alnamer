@@ -11,12 +11,14 @@ import {
 import Link from "next/link";
 import { EmptyState } from "@/components/al/empty-state";
 import { linkClass } from "@/components/auth-parts";
+import { TeacherOnboarding } from "@/components/teach/onboarding";
 import { PublishButton } from "@/components/teach/publish-button";
 import type { Dictionary } from "@/i18n/ar";
 import { format, formatDate, type Locale } from "@/i18n/config";
 import { pickText } from "@/lib/localized-text";
 import type { RecentResult } from "@/server/access/quiz";
 import type { PendingCourse, TeacherCourseRow } from "@/server/catalog/authoring";
+import type { TeacherOnboardingState } from "@/server/catalog/teachers/profile";
 import type { StudentCourse } from "@/server/orders/my-courses";
 import { Badge, ButtonLink, Card } from "@/ui";
 
@@ -170,12 +172,20 @@ export function TeacherLanding({
   t,
   locale,
   courses,
+  onboarding,
 }: {
   t: Dictionary;
   locale: Locale;
   courses: TeacherCourseRow[];
+  /** Status or terms still to deal with (C1); null once the teacher can author. */
+  onboarding: TeacherOnboardingState | null;
 }) {
   const d = t.dashboard.teacher;
+  const gate = onboarding ? (
+    <TeacherOnboarding t={t.teachers} locale={locale} state={onboarding} />
+  ) : null;
+  // Applied, rejected or suspended teachers, and those with terms to accept, see the gate only.
+  if (gate) return <div className="flex flex-col gap-6">{gate}</div>;
   const newCourse = <ButtonLink href="/dashboard/teach/new">{d.newCourse}</ButtonLink>;
   return (
     <div className="flex flex-col gap-6">

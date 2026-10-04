@@ -382,6 +382,55 @@ export const en: Dictionary = {
       numberLabel: "Public number:",
       footer: "You can reset the student's devices from the admin area.",
     },
+    teacher: {
+      appliedSubject: "We received your application to teach - Al-Namer",
+      appliedBody:
+        "Hello {name}, we received your application to teach on Al-Namer. An admin will review it and email you the decision.",
+      approvedSubject: "You can now teach on Al-Namer",
+      approvedBody:
+        "Hello {name}, your application was approved. Sign in, accept the teacher terms, and create your first course.",
+      rejectedSubject: "Your application to teach on Al-Namer",
+      rejectedBody: "Hello {name}, your application to teach was not approved this time.",
+      reasonLabel: "Reason:",
+      inviteSubject: "You are invited to teach on Al-Namer",
+      inviteBody:
+        "Hello {name}, you are invited to teach on Al-Namer. Open this link within 7 days to set your password:",
+      footer: "If you did not expect this email, you can ignore it.",
+    },
+  },
+  teachers: {
+    apply: {
+      title: "Apply to teach",
+      subtitle: "Tell us what you teach. An admin reviews every application.",
+      note: "What you teach",
+      noteHint: "Subjects, grades and where you teach: 10 to 1000 characters.",
+      noteError: "Write 10 to 1000 characters about what you teach.",
+      dobError: "Enter a valid date of birth. Teachers must be 18 or older.",
+      twoFactorNote:
+        "Teacher accounts use two-step verification. You set it up after you confirm your email.",
+      submit: "Send application",
+      signedIn: "You are signed in. A teacher account is separate: sign out first to apply.",
+      haveAccount: "Already applied?",
+      signIn: "Sign in",
+    },
+    status: {
+      appliedTitle: "Your application is under review",
+      appliedBody:
+        "An admin reviews each application, usually within 2 business days. We will email you the decision.",
+      rejectedTitle: "Your application was not approved",
+      reasonLabel: "Reason:",
+      rejectedBody: "For questions, contact the platform team.",
+      suspendedTitle: "Your teaching account is suspended.",
+      suspendedBody: "Contact the platform team for details.",
+    },
+    terms: {
+      title: "Teacher terms",
+      intro: "Accept the teacher terms to start creating courses.",
+      placeholder: "Placeholder text until the official terms arrive.",
+      accept: "I accept the terms",
+      stale: "The terms were updated. Read the new version, then accept it.",
+      error: "Could not save. Try again.",
+    },
   },
   dashboard: {
     hello: "Hello,",

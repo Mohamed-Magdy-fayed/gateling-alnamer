@@ -23,6 +23,7 @@ import { requirePageUser } from "@/server/auth/page-guard";
 import { shouldPromptParentLink } from "@/server/auth/profile";
 import { listPendingReview, listTeacherCourses } from "@/server/catalog/authoring";
 import { listCoursesForDashboard } from "@/server/catalog/repository";
+import { teacherOnboardingState } from "@/server/catalog/teachers/profile";
 import { clock } from "@/server/clock";
 import { serverEnv } from "@/server/env";
 import { listStudentCourses } from "@/server/orders/my-courses";
@@ -40,16 +41,28 @@ export default async function DashboardPage({
   const mode = serverEnv().APP_MODE;
   // A sample preview (demo only) shows the W1 sample screens; otherwise the user's own landing.
   const sample = resolveView(mode, requested);
-  const [courses, promptParentLink, parentData, myCourses, quizResults, teaching, pending] =
-    await Promise.all([
-      sample ? listCoursesForDashboard() : [],
-      shouldPromptParentLink(user),
-      !sample && user.role === "parent" ? loadParentDashboard(user.id) : null,
-      !sample && user.role === "student" ? listStudentCourses(user.id, clock.now()) : [],
-      !sample && user.role === "student" ? listRecentResults(user.id) : [],
-      !sample && user.role === "teacher" ? listTeacherCourses(user.id) : [],
-      !sample && user.role === "admin" ? listPendingReview() : [],
-    ]);
+  const [
+    courses,
+    promptParentLink,
+    parentData,
+    myCourses,
+    quizResults,
+    teaching,
+    pending,
+    onboard,
+  ] = await Promise.all([
+    sample ? listCoursesForDashboard() : [],
+    shouldPromptParentLink(user),
+    !sample && user.role === "parent" ? loadParentDashboard(user.id) : null,
+    !sample && user.role === "student" ? listStudentCourses(user.id, clock.now()) : [],
+    !sample && user.role === "student" ? listRecentResults(user.id) : [],
+    !sample && user.role === "teacher" ? listTeacherCourses(user.id) : [],
+    !sample && user.role === "admin" ? listPendingReview() : [],
+    !sample && user.role === "teacher" ? teacherOnboardingState(user.id) : null,
+  ]);
+  // A teacher who can author has nothing left to deal with: no gate.
+  const onboarding =
+    onboard && (onboard.status !== "approved" || onboard.termsToAccept) ? onboard : null;
 
   return (
     <Container className="py-8">
@@ -102,7 +115,7 @@ export default async function DashboardPage({
           </>
         ) : null}
         {sample === null && user.role === "teacher" ? (
-          <TeacherLanding t={t} locale={locale} courses={teaching} />
+          <TeacherLanding t={t} locale={locale} courses={teaching} onboarding={onboarding} />
         ) : null}
         {sample === null && user.role === "reviewer" ? <ReviewerLanding t={t} /> : null}
         {sample === null && user.role === "admin" ? (

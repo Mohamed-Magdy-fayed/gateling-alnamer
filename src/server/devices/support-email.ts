@@ -1,15 +1,12 @@
 import { ar, type Dictionary } from "@/i18n/ar";
 import { dirOf, format, type Locale } from "@/i18n/config";
 import { en } from "@/i18n/en";
+import { escapeHtml } from "@/server/email-html";
 
 const dictionaries: Record<Locale, Dictionary> = { ar, en };
 
 export type SupportEmailInput = { name: string; publicNumber: string | null };
 export type RenderedSupportMail = { subject: string; text: string; html: string };
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-}
 
 const MAX_NAME_LENGTH = 80;
 

@@ -22,7 +22,7 @@ import { SubmitButton } from "@/ui/submit-button";
 import { type AuthText, idle, linkClass, Message, useRetryBlock } from "./auth-parts";
 import { CodeDelivery } from "./code-delivery";
 
-function RequiredNote({ t }: { t: AuthText }) {
+export function RequiredNote({ t }: { t: AuthText }) {
   return <p className="text-sm text-fg-muted">{t.fields.requiredNote}</p>;
 }
 
