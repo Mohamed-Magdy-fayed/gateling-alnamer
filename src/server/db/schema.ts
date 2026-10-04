@@ -679,6 +679,27 @@ export const webauthnChallenges = pgTable(
   ],
 );
 
+// External sign-in identities (A3): one row per provider account linked to a user.
+export const oauthAccounts = pgTable(
+  "oauth_accounts",
+  {
+    id: uuid("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    /** The provider's stable user id (Google `sub`). */
+    subject: text("subject").notNull(),
+    email: text("email"),
+    createdAt,
+  },
+  (t) => [
+    check("oauth_accounts_provider", sql`${t.provider} in ('google')`),
+    unique("oauth_accounts_provider_subject_unique").on(t.provider, t.subject),
+    index("oauth_accounts_user_idx").on(t.userId),
+  ],
+);
+
 export const questionKind = pgEnum("question_kind", ["mcq", "true_false"]);
 
 /** One answer option; `true_false` questions use the ids `true` and `false`. */

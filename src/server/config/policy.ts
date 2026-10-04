@@ -130,3 +130,6 @@ export const TWO_FACTOR_DAILY_LIMIT: LimitRule = { max: 30, windowSec: 24 * 60 *
 
 /** A4b: passkey challenge requests per user (each one writes a challenge row). */
 export const PASSKEY_OPTIONS_LIMIT: LimitRule = { max: 30, windowSec: 10 * 60 };
+
+/** A3: Google sign-in callbacks per client IP. */
+export const OAUTH_CALLBACK_LIMIT: LimitRule = { max: 20, windowSec: 15 * 60 };

@@ -367,3 +367,15 @@ describe("parseServerEnv", () => {
     expect(() => parse({ ...local, BUNNY_STREAM_API_KEY: "  " })).not.toThrow();
   });
 });
+
+describe("Google sign-in keys", () => {
+  it("are optional, but go together", () => {
+    expect(() => parse(local)).not.toThrow();
+    expect(() =>
+      parse({ ...local, GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret" }),
+    ).not.toThrow();
+    expect(failure({ ...local, GOOGLE_CLIENT_ID: "id" })).toMatch(
+      /GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET go together/,
+    );
+  });
+});

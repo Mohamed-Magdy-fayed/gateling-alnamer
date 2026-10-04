@@ -190,6 +190,13 @@
       "when": 1791084968494,
       "tag": "0026_mushy_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791086311821,
+      "tag": "0027_right_meltdown",
+      "breakpoints": true
     }
   ]
 }

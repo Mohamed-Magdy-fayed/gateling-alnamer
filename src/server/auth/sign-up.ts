@@ -97,6 +97,35 @@ function pgCode(error: unknown): string {
 }
 
 /**
+ * The public sign-up age rules (D31), shared by password and Google sign-up: parents 18+,
+ * students 8+, guardian consent exactly when the student is under 18 on the Cairo date of `now`.
+ */
+export function checkSignUpAge(
+  role: "student" | "parent",
+  rawDateOfBirth: string,
+  guardianConsent: boolean,
+  now: Date,
+):
+  | { ok: true; dateOfBirth: string; guardianConsentAt: Date | null }
+  | { ok: false; result: SignUpResult } {
+  const dateOfBirth = validDateOfBirth(rawDateOfBirth, now);
+  if (!dateOfBirth) return { ok: false, result: invalid(["date_of_birth"]) };
+  if (role === "student") {
+    if (ageOn(dateOfBirth, now) < MIN_STUDENT_SIGNUP_AGE) {
+      return { ok: false, result: invalid(["date_of_birth"], { date_of_birth: "studentMinAge" }) };
+    }
+    const minor = isUnder18(dateOfBirth, now);
+    if (minor !== guardianConsent) return { ok: false, result: invalid(["guardian_consent"]) };
+    return { ok: true, dateOfBirth, guardianConsentAt: minor ? now : null };
+  }
+  if (ageOn(dateOfBirth, now) < ADULT_AGE) {
+    return { ok: false, result: invalid(["date_of_birth"], { date_of_birth: "parentAge" }) };
+  }
+  if (guardianConsent) return { ok: false, result: invalid(["guardian_consent"]) };
+  return { ok: true, dateOfBirth, guardianConsentAt: null };
+}
+
+/**
  * Validates a public sign-up and creates the account (users + credentials + public number in one
  * transaction). Public roles are student and parent only. Both give a date of birth: parents must be
  * 18 or older, students 8 or older (younger children are created by a parent); a student under 18 on
@@ -120,22 +149,14 @@ export async function signUpUser(
   }
   const input = parsed.data;
 
-  const dateOfBirth = validDateOfBirth(input.date_of_birth, ctx.now);
-  if (!dateOfBirth) return invalid(["date_of_birth"]);
-  let guardianConsentAt: Date | null = null;
-  if (input.role === "student") {
-    if (ageOn(dateOfBirth, ctx.now) < MIN_STUDENT_SIGNUP_AGE) {
-      return invalid(["date_of_birth"], { date_of_birth: "studentMinAge" });
-    }
-    const minor = isUnder18(dateOfBirth, ctx.now);
-    if (minor !== input.guardian_consent) return invalid(["guardian_consent"]);
-    if (minor) guardianConsentAt = ctx.now;
-  } else {
-    if (ageOn(dateOfBirth, ctx.now) < ADULT_AGE) {
-      return invalid(["date_of_birth"], { date_of_birth: "parentAge" });
-    }
-    if (input.guardian_consent) return invalid(["guardian_consent"]);
-  }
+  const age = checkSignUpAge(
+    input.role,
+    input.date_of_birth ?? "",
+    input.guardian_consent,
+    ctx.now,
+  );
+  if (!age.ok) return age.result;
+  const { dateOfBirth, guardianConsentAt } = age;
 
   // One argon2 hash on every path, so a taken email or username costs the same as a free one.
   const passwordHash = await hashPassword(input.password);

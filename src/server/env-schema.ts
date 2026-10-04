@@ -54,6 +54,8 @@ const schema = z.object({
   DEMO_HOSTS: optionalText,
   DEMO_ACCOUNTS_PASSWORD: optionalText,
   DEMO_TOTP_SECRET: optionalText,
+  GOOGLE_CLIENT_ID: optionalText,
+  GOOGLE_CLIENT_SECRET: optionalText,
   INNGEST_DEV: optionalText,
   /** Trust `x-real-ip` (a proxy we run sets it); on Vercel `x-forwarded-for` is trusted regardless. */
   TRUST_PROXY_HEADERS: z.preprocess(
@@ -277,6 +279,9 @@ function crossProblems(
     );
   }
   if (env.APP_MODE === "demo") problems.push(...demoProblems(env));
+  if (Boolean(env.GOOGLE_CLIENT_ID) !== Boolean(env.GOOGLE_CLIENT_SECRET)) {
+    problems.push("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET go together; set both or neither.");
+  }
   if (env.APP_MODE === "live" && env.DEMO_ACCOUNTS_PASSWORD) {
     problems.push("DEMO_ACCOUNTS_PASSWORD is refused when APP_MODE=live; unset it.");
   }

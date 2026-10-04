@@ -4,6 +4,7 @@ import {
   CHECKOUT_LIMIT,
   DRAFT_COURSE_LIMIT,
   type LimitRule,
+  OAUTH_CALLBACK_LIMIT,
   ORDER_RECHECK_LIMIT,
   PASSKEY_OPTIONS_LIMIT,
   PLAYBACK_LIMIT,
@@ -370,5 +371,17 @@ export async function guardPasskeyOptions(
     limiterOf(deps),
     `rl:passkeyopts:user:${hasherOf(deps).hash(input.userId)}`,
     PASSKEY_OPTIONS_LIMIT,
+  );
+}
+
+/** A3: Google sign-in callbacks, 20 per 15 minutes per client IP. */
+export async function guardOAuthCallback(
+  input: { ip: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:oauth:ip:${hasherOf(deps).hash(input.ip)}`,
+    OAUTH_CALLBACK_LIMIT,
   );
 }

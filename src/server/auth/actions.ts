@@ -12,8 +12,6 @@ import { clock } from "@/server/clock";
 import { CODE_RESEND_COOLDOWN_MS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { credentials, users } from "@/server/db/schema";
-import { safeNextPath } from "@/server/devices/next-path";
-import { gateDevice } from "@/server/devices/sign-in";
 import {
   clearCodeVerifyFailures,
   clearSignInFailures,
@@ -26,8 +24,9 @@ import {
 import { verifyCaptcha } from "./captcha";
 import { latestCodeRow } from "./code-status";
 import { type CodePurpose, verifyCode, verifyCodeDecoy } from "./codes";
+import { completeSignIn } from "./complete-sign-in";
 import { authenticate } from "./credentials";
-import { isKnownDevice, markDeviceSeen } from "./known-device";
+import { isKnownDevice } from "./known-device";
 import { hashPassword } from "./password";
 import { clearPendingReset, readPendingReset, setPendingReset } from "./pending-reset";
 import { requestContext } from "./request-context";
@@ -230,24 +229,8 @@ export async function signInAction(_prev: FormState, formData: FormData): Promis
   if (!userId) return failed;
   await clearSignInFailures(who);
 
-  // Never let a session from before sign-in survive it (fixation, switching accounts).
-  await destroySession();
-  const gate = await gateDevice(userId, {
-    deviceKey: device.deviceKey,
-    userAgent: device.userAgent,
-    secure: device.secure,
-  });
-  // A student over the limit in strict mode gets a pre-session, never a session.
-  if (gate.kind === "blocked") redirect("/devices/blocked");
-  await createSession(userId, { deviceId: gate.deviceId });
-  await markDeviceSeen(device.deviceKey);
-  // The over-limit notice lives on the dashboard, so it wins over `next`; otherwise a same-origin
-  // relative `next` is honoured and anything else falls back to the dashboard.
-  redirect(
-    gate.overLimit
-      ? "/dashboard?notice=device-over"
-      : safeNextPath(typeof raw.next === "string" ? raw.next : undefined),
-  );
+  // Shared with Google sign-in: old session gone, device gate, new session, then `next`.
+  return completeSignIn(userId, device, typeof raw.next === "string" ? raw.next : undefined);
 }
 
 export async function signOutAction(): Promise<void> {

@@ -14,7 +14,8 @@ export type KeyPurpose =
   | "media"
   | "totp"
   | "totp-finish"
-  | "recovery";
+  | "recovery"
+  | "oauth";
 
 const MIN_SECRET_LENGTH = 32;
 
