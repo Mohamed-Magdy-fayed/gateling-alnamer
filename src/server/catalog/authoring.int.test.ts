@@ -50,13 +50,20 @@ afterAll(async () => {
   await dbModule.closeTestDb();
 });
 
-async function teacher(status: "approved" | "applied" = "approved") {
+/** The placeholder teacher terms seeded by migration 0032 (C1). */
+const CURRENT_TERMS = "teacher-placeholder-1";
+
+async function teacher(
+  status: "approved" | "applied" = "approved",
+  termsVersionAccepted: string | null = CURRENT_TERMS,
+) {
   const user = await createUser(conn, { role: "teacher" });
   await conn.insert(schema.teacherProfiles).values({
     userId: user.id,
     publicName: { ar: "معلم", en: "Teacher" },
     bio: { ar: "نبذة", en: "Bio" },
     status,
+    termsVersionAccepted,
   });
   return user;
 }
@@ -84,6 +91,16 @@ describe("course authoring", () => {
       ok: false,
       reason: "not_approved",
     });
+  });
+
+  it("refuses an approved teacher who has not accepted the current terms (C1)", async () => {
+    for (const accepted of [null, "teacher-old-version"]) {
+      const author = await teacher("approved", accepted);
+      expect(await createDraftCourse(author.id, input)).toEqual({
+        ok: false,
+        reason: "not_approved",
+      });
+    }
   });
 
   it("a teacher can only see and submit their own courses", async () => {

@@ -10,6 +10,7 @@ import {
   PASSKEY_OPTIONS_LIMIT,
   PLAYBACK_LIMIT,
   QUIZ_LIMIT,
+  TEACHER_INVITE_LIMIT,
   TWO_FACTOR_DAILY_LIMIT,
   TWO_FACTOR_LIMIT,
 } from "@/server/config/policy";
@@ -393,4 +394,16 @@ export async function guardCspReport(
   deps: AbuseDeps = {},
 ): Promise<GuardResult> {
   return within(limiterOf(deps), `rl:csp:ip:${hasherOf(deps).hash(input.ip)}`, CSP_REPORT_LIMIT);
+}
+
+/** Teacher invites (C1): per admin, so one account cannot mail-bomb addresses. */
+export async function guardTeacherInvite(
+  input: { adminId: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(
+    limiterOf(deps),
+    `rl:teacherinvite:${hasherOf(deps).hash(input.adminId)}`,
+    TEACHER_INVITE_LIMIT,
+  );
 }

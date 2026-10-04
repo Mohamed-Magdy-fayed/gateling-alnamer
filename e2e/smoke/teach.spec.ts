@@ -18,8 +18,8 @@ test.beforeAll(async ({ browser, baseURL }) => {
   await withDb(async (sql) => {
     await sql`update users set role = 'teacher', email_verified_at = now() where email = ${teacherEmail}`;
     await sql`
-      insert into teacher_profiles (user_id, public_name, bio, status)
-      select id, '{"ar":"معلم الاختبار","en":"Smoke Teacher"}'::jsonb, '{"ar":"نبذة","en":"Bio"}'::jsonb, 'approved'
+      insert into teacher_profiles (user_id, public_name, bio, status, terms_version_accepted)
+      select id, '{"ar":"معلم الاختبار","en":"Smoke Teacher"}'::jsonb, '{"ar":"نبذة","en":"Bio"}'::jsonb, 'approved', 'teacher-placeholder-1'
       from users where email = ${teacherEmail}`;
     await sql`update users set role = 'admin', email_verified_at = now() where email = ${adminEmail}`;
   });

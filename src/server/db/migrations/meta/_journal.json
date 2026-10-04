@@ -218,6 +218,20 @@
       "when": 1791101964254,
       "tag": "0030_normal_scream",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791106016245,
+      "tag": "0031_safe_shockwave",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1791106026775,
+      "tag": "0032_teacher_terms_placeholder",
+      "breakpoints": true
     }
   ]
 }

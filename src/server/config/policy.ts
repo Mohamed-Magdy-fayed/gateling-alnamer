@@ -135,3 +135,7 @@ export const PASSKEY_OPTIONS_LIMIT: LimitRule = { max: 30, windowSec: 10 * 60 };
 export const OAUTH_CALLBACK_LIMIT: LimitRule = { max: 20, windowSec: 15 * 60 };
 /** CSP violation reports (F5b): public by design, so capped per IP. */
 export const CSP_REPORT_LIMIT: LimitRule = { max: 60, windowSec: 15 * 60 };
+/** Teacher invites (C1): per admin per day. */
+export const TEACHER_INVITE_LIMIT: LimitRule = { max: 20, windowSec: 24 * 60 * 60 };
+/** Teacher invite links are valid for 7 days (C1). */
+export const TEACHER_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;

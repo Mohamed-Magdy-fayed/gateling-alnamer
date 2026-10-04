@@ -145,6 +145,22 @@ export async function listPublishedCourses(
   return rows.map((row) => toSummary(row, cats.get(row.id) ?? []));
 }
 
+/** A teacher's published courses (the public teacher profile, C1). */
+export async function listPublishedCoursesByTeacher(
+  teacherId: string,
+  executor: DbExecutor = db(),
+): Promise<CourseSummary[]> {
+  const rows = await publishedCourseQuery(executor)
+    .where(and(publishedVisible, eq(courses.teacherId, teacherId)))
+    .orderBy(asc(courses.createdAt), asc(courses.slug))
+    .limit(listLimit({}));
+  const cats = await categoriesByCourse(
+    executor,
+    rows.map((row) => row.id),
+  );
+  return rows.map((row) => toSummary(row, cats.get(row.id) ?? []));
+}
+
 export async function getPublishedCourseBySlug(
   slug: string,
   executor: DbExecutor = db(),

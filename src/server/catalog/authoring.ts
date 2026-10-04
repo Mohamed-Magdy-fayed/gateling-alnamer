@@ -18,6 +18,7 @@ import {
   teacherProfiles,
 } from "@/server/db/schema";
 import { type DraftCourseInput, priceToMinor } from "./authoring-input";
+import { canAuthor } from "./teachers/terms";
 
 // Course authoring (T5). Content tables are written only here and in the catalogue repository.
 
@@ -40,15 +41,6 @@ const localized = (ar: string, en = ""): LocalizedText => (en ? { ar, en } : { a
 export type CreateResult =
   | { ok: true; courseId: string }
   | { ok: false; reason: "not_approved" | "rate_limited" };
-
-async function isApprovedTeacher(teacherId: string): Promise<boolean> {
-  const [row] = await db()
-    .select({ status: teacherProfiles.status })
-    .from(teacherProfiles)
-    .where(eq(teacherProfiles.userId, teacherId))
-    .limit(1);
-  return row?.status === "approved";
-}
 
 async function insertDraft(tx: Tx, teacherId: string, input: DraftCourseInput): Promise<string> {
   const courseId = uuidv7();
@@ -97,7 +89,7 @@ export async function createDraftCourse(
   input: DraftCourseInput,
   deps: AbuseDeps = {},
 ): Promise<CreateResult> {
-  if (!(await isApprovedTeacher(teacherId))) return { ok: false, reason: "not_approved" };
+  if (!(await canAuthor(teacherId))) return { ok: false, reason: "not_approved" };
   const guard = await guardDraftCourse({ userId: teacherId }, deps);
   if (!("ok" in guard)) return { ok: false, reason: "rate_limited" };
   for (let attempt = 1; ; attempt++) {
@@ -233,7 +225,7 @@ export async function submitForReview(teacherId: string, courseId: string): Prom
     .limit(1);
   if (!course) return { ok: false, reason: "not_found" };
   // A teacher suspended (or not yet approved) after drafting cannot send work for review.
-  if (!(await isApprovedTeacher(teacherId))) return { ok: false, reason: "not_approved" };
+  if (!(await canAuthor(teacherId))) return { ok: false, reason: "not_approved" };
   const updated = await db()
     .update(courses)
     .set({ status: "in_review", updatedAt: clock.now() })

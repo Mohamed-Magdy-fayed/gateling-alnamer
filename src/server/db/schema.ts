@@ -290,6 +290,26 @@ const isSample = boolean("is_sample").notNull().default(false);
 
 const isTextObject = (column: AnyPgColumn) => sql`jsonb_typeof(${column}) = 'object'`;
 
+// Versioned terms a role must accept (C1). The current version of a kind is the latest published
+// one; a new version asks everyone again. Placeholder text until the client sends the real one.
+export const termsKind = pgEnum("terms_kind", ["teacher"]);
+
+export const termsVersions = pgTable(
+  "terms_versions",
+  {
+    id: text("id").primaryKey(),
+    kind: termsKind("kind").notNull(),
+    body: jsonb("body").$type<LocalizedText>().notNull(),
+    isPlaceholder: boolean("is_placeholder").notNull().default(true),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
+    createdAt,
+  },
+  (t) => [
+    check("terms_versions_body_object", isTextObject(t.body)),
+    index("terms_versions_kind_published_idx").on(t.kind, desc(t.publishedAt)),
+  ],
+);
+
 export const teacherProfiles = pgTable(
   "teacher_profiles",
   {
@@ -302,13 +322,41 @@ export const teacherProfiles = pgTable(
     commissionRateBp: integer("commission_rate_bp"),
     termsVersionAccepted: text("terms_version_accepted"),
     termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+    /** C1: what the applicant teaches and where (private; admins read it when deciding). */
+    applicationNote: text("application_note"),
+    /** C1: the admin's reason, required when rejecting; mailed to the applicant. */
+    decisionReason: text("decision_reason"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
     isSample,
     createdAt,
   },
   (t) => [
     check("teacher_profiles_public_name_object", isTextObject(t.publicName)),
     check("teacher_profiles_bio_object", isTextObject(t.bio)),
+    check(
+      "teacher_profiles_texts_length",
+      sql`coalesce(length(${t.applicationNote}), 0) <= 1000 and coalesce(length(${t.decisionReason}), 0) <= 1000`,
+    ),
   ],
+);
+
+// An admin's invitation to teach (C1): the link carries a random token, stored as its HMAC.
+export const teacherInvites = pgTable(
+  "teacher_invites",
+  {
+    id: uuid("id").primaryKey(),
+    email: citext("email").notNull(),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    invitedBy: uuid("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt,
+  },
+  (t) => [index("teacher_invites_invited_by_idx").on(t.invitedBy, desc(t.createdAt))],
 );
 
 export const categories = pgTable(

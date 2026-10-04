@@ -6,6 +6,9 @@ import { nextPublicNumber } from "../../src/server/auth/public-number";
 import { invalidateUserSessionsCore } from "../../src/server/auth/session-invalidate";
 import { credentials, teacherProfiles, users } from "../../src/server/db/schema";
 
+/** The placeholder teacher terms seeded by migration 0032 (C1). */
+const SEED_TEACHER_TERMS = "teacher-placeholder-1";
+
 type Role = typeof users.$inferInsert.role;
 
 export type SeedAccount = {
@@ -93,11 +96,18 @@ export async function upsertAccount(
           publicName: { ar: account.name, en: account.name },
           bio: { ar: "معلم تجريبي", en: "Sample teacher" },
           status: "approved",
+          // Seeded teachers can author at once: the placeholder terms (migration 0032) accepted.
+          termsVersionAccepted: SEED_TEACHER_TERMS,
+          termsAcceptedAt: new Date(),
           isSample: options.isSample,
         })
         .onConflictDoUpdate({
           target: teacherProfiles.userId,
-          set: { status: "approved", isSample: options.isSample },
+          set: {
+            status: "approved",
+            termsVersionAccepted: SEED_TEACHER_TERMS,
+            isSample: options.isSample,
+          },
         });
     }
     return { userId, created: !existing };
