@@ -86,6 +86,13 @@ describe("resolveOAuthSignIn", () => {
     });
   });
 
+  it("never auto-links a staff account by email", async () => {
+    const teacher = await createUser(conn, { role: "teacher" });
+    expect(await resolveOAuthSignIn(identity({ email: teacher.email ?? "" }))).toEqual({
+      kind: "needs_password",
+    });
+  });
+
   it("a suspended user is refused", async () => {
     const user = await createUser(conn);
     await conn

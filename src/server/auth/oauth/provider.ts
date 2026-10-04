@@ -99,8 +99,8 @@ export function mockProvider(key: Buffer = authKey("oauth")): OAuthProvider {
       const plain = open(key, code);
       if (!plain) return null;
       try {
-        const data = JSON.parse(plain) as OAuthIdentity & { challenge: string };
-        if (data.challenge !== codeChallenge(codeVerifier)) return null;
+        const data = JSON.parse(plain) as OAuthIdentity & { challenge: string; t?: unknown };
+        if (data.t !== "mock" || data.challenge !== codeChallenge(codeVerifier)) return null;
         return {
           subject: data.subject,
           email: data.email,
@@ -120,12 +120,12 @@ export function mockCode(
   challenge: string,
   key: Buffer = authKey("oauth"),
 ): string {
-  return seal(key, JSON.stringify({ ...identity, challenge }));
+  return seal(key, JSON.stringify({ t: "mock", ...identity, challenge }));
 }
 
 /**
- * The provider for this deployment: Google with both keys set; the mock only for local demo runs
- * (never with VERCEL set, never in live); otherwise none, and the button is hidden.
+ * The provider for this deployment: Google with both keys set; the local mock only by explicit
+ * opt-in (see above); otherwise none, and the button is hidden.
  */
 export function oauthProvider(env: {
   GOOGLE_CLIENT_ID?: string;
@@ -134,12 +134,13 @@ export function oauthProvider(env: {
   VERCEL?: string;
   OAUTH_FORCE_MOCK?: string;
 }): OAuthProvider | null {
-  const localDemo = env.APP_MODE === "demo" && !env.VERCEL;
-  // The smoke run forces the mock even when .env holds real keys (never on a deployed site).
-  if (localDemo && env.OAUTH_FORCE_MOCK === "1") return mockProvider();
+  // The mock is opt-in (OAUTH_FORCE_MOCK=1, set by the smoke run), demo mode, never on Vercel; its
+  // routes also refuse any request that is not to localhost. env-schema refuses the flag in live.
+  if (env.OAUTH_FORCE_MOCK === "1" && env.APP_MODE === "demo" && !env.VERCEL) {
+    return mockProvider();
+  }
   if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
     return googleProvider(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET);
   }
-  if (localDemo) return mockProvider();
   return null;
 }

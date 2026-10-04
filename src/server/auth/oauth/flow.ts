@@ -25,7 +25,7 @@ export function statesMatch(expected: string, received: string): boolean {
 }
 
 export function sealFlow(key: Buffer, flow: OAuthFlow): string {
-  return seal(key, JSON.stringify(flow));
+  return seal(key, JSON.stringify({ t: "flow", ...flow }));
 }
 
 /** The flow from its cookie, or null when missing, tampered, malformed or expired. */
@@ -33,8 +33,9 @@ export function openFlow(key: Buffer, sealed: string, nowS: number): OAuthFlow |
   const plain = open(key, sealed);
   if (!plain) return null;
   try {
-    const flow = JSON.parse(plain) as Partial<OAuthFlow>;
+    const flow = JSON.parse(plain) as Partial<OAuthFlow> & { t?: unknown };
     if (
+      flow.t !== "flow" ||
       typeof flow.state !== "string" ||
       typeof flow.verifier !== "string" ||
       typeof flow.next !== "string" ||
@@ -43,7 +44,12 @@ export function openFlow(key: Buffer, sealed: string, nowS: number): OAuthFlow |
     ) {
       return null;
     }
-    return flow as OAuthFlow;
+    return {
+      state: flow.state,
+      verifier: flow.verifier,
+      next: flow.next,
+      expiresAtS: flow.expiresAtS,
+    };
   } catch {
     return null;
   }

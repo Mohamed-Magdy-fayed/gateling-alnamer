@@ -40,16 +40,26 @@ export async function resolveOAuthSignIn(identity: OAuthIdentity): Promise<OAuth
   if (!identity.emailVerified) return { kind: "refused" };
 
   const [account] = await db()
-    .select({ id: users.id, status: users.status, emailVerifiedAt: users.emailVerifiedAt })
+    .select({
+      id: users.id,
+      status: users.status,
+      emailVerifiedAt: users.emailVerifiedAt,
+      role: users.role,
+    })
     .from(users)
     .where(eq(users.email, identity.email))
     .limit(1);
   if (!account) return { kind: "new" };
   if (account.status !== "active") return { kind: "refused" };
   if (!account.emailVerifiedAt) return { kind: "needs_password" };
+  // Staff accounts are never linked by email alone (a domain admin can create a Google account for
+  // any address on the domain): sign in with the password first.
+  if (account.role === "teacher" || account.role === "admin" || account.role === "reviewer") {
+    return { kind: "needs_password" };
+  }
 
   await db().transaction(async (tx) => {
-    await tx
+    const inserted = await tx
       .insert(oauthAccounts)
       .values({
         id: uuidv7(),
@@ -58,7 +68,9 @@ export async function resolveOAuthSignIn(identity: OAuthIdentity): Promise<OAuth
         subject: identity.subject,
         email: identity.email,
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ id: oauthAccounts.id });
+    if (inserted.length === 0) return;
     await writeAudit(tx, {
       actorId: account.id,
       action: "oauth.linked",

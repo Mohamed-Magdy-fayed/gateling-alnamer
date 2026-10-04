@@ -54,6 +54,7 @@ const schema = z.object({
   DEMO_HOSTS: optionalText,
   DEMO_ACCOUNTS_PASSWORD: optionalText,
   DEMO_TOTP_SECRET: optionalText,
+  OAUTH_FORCE_MOCK: optionalText,
   GOOGLE_CLIENT_ID: optionalText,
   GOOGLE_CLIENT_SECRET: optionalText,
   INNGEST_DEV: optionalText,
@@ -279,6 +280,9 @@ function crossProblems(
     );
   }
   if (env.APP_MODE === "demo") problems.push(...demoProblems(env));
+  if (env.OAUTH_FORCE_MOCK && (env.APP_MODE === "live" || deployed)) {
+    problems.push("OAUTH_FORCE_MOCK is for local test runs only; unset it.");
+  }
   if (Boolean(env.GOOGLE_CLIENT_ID) !== Boolean(env.GOOGLE_CLIENT_SECRET)) {
     problems.push("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET go together; set both or neither.");
   }

@@ -9,6 +9,7 @@ import { currentProvider, redirectUriFor } from "@/server/auth/oauth/routes";
 import { requestContext } from "@/server/auth/request-context";
 
 const MAX_PARAM = 2048;
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
  * Google's redirect back: the state must match the sealed flow cookie (taken, so it works once),
@@ -18,6 +19,10 @@ const MAX_PARAM = 2048;
 export async function GET(request: NextRequest): Promise<never> {
   const provider = currentProvider();
   if (!provider) redirect("/sign-in");
+  // The local mock answers only on localhost (its codes must never be accepted by a public site).
+  if (provider.id === "mock" && !LOCAL_HOSTS.has(request.nextUrl.hostname)) {
+    redirect("/sign-in?notice=google-failed");
+  }
   const device = await requestContext();
   const guard = await guardOAuthCallback({ ip: device.ip });
   if (!("ok" in guard)) redirect("/sign-in?notice=google-failed");
@@ -46,7 +51,7 @@ export async function GET(request: NextRequest): Promise<never> {
     case "signin":
       return completeSignIn(decision.userId, device, flow.next);
     case "new":
-      await setPendingCookie(identity, flow.next, request.nextUrl.protocol === "https:");
+      await setPendingCookie(identity, flow.next, device.secure);
       redirect("/sign-up/google");
       break;
     case "needs_password":

@@ -15,6 +15,8 @@ try {
 const keep = [
   ...(args.useTestDatabase ? ["DATABASE_URL"] : []),
   ...(process.env.TRUST_PROXY_HEADERS ? ["TRUST_PROXY_HEADERS"] : []),
+  // The smoke harness opts into the local Google mock (an env-schema key, so it would be blanked).
+  ...(process.env.OAUTH_FORCE_MOCK ? ["OAUTH_FORCE_MOCK"] : []),
 ];
 const env = sanitizedChildEnv({ keep });
 env.PORT = env.PORT || "3400";

@@ -42,13 +42,17 @@ export async function setPendingCookie(
   secure: boolean,
 ): Promise<void> {
   const pending: PendingSignUp = { identity, next, expiresAtS: nowS() + PENDING_TTL_S };
-  (await cookies()).set(PENDING_COOKIE, seal(authKey("oauth"), JSON.stringify(pending)), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure,
-    path: "/",
-    maxAge: PENDING_TTL_S,
-  });
+  (await cookies()).set(
+    PENDING_COOKIE,
+    seal(authKey("oauth"), JSON.stringify({ t: "pending", ...pending })),
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure,
+      path: "/",
+      maxAge: PENDING_TTL_S,
+    },
+  );
 }
 
 export async function readPendingCookie(): Promise<PendingSignUp | null> {
@@ -57,7 +61,8 @@ export async function readPendingCookie(): Promise<PendingSignUp | null> {
   const plain = open(authKey("oauth"), value);
   if (!plain) return null;
   try {
-    const pending = JSON.parse(plain) as PendingSignUp;
+    const pending = JSON.parse(plain) as PendingSignUp & { t?: unknown };
+    if (pending.t !== "pending") return null;
     if (typeof pending.expiresAtS !== "number" || nowS() > pending.expiresAtS) return null;
     if (typeof pending.identity?.subject !== "string") return null;
     return pending;

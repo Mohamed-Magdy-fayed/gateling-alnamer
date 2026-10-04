@@ -379,3 +379,11 @@ describe("Google sign-in keys", () => {
     );
   });
 });
+
+describe("OAUTH_FORCE_MOCK", () => {
+  it("is refused in live mode", () => {
+    expect(failure({ ...local, APP_MODE: "live", OAUTH_FORCE_MOCK: "1" })).toMatch(
+      /OAUTH_FORCE_MOCK/,
+    );
+  });
+});

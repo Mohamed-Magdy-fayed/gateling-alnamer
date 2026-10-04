@@ -13,7 +13,7 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
  */
 export async function GET(request: NextRequest): Promise<never> {
   assertDevRoute();
-  if (currentProvider()?.id !== "mock") notFound();
+  if (currentProvider()?.id !== "mock" || !LOCAL_HOSTS.has(request.nextUrl.hostname)) notFound();
   const params = request.nextUrl.searchParams;
   const text = (key: string) => (params.get(key) ?? "").trim();
   let target: URL;
