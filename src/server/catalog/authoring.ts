@@ -5,9 +5,9 @@ import { v7 as uuidv7 } from "uuid";
 import type { LocalizedText } from "@/lib/localized-text";
 import { writeAudit } from "@/server/audit/repository";
 import { type AbuseDeps, guardDraftCourse } from "@/server/auth/abuse";
-import { isUniqueViolation } from "@/server/auth/sign-up";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import {
   courseRevisions,
   courses,

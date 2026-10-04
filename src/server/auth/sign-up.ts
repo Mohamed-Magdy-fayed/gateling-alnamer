@@ -3,18 +3,18 @@ import { z } from "zod";
 import type { Locale } from "@/i18n/config";
 import { MIN_STUDENT_SIGNUP_AGE } from "@/server/config/policy";
 import { db } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import { credentials, users } from "@/server/db/schema";
 import { AppError } from "@/server/errors";
 import { ADULT_AGE, ageOn, cairoToday, isUnder18, MIN_BIRTH_YEAR, parseIsoDate } from "./age";
 import { hashPassword } from "./password";
+import { passwordSchema } from "./password-policy";
 import { nextPublicNumber } from "./public-number";
 import { usernameSchema } from "./username";
 
 type Database = ReturnType<typeof db>;
 
 export const SIGN_UP_ROLES = ["student", "parent"] as const;
-export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_LENGTH = 128;
 
 export type SignUpField =
   | "name"
@@ -42,7 +42,7 @@ const emptyToUndefined = (value: unknown) => (value === "" || value === null ? u
 const signUpSchema = z.object({
   name: z.string().trim().min(2).max(80),
   email: z.string().trim().pipe(z.email()).pipe(z.string().max(254)),
-  password: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
+  password: passwordSchema,
   role: z.enum(SIGN_UP_ROLES),
   username: z.preprocess(emptyToUndefined, usernameSchema.optional()),
   date_of_birth: z.preprocess(emptyToUndefined, z.string().optional()),
@@ -73,13 +73,6 @@ export function validDateOfBirth(value: string | undefined, now: Date): string |
   if (!parsed || parsed.year < MIN_BIRTH_YEAR) return null;
   const today = cairoToday(now);
   return value <= today ? value : null;
-}
-
-export function isUniqueViolation(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  const code = (error as { code?: unknown }).code;
-  if (code === "23505") return true;
-  return isUniqueViolation((error as { cause?: unknown }).cause);
 }
 
 const invalid = (

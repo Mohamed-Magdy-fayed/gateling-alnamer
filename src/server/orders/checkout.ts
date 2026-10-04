@@ -2,10 +2,10 @@ import "server-only";
 import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { v7 as uuidv7 } from "uuid";
 import { type AbuseDeps, guardCheckout } from "@/server/auth/abuse";
-import { isUniqueViolation } from "@/server/auth/sign-up";
 import { sampleVisible } from "@/server/catalog/visibility";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import {
   courseRevisions,
   courses,

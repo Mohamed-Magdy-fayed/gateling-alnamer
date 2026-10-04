@@ -7,9 +7,9 @@ import { resolveOAuthSignIn } from "@/server/auth/oauth/decide";
 import { statesMatch } from "@/server/auth/oauth/flow";
 import { currentProvider, redirectUriFor } from "@/server/auth/oauth/routes";
 import { requestContext } from "@/server/auth/request-context";
+import { isLocalHostname } from "@/server/local-hosts";
 
 const MAX_PARAM = 2048;
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
  * Google's redirect back: the state must match the sealed flow cookie (taken, so it works once),
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest): Promise<never> {
   const provider = currentProvider();
   if (!provider) redirect("/sign-in");
   // The local mock answers only on localhost (its codes must never be accepted by a public site).
-  if (provider.id === "mock" && !LOCAL_HOSTS.has(request.nextUrl.hostname)) {
+  if (provider.id === "mock" && !isLocalHostname(request.nextUrl.hostname)) {
     redirect("/sign-in?notice=google-failed");
   }
   const device = await requestContext();

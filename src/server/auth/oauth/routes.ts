@@ -12,8 +12,8 @@ export function currentProvider(): OAuthProvider | null {
     GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
     APP_MODE: env.APP_MODE,
-    VERCEL: process.env.VERCEL,
-    OAUTH_FORCE_MOCK: process.env.OAUTH_FORCE_MOCK,
+    VERCEL: env.VERCEL,
+    OAUTH_FORCE_MOCK: env.OAUTH_FORCE_MOCK,
   });
 }
 

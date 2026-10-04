@@ -14,9 +14,9 @@ import { sendCode } from "@/server/auth/send-code";
 import { cacheDelete, cacheDeleteUser } from "@/server/auth/session-cache";
 import { purgeSessionCache } from "@/server/auth/session-invalidate";
 import { type RotatedSession, rotateAndRevokeIn } from "@/server/auth/session-rotate";
-import { isUniqueViolation } from "@/server/auth/sign-up";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import { credentials, devices, sessions, users } from "@/server/db/schema";
 import { AppError } from "@/server/errors";
 

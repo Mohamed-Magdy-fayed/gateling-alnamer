@@ -12,15 +12,11 @@ import {
 import { ageOn, isUnder18 } from "@/server/auth/age";
 import { setPasswordIn } from "@/server/auth/credentials";
 import { hashPassword } from "@/server/auth/password";
+import { isAcceptablePassword, passwordSchema } from "@/server/auth/password-policy";
 import { nextPublicNumber } from "@/server/auth/public-number";
 import { sendCode as defaultSendCode } from "@/server/auth/send-code";
 import { deleteUserSessionsIn, purgeSessionCache } from "@/server/auth/session-invalidate";
-import {
-  isUniqueViolation,
-  PASSWORD_MAX_LENGTH,
-  PASSWORD_MIN_LENGTH,
-  validDateOfBirth,
-} from "@/server/auth/sign-up";
+import { validDateOfBirth } from "@/server/auth/sign-up";
 import { usernameSchema } from "@/server/auth/username";
 import { clock } from "@/server/clock";
 import {
@@ -30,6 +26,7 @@ import {
   MAX_PARENTS_PER_STUDENT,
 } from "@/server/config/policy";
 import { db } from "@/server/db";
+import { isUniqueViolation } from "@/server/db/errors";
 import {
   credentials,
   linkInvites,
@@ -94,7 +91,7 @@ export type CreateChildResult =
 const createChildSchema = z.object({
   name: z.string().trim().min(2).max(80),
   username: usernameSchema,
-  password: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
+  password: passwordSchema,
   date_of_birth: z.string(),
 });
 
@@ -536,7 +533,7 @@ async function directResetHash(
   childId: string,
   password: string,
 ): Promise<string | null> {
-  if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) return null;
+  if (!isAcceptablePassword(password)) return null;
   if ((await parentState(db(), parentId)) !== "ok") return null;
   const facts = await childFacts(db(), parentId, childId);
   return facts.mode === "direct" ? hashPassword(password) : null;

@@ -3,8 +3,7 @@ import type { NextRequest } from "next/server";
 import { mockCode } from "@/server/auth/oauth/provider";
 import { CALLBACK_PATH, currentProvider } from "@/server/auth/oauth/routes";
 import { assertDevRoute } from "@/server/dev-guard";
-
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+import { isLocalHostname } from "@/server/local-hosts";
 
 /**
  * The mock provider's "sign in" (a plain GET form, so the browser follows one 302 back to the
@@ -13,7 +12,7 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
  */
 export async function GET(request: NextRequest): Promise<never> {
   assertDevRoute();
-  if (currentProvider()?.id !== "mock" || !LOCAL_HOSTS.has(request.nextUrl.hostname)) notFound();
+  if (currentProvider()?.id !== "mock" || !isLocalHostname(request.nextUrl.hostname)) notFound();
   const params = request.nextUrl.searchParams;
   const text = (key: string) => (params.get(key) ?? "").trim();
   let target: URL;
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest): Promise<never> {
   } catch {
     notFound();
   }
-  if (target.pathname !== CALLBACK_PATH || !LOCAL_HOSTS.has(target.hostname)) notFound();
+  if (target.pathname !== CALLBACK_PATH || !isLocalHostname(target.hostname)) notFound();
   const email = text("email").toLowerCase();
   if (!/^[^\s@]+@[^\s@]+$/.test(email) || email.length > 120) notFound();
   const code = mockCode(
