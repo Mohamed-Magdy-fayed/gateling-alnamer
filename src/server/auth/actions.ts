@@ -11,7 +11,7 @@ import { getDictionary } from "@/i18n/server";
 import { clock } from "@/server/clock";
 import { CODE_RESEND_COOLDOWN_MS } from "@/server/config/policy";
 import { db } from "@/server/db";
-import { credentials, users } from "@/server/db/schema";
+import { users } from "@/server/db/schema";
 import {
   clearCodeVerifyFailures,
   clearSignInFailures,
@@ -26,7 +26,7 @@ import { verifyCaptcha } from "./captcha";
 import { latestCodeRow } from "./code-status";
 import { type CodePurpose, verifyCode, verifyCodeDecoy } from "./codes";
 import { completeSignIn } from "./complete-sign-in";
-import { authenticate } from "./credentials";
+import { authenticate, setPasswordIn } from "./credentials";
 import { isKnownDevice } from "./known-device";
 import { hashPassword } from "./password";
 import {
@@ -329,15 +329,7 @@ export async function resetPasswordAction(
   const reset = await db().transaction(async (tx) => {
     const verified = await verifyCode(user.id, "password_reset", input.code, tx, requester);
     if (!verified.ok) return null;
-    const passwordHash = await hashPassword(input.password);
-    const now = clock.now();
-    await tx
-      .insert(credentials)
-      .values({ userId: user.id, passwordHash, passwordSalt: null, updatedAt: now })
-      .onConflictDoUpdate({
-        target: credentials.userId,
-        set: { passwordHash, passwordSalt: null, updatedAt: now },
-      });
+    await setPasswordIn(tx, user.id, await hashPassword(input.password));
     // A password reset signs the account out everywhere (pre-sessions included) in the same
     // transaction, so a failure after the credential write rolls the write back.
     return { sessionHashes: await deleteUserSessionsIn(tx, user.id) };

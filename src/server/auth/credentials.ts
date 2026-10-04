@@ -7,6 +7,26 @@ import { hashPassword, isLegacyHash, verifyDummy, verifyPassword } from "./passw
 
 type Database = ReturnType<typeof db>;
 
+/**
+ * Sets or replaces a user's password: an argon2id hash (made by the caller, outside any lock),
+ * the legacy salt cleared. Runs on the caller's transaction so the write commits with whatever
+ * goes with it (a spent code, ended sessions, an audit row).
+ */
+export async function setPasswordIn(
+  executor: Pick<Database, "insert">,
+  userId: string,
+  passwordHash: string,
+): Promise<void> {
+  const now = clock.now();
+  await executor
+    .insert(credentials)
+    .values({ userId, passwordHash, passwordSalt: null, updatedAt: now })
+    .onConflictDoUpdate({
+      target: credentials.userId,
+      set: { passwordHash, passwordSalt: null, updatedAt: now },
+    });
+}
+
 /** An identifier containing "@" is an email; anything else is a username. Both are trimmed (columns are citext). */
 export function identifierCondition(identifier: string) {
   const value = identifier.trim();

@@ -659,6 +659,26 @@ describe("resetChildPassword", () => {
     expect(viaParent).toMatchObject({ ok: true, mode: "email" });
   });
 
+  it("direct: shares the per parent and child limit with email resets (A8.10)", async () => {
+    const parent = await makeUser("parent");
+    const childId = await createOk(parent);
+    for (let i = 0; i < 3; i++) {
+      const done = await svc.resetChildPassword(
+        { parentId: parent, childId, newPassword: `Brand-new-pass-${i}` },
+        ctx,
+        deps(),
+      );
+      expect(done).toEqual({ ok: true, mode: "direct" });
+    }
+    expect(
+      await svc.resetChildPassword(
+        { parentId: parent, childId, newPassword: "Brand-new-pass-x" },
+        ctx,
+        deps(),
+      ),
+    ).toEqual({ ok: false, reason: "rateLimited" });
+  });
+
   it("email: parent resets cannot burn the child's self-serve budget", async () => {
     const parent = await makeUser("parent");
     const email = `k-${crypto.randomUUID()}@example.test`;

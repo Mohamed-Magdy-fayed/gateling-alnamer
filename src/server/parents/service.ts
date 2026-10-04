@@ -10,6 +10,7 @@ import {
   guardParentReset,
 } from "@/server/auth/abuse";
 import { ageOn, isUnder18 } from "@/server/auth/age";
+import { setPasswordIn } from "@/server/auth/credentials";
 import { hashPassword } from "@/server/auth/password";
 import { nextPublicNumber } from "@/server/auth/public-number";
 import { sendCode as defaultSendCode } from "@/server/auth/send-code";
@@ -54,7 +55,7 @@ async function lock(tx: Tx, scope: "parent" | "student", id: string): Promise<vo
 type ParentState = "ok" | "forbidden" | "verifyFirst";
 
 /** A parent acts only while active and with a verified email (D35). */
-async function parentState(tx: Tx, parentId: string): Promise<ParentState> {
+async function parentState(tx: Database | Tx, parentId: string): Promise<ParentState> {
   const [row] = await tx
     .select({ emailVerifiedAt: users.emailVerifiedAt })
     .from(users)
@@ -457,6 +458,10 @@ type ResetDecision =
  * verifies an email or turns 18 meanwhile cannot be reset on stale facts. Email: a
  * `password_reset` code goes to the child's verified email through the normal send path, audit
  * `{mode:"email"}`; the caller only gets a mask.
+ *
+ * Both modes share one limit per parent and child, checked first (A8 code review). The argon2
+ * hash is made only after a lock-free pre-check says the reset can be direct, so a refused or
+ * email-mode request costs no hash; the transaction still decides on fresh facts.
  */
 export async function resetChildPassword(
   input: { parentId: string; childId: string; newPassword?: string },
@@ -464,10 +469,9 @@ export async function resetChildPassword(
   deps: ParentDeps = {},
 ): Promise<ResetChildPasswordResult> {
   const { parentId, childId } = input;
-  const password = input.newPassword ?? "";
-  const passwordValid =
-    password.length >= PASSWORD_MIN_LENGTH && password.length <= PASSWORD_MAX_LENGTH;
-  const passwordHash = passwordValid ? await hashPassword(password) : null;
+  const guard = await guardParentReset({ parentId, childId }, deps);
+  if (!("ok" in guard)) return { ok: false, reason: "rateLimited" };
+  const passwordHash = await directResetHash(parentId, childId, input.newPassword ?? "");
 
   const decision = await db().transaction(async (tx): Promise<ResetDecision> => {
     const refuse = (
@@ -481,13 +485,7 @@ export async function resetChildPassword(
 
     if (facts.mode === "direct") {
       if (!passwordHash) return refuse("invalid");
-      await tx
-        .insert(credentials)
-        .values({ userId: childId, passwordHash, passwordSalt: null })
-        .onConflictDoUpdate({
-          target: credentials.userId,
-          set: { passwordHash, passwordSalt: null, updatedAt: clock.now() },
-        });
+      await setPasswordIn(tx, childId, passwordHash);
       await writeAudit(tx, {
         actorId: parentId,
         action: "parent.reset_password",
@@ -510,8 +508,6 @@ export async function resetChildPassword(
   }
 
   const { facts, email } = decision;
-  const guard = await guardParentReset({ parentId, childId }, deps);
-  if (!("ok" in guard)) return { ok: false, reason: "rateLimited" };
   await db().transaction(async (tx) => {
     await writeAudit(tx, {
       actorId: parentId,
@@ -528,6 +524,22 @@ export async function resetChildPassword(
     ctx.locale,
   );
   return { ok: true, mode: "email", maskedEmail: maskEmail(email) };
+}
+
+/**
+ * The new password's hash when a direct reset looks possible (parent allowed, child direct-mode,
+ * a valid length); null otherwise, without hashing. Lock-free: the caller re-checks in its
+ * transaction.
+ */
+async function directResetHash(
+  parentId: string,
+  childId: string,
+  password: string,
+): Promise<string | null> {
+  if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) return null;
+  if ((await parentState(db(), parentId)) !== "ok") return null;
+  const facts = await childFacts(db(), parentId, childId);
+  return facts.mode === "direct" ? hashPassword(password) : null;
 }
 
 // ---- Parent view ----
