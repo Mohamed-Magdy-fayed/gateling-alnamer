@@ -30,6 +30,7 @@ vi.mock("./pending-reset", async () =>
 );
 vi.mock("./code-status", async () => (await import("./actions.test-harness")).mocks.codeStatus());
 vi.mock("@/server/db", async () => (await import("./actions.test-harness")).mocks.db());
+vi.mock("@/server/env", async () => (await import("./actions.test-harness")).mocks.env());
 vi.mock("@/server/jobs/send", async () => (await import("./actions.test-harness")).mocks.jobs());
 vi.mock("./codes", async () => (await import("./actions.test-harness")).mocks.codes());
 vi.mock("./session", async () => (await import("./actions.test-harness")).mocks.session());
@@ -80,6 +81,8 @@ describe("requestPasswordResetAction", () => {
           purpose: "password_reset",
           code: "123456",
           name: "U",
+          // The continue link, from BASE_URL only, carries this request's token (A8 re-review).
+          link: "https://alnamer.example/reset-password/continue?t=tok.who@example.test.nonce-2",
         },
       ],
     ]);
@@ -371,6 +374,10 @@ describe("resendCodeAction", () => {
     expect(h.issue).not.toHaveBeenCalled();
     await runAfter();
     expect(h.issue).toHaveBeenCalledWith("u1", "password_reset", undefined, undefined, "rh:mine");
+    expect(h.sent.at(-1)).toMatchObject([
+      "auth/code-email",
+      { link: "https://alnamer.example/reset-password/continue?t=tok.who@example.test.mine" },
+    ]);
     // A resend keeps the same requester, so earlier codes still verify (A8 L2).
     expect(h.pendingNonces.at(-1)).toBe("mine");
     expect(answered).toEqual(unknown);

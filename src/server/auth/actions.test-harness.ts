@@ -129,6 +129,8 @@ export const mocks = {
       return `nonce-${h.nonces}`;
     },
     resetRequesterHash: (nonce: string) => `rh:${nonce}`,
+    pendingResetToken: (email: string, nonce: string) => `tok.${email}.${nonce}`,
+    continueResetPath: (token: string) => `/reset-password/continue?t=${token}`,
     setPendingReset: async (email: string, nonce: string) => {
       h.pendingSet.push(email);
       h.pendingNonces.push(nonce);
@@ -139,6 +141,7 @@ export const mocks = {
     },
   }),
   codeStatus: () => ({ latestCodeRow: async () => h.codeRow }),
+  env: () => ({ serverEnv: () => ({ BASE_URL: "https://alnamer.example" }) }),
   db: () => ({
     db: () => ({
       query: { users: { findFirst: async () => h.user } },

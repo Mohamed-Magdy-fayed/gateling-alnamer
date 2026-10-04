@@ -33,6 +33,7 @@ vi.mock("./pending-reset", async () =>
 );
 vi.mock("./code-status", async () => (await import("./actions.test-harness")).mocks.codeStatus());
 vi.mock("@/server/db", async () => (await import("./actions.test-harness")).mocks.db());
+vi.mock("@/server/env", async () => (await import("./actions.test-harness")).mocks.env());
 vi.mock("@/server/jobs/send", async () => (await import("./actions.test-harness")).mocks.jobs());
 vi.mock("./codes", async () => (await import("./actions.test-harness")).mocks.codes());
 vi.mock("./session", async () => (await import("./actions.test-harness")).mocks.session());

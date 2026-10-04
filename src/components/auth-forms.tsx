@@ -300,6 +300,7 @@ export function ResetPasswordForm({ t, pending, captcha, locale }: ResetPassword
             name="email"
             type="email"
             label={t.fields.email}
+            hint={t.reset.otherDevice}
             autoComplete="email"
             required
             ltr

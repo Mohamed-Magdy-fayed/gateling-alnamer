@@ -32,4 +32,28 @@ describe("renderCodeEmail", () => {
     expect(mail.html).toContain("&#60;img");
     expect(mail.text).toContain("<img");
   });
+
+  it("a self-serve reset carries the continue link (LTR, escaped); a verify mail never does", () => {
+    const link = "https://alnamer.example/reset-password/continue?t=a.b&x=<y>";
+    const reset = renderCodeEmail("ar", {
+      name: "N",
+      code: "123456",
+      purpose: "password_reset",
+      link,
+    });
+    expect(reset.text).toContain(link);
+    expect(reset.html).toContain(
+      '<a dir="ltr" href="https://alnamer.example/reset-password/continue?t=a.b&#38;x=&#60;y&#62;"',
+    );
+    const verify = renderCodeEmail("en", {
+      name: "N",
+      code: "123456",
+      purpose: "email_verify",
+      link,
+    });
+    expect(verify.text).not.toContain(link);
+    expect(verify.html).not.toContain("<a ");
+    const plain = renderCodeEmail("en", { name: "N", code: "123456", purpose: "password_reset" });
+    expect(plain.html).not.toContain("<a ");
+  });
 });

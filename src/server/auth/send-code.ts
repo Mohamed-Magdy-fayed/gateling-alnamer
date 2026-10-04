@@ -27,9 +27,9 @@ export async function sendCode(
   user: CodeRecipient,
   purpose: CodePurpose,
   requestLocale: Locale,
-  options: { pendingEmail?: string; requesterHash?: string } = {},
+  options: { pendingEmail?: string; requesterHash?: string; link?: string } = {},
 ): Promise<void> {
-  const { pendingEmail, requesterHash } = options;
+  const { pendingEmail, requesterHash, link } = options;
   const to = pendingEmail ?? user.email;
   if (!to) return;
   const { codeId, code } = await issueCode(
@@ -47,6 +47,7 @@ export async function sendCode(
       purpose,
       code,
       name: user.name,
+      ...(link ? { link } : {}),
     });
   } catch (error: unknown) {
     console.error("Code email enqueue failed", error instanceof Error ? error.name : "unknown");

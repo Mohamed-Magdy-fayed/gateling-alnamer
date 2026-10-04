@@ -72,10 +72,35 @@ export function parsePendingReset(
 
 const pendingKey = () => authKey("rp");
 
+/**
+ * The signed reset context for `email` and `nonce`, issued now: the `__Host-rp` cookie value, and
+ * the token in the email's continue link (A8 re-review: a reset can finish on another device).
+ */
+export function pendingResetToken(email: string, nonce: string): string {
+  return signPendingReset({ email, issuedAt: clock.now().getTime(), nonce }, pendingKey());
+}
+
+/** The path that opens a reset on any device from the email link. */
+export const continueResetPath = (token: string): string =>
+  `/reset-password/continue?t=${encodeURIComponent(token)}`;
+
 /** Server actions only: remembers that a reset code was just requested for `email` by this browser. */
 export async function setPendingReset(email: string, nonce: string): Promise<void> {
+  await storePendingReset(pendingResetToken(email, nonce));
+}
+
+/**
+ * Route handlers and actions: adopts a signed reset token (the email link) as this browser's reset
+ * context. False, and nothing stored, for a bad or expired token.
+ */
+export async function adoptPendingReset(token: string): Promise<boolean> {
+  if (!parsePendingReset(token, pendingKey(), clock.now())) return false;
+  await storePendingReset(token);
+  return true;
+}
+
+async function storePendingReset(value: string): Promise<void> {
   const store = await cookies();
-  const value = signPendingReset({ email, issuedAt: clock.now().getTime(), nonce }, pendingKey());
   store.set(PENDING_RESET_COOKIE, value, {
     httpOnly: true,
     // `__Host-` (A8 review L3): Secure, Path=/, no Domain, so a sibling subdomain cannot plant

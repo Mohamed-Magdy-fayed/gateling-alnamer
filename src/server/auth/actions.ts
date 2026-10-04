@@ -12,6 +12,7 @@ import { clock } from "@/server/clock";
 import { CODE_RESEND_COOLDOWN_MS } from "@/server/config/policy";
 import { db } from "@/server/db";
 import { users } from "@/server/db/schema";
+import { serverEnv } from "@/server/env";
 import {
   clearCodeVerifyFailures,
   clearSignInFailures,
@@ -31,7 +32,9 @@ import { isKnownDevice } from "./known-device";
 import { hashPassword } from "./password";
 import {
   clearPendingReset,
+  continueResetPath,
   newResetNonce,
+  pendingResetToken,
   readPendingReset,
   resetRequesterHash,
   setPendingReset,
@@ -274,7 +277,8 @@ export async function requestPasswordResetAction(
   const nonce = newResetNonce();
   const requesterHash = resetRequesterHash(nonce);
   if (user?.email) {
-    sendAfterResponse(() => sendCode(user, "password_reset", locale, { requesterHash }));
+    const link = resetLink(parsed.data.email, nonce);
+    sendAfterResponse(() => sendCode(user, "password_reset", locale, { requesterHash, link }));
   }
   // Same answer whether or not the email exists (no account enumeration): the code screen, with
   // the email kept in a signed server-side cookie instead of the URL.
@@ -351,6 +355,15 @@ async function resetWithCode(
     await setPasswordIn(tx, userId, await hashPassword(password));
     return { sessionHashes: await deleteUserSessionsIn(tx, userId) };
   });
+}
+
+/**
+ * The reset email's continue link: opens this reset (same email and nonce) on any device. Built
+ * only from the configured BASE_URL, never from the request host. None without one.
+ */
+function resetLink(email: string, nonce: string): string | undefined {
+  const base = serverEnv().BASE_URL;
+  return base ? new URL(continueResetPath(pendingResetToken(email, nonce)), base).href : undefined;
 }
 
 /** Confirms the signed-in user's email with the code that was mailed to them. */
@@ -442,7 +455,8 @@ export async function resendCodeAction(_prev: FormState, formData: FormData): Pr
   const nonce = target.nonce ?? newResetNonce();
   if (user && purpose === "password_reset") {
     const requesterHash = resetRequesterHash(nonce);
-    sendAfterResponse(() => sendCode(user, purpose, locale, { requesterHash }));
+    const link = resetLink(target.email, nonce);
+    sendAfterResponse(() => sendCode(user, purpose, locale, { requesterHash, link }));
   } else if (user) {
     await sendCode(user, purpose, locale);
   }

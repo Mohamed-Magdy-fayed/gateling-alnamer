@@ -9,6 +9,8 @@ export type CodeEmailData = {
   purpose: "email_verify" | "password_reset";
   code: string;
   name: string;
+  /** Self-serve reset only: the continue-on-any-device link. */
+  link?: string;
 };
 
 export type SupportRequestData = { userId: string; locale: Locale };

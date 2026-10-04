@@ -17,6 +17,7 @@ async function sendCodeMail(data: CodeEmailData): Promise<void> {
     name: data.name,
     code: data.code,
     purpose: data.purpose,
+    link: data.link,
   });
   await sendMail({ to: data.to, ...mail });
 }

@@ -253,6 +253,8 @@ export const en: Dictionary = {
       newPassword: "New password",
       submit: "Save password",
       done: "Your password was changed. Sign in now.",
+      otherDevice:
+        "Opened the email on another device? Open the link in the email there to continue on that device.",
     },
     fields: {
       name: "Full name",
@@ -372,6 +374,7 @@ export const en: Dictionary = {
       bodyVerify: "Your email confirmation code is:",
       expiry: "It is valid for 10 minutes.",
       footer: "If you did not ask for this, ignore this email.",
+      resetLink: "To reset on another device, open this link there, then enter the code:",
     },
     deviceSupport: {
       subject: "A student reached the device limit - Al-Namer",

@@ -160,6 +160,42 @@ test("forgot password: wrong code, Mailpit code, reset signs out other sessions,
   await signIn(page, recoveryEmail, newPassword);
 });
 
+test("a reset requested in one browser finishes in another through the email link", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  const email = `xdev-${runId}@alnamer.local`;
+  await createStudent(browser, baseURL, { name: "Smoke Other Device", email, password });
+  const before = await countMail(email);
+  await page.goto("/forgot-password");
+  await page.getByLabel(FIELD_EMAIL).fill(email);
+  await page.getByRole("button", { name: SEND_CODE }).click();
+  await page.waitForURL("**/reset-password");
+  const mail = await waitForMailText(email, { after: before });
+  const code = extractCode(mail);
+  const link = mail.match(/https?:\/\/\S+\/reset-password\/continue\?t=\S+/)?.[0];
+  expect(link).toBeTruthy();
+
+  // Another device: the link (path and token; the smoke server has its own origin) opens the
+  // code form without asking for the email, and the code from this request works there.
+  const phone = await browser.newContext({
+    baseURL: baseURL as string,
+    extraHTTPHeaders: { "x-real-ip": nextClientIp() },
+  });
+  const phonePage = await phone.newPage();
+  const target = new URL(link as string);
+  await phonePage.goto(`${target.pathname}${target.search}`);
+  await phonePage.waitForURL("**/reset-password");
+  await expect(phonePage.getByLabel(FIELD_EMAIL)).toHaveCount(0);
+  await phonePage.getByLabel(FIELD_CODE, { exact: true }).fill(code);
+  await phonePage.getByLabel(FIELD_NEW_PASSWORD).fill(newPassword);
+  await phonePage.getByRole("button", { name: SAVE_PASSWORD }).click();
+  await expect(phonePage.getByRole("link", { name: "تسجيل الدخول" })).toBeVisible();
+  await phone.close();
+  await signIn(page, email, newPassword);
+});
+
 test("after ending another session focus lands on the section heading, never body", async ({
   browser,
   baseURL,
