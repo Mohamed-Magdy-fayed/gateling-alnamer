@@ -8,6 +8,7 @@ import {
   FIELD_EMAIL,
   FIELD_NAME,
   FIELD_PASSWORD,
+  markEmailVerified,
   password,
   pickDate,
   runId,
@@ -101,6 +102,13 @@ test("an admin approves; the teacher accepts the terms and authoring opens", asy
   await asAdmin(browser, baseURL, async (admin) => {
     const card = applicationOf(admin, applicantEmail);
     await expect(card.getByText("أدرّس الرياضيات للصف العاشر في عمّان.")).toBeVisible();
+    // Approval waits for the applicant's confirmed email.
+    await expect(card.getByText("البريد غير مؤكَّد")).toBeVisible();
+    await card.getByRole("button", { name: "اعتماد" }).click();
+    await expect(card.getByText(/لم يؤكّد المتقدّم بريده الإلكتروني بعد/)).toBeVisible();
+    await markEmailVerified(applicantEmail);
+    await admin.reload();
+    await expect(card.getByText("البريد مؤكَّد")).toBeVisible();
     await card.getByRole("button", { name: "اعتماد" }).click();
     await expect(admin.getByText("تم اعتماد الطلب وأُرسل بريد إلى المعلّم.")).toBeVisible();
     await expect(applicationOf(admin, applicantEmail)).toHaveCount(0);

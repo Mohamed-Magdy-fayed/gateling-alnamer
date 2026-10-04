@@ -422,6 +422,8 @@ export const en: Dictionary = {
       rejectedBody: "For questions, contact the platform team.",
       suspendedTitle: "Your teaching account is suspended.",
       suspendedBody: "Contact the platform team for details.",
+      unavailable:
+        "Creating courses is not available for your account yet. Contact the platform team.",
     },
     terms: {
       title: "Teacher terms",
@@ -440,7 +442,8 @@ export const en: Dictionary = {
       appliedOn: "Applied {date}",
       note: "What they teach",
       reason: "Reason",
-      reasonHint: "Required to reject; the applicant receives it by email. Up to 1000 characters.",
+      reasonHint:
+        "Only for a rejection: the applicant receives it by email. Up to 1000 characters.",
       approve: "Approve",
       reject: "Reject",
       approved: "Application approved. The teacher was emailed.",
@@ -448,6 +451,9 @@ export const en: Dictionary = {
       reasonRequired: "Write the reason before rejecting.",
       reasonTooLong: "Keep the reason under 1000 characters.",
       notPending: "This application was already decided.",
+      unverified: "The applicant has not confirmed their email yet. Approve once it is confirmed.",
+      emailUnverified: "Email not confirmed",
+      emailVerified: "Email confirmed",
       error: "Could not save. Try again.",
       inviteTitle: "Invite a teacher",
       inviteIntro:

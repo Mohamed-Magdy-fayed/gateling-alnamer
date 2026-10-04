@@ -125,7 +125,7 @@ describe("decideTeacherAction", () => {
     expect(h.revalidated).toEqual(["/dashboard/admin/teachers"]);
   });
 
-  it("shows a missing reason at the field only", async () => {
+  it("shows a missing reason at the field, with the form summary", async () => {
     h.decideResult = { ok: false, reason: "reason_required" };
     const state = await decideTeacherAction(
       idle,
@@ -133,7 +133,7 @@ describe("decideTeacherAction", () => {
     );
     expect(state).toEqual({
       status: "error",
-      message: undefined,
+      message: en.auth.errors.invalid,
       fieldErrors: { reason: en.teachers.admin.reasonRequired },
       values: { reason: "" },
     });
@@ -147,11 +147,36 @@ describe("decideTeacherAction", () => {
       form({ teacher_id: TEACHER, decision: "approve" }),
     );
     expect(state).toMatchObject({ status: "error", message: en.teachers.admin.notPending });
+    // Another admin decided it: the list refreshes so the card goes away.
+    expect(h.revalidated).toEqual(["/dashboard/admin/teachers"]);
+  });
+
+  it("says an unconfirmed email blocks approval", async () => {
+    h.decideResult = { ok: false, reason: "unverified" };
+    const state = await decideTeacherAction(
+      idle,
+      form({ teacher_id: TEACHER, decision: "approve" }),
+    );
+    expect(state).toMatchObject({ status: "error", message: en.teachers.admin.unverified });
+    expect(h.revalidated).toEqual([]);
+  });
+
+  it("drops a reason typed before approving (it is never mailed)", async () => {
+    await expect(
+      decideTeacherAction(
+        idle,
+        form({ teacher_id: TEACHER, decision: "approve", reason: "great fit" }),
+      ),
+    ).rejects.toThrow("redirect:/dashboard/admin/teachers?done=approved");
+    expect(h.decided).toEqual([
+      { adminId: "admin-1", teacherId: TEACHER, decision: "approve", reason: "" },
+    ]);
+    expect(h.mails).toEqual([["t@example.com", "ar", "en", { kind: "approved", name: "Mona" }]]);
   });
 });
 
 describe("inviteTeacherAction", () => {
-  it("emails a link built from BASE_URL, never showing the token", async () => {
+  it("emails a link built from BASE_URL in the platform language, never showing the token", async () => {
     const state = await inviteTeacherAction(idle, form({ name: "Omar", email: "o@example.com" }));
     expect(state).toEqual({ status: "success", message: en.teachers.admin.invited });
     expect(JSON.stringify(state)).not.toContain("tok_123");
@@ -159,7 +184,7 @@ describe("inviteTeacherAction", () => {
       [
         "o@example.com",
         null,
-        "en",
+        "ar",
         { kind: "invite", name: "Omar", link: "https://alnamer.example/teach/invite/tok_123" },
       ],
     ]);

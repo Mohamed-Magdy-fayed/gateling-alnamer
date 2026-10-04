@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { defaultLocale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/server";
 import { getActingUser } from "@/server/auth/acting-user";
 import { echo, type FormState, fields, sendAfterResponse } from "@/server/auth/form-kit";
@@ -38,28 +39,26 @@ export async function decideTeacherAction(
   const a = t.teachers.admin;
   const parsed = decideSchema.safeParse(fields(formData));
   if (!parsed.success) return { status: "error", message: a.error };
-  const { teacher_id: teacherId, decision, reason } = parsed.data;
-  const result = await decideTeacherApplication({
-    adminId: admin.id,
-    teacherId,
-    decision,
-    reason,
-  });
+  const { teacher_id: teacherId, decision } = parsed.data;
+  // The reason belongs to a rejection (it is mailed); an approval does not carry one.
+  const reason = decision === "reject" ? parsed.data.reason : "";
+  const result = await decideTeacherApplication({ adminId: admin.id, teacherId, decision, reason });
   if (!result.ok) {
+    // Another admin may have decided it: refresh the list so the card goes away.
+    if (result.reason === "not_pending" || result.reason === "not_found") {
+      revalidatePath(ADMIN_TEACHERS_PATH);
+    }
     const fieldErrors =
       result.reason === "reason_required"
         ? { reason: a.reasonRequired }
         : result.reason === "reason_too_long"
           ? { reason: a.reasonTooLong }
           : undefined;
-    const message = result.reason === "not_pending" ? a.notPending : a.error;
-    return {
-      status: "error",
-      // A reason error shows at the field only (one field: no summary list).
-      message: fieldErrors ? undefined : message,
-      fieldErrors,
-      values: { reason },
-    };
+    const messages = { not_pending: a.notPending, unverified: a.unverified };
+    const message = fieldErrors
+      ? t.auth.errors.invalid
+      : (messages[result.reason as keyof typeof messages] ?? a.error);
+    return { status: "error", message, fieldErrors, values: { reason } };
   }
   const { email, name, locale: saved } = result.recipient;
   const trimmed = reason.trim();
@@ -87,7 +86,7 @@ export async function inviteTeacherAction(
 ): Promise<FormState> {
   const admin = await actingAdmin();
   if (!admin) redirect("/dashboard");
-  const { t, locale } = await getDictionary();
+  const { t } = await getDictionary();
   const a = t.teachers.admin;
   const raw = fields(formData);
   const base = serverEnv().BASE_URL;
@@ -111,8 +110,13 @@ export async function inviteTeacherAction(
     };
   }
   const link = new URL(`/teach/invite/${result.token}`, base).href;
+  // The invitee has no saved language yet: the platform default, not the admin's screen language.
   sendAfterResponse(() =>
-    sendTeacherEmail(result.email, null, locale, { kind: "invite", name: result.name, link }),
+    sendTeacherEmail(result.email, null, defaultLocale, {
+      kind: "invite",
+      name: result.name,
+      link,
+    }),
   );
   return { status: "success", message: a.invited };
 }

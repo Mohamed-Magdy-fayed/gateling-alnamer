@@ -106,6 +106,7 @@ export async function upsertAccount(
           set: {
             status: "approved",
             termsVersionAccepted: SEED_TEACHER_TERMS,
+            termsAcceptedAt: sql`coalesce(${teacherProfiles.termsAcceptedAt}, now())`,
             isSample: options.isSample,
           },
         });

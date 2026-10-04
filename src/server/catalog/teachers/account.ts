@@ -67,12 +67,13 @@ export async function insertTeacher(tx: Tx, teacher: NewTeacher, action: string)
     decidedBy: teacher.decidedBy,
     decidedAt: teacher.decidedAt,
   });
+  // The new teacher is the actor (they applied or redeemed); an inviter is recorded beside them.
   await writeAudit(tx, {
-    actorId: teacher.decidedBy ?? user.id,
+    actorId: user.id,
     action,
     subjectType: "user",
     subjectId: user.id,
-    after: { status: teacher.status },
+    after: { status: teacher.status, invitedBy: teacher.decidedBy },
   });
   return user.id;
 }

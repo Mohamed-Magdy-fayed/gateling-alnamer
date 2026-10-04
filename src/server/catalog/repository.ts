@@ -39,7 +39,10 @@ const courseSummaryColumns = {
   teacherId: teacherProfiles.userId,
   teacherName: teacherProfiles.publicName,
   teacherBio: teacherProfiles.bio,
-  teacherNumber: users.publicNumber,
+  // A profile exists only for an active account; otherwise no link (it would be a 404).
+  teacherNumber: sql<
+    string | null
+  >`case when ${users.status} = 'active' then ${users.publicNumber} end`,
 };
 
 function toAccess(row: {

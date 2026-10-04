@@ -66,15 +66,22 @@ async function profileOf(userId: string) {
   return row;
 }
 
-async function applied() {
+/** An application whose email is confirmed (approval needs that) unless `verified` is false. */
+async function applied({ verified = true }: { verified?: boolean } = {}) {
   const result = await applyAsTeacher(application(), ctx);
   if (!result.ok) throw new Error(JSON.stringify(result));
+  if (verified) {
+    await conn
+      .update(schema.users)
+      .set({ emailVerifiedAt: NOW })
+      .where(eq(schema.users.id, result.userId));
+  }
   return result.userId;
 }
 
 describe("applyAsTeacher", () => {
   it("creates a teacher account in status applied, with the private note and an audit row", async () => {
-    const userId = await applied();
+    const userId = await applied({ verified: false });
     const [user] = await conn.select().from(schema.users).where(eq(schema.users.id, userId));
     expect(user).toMatchObject({ role: "teacher", emailVerifiedAt: null });
     expect(user?.publicNumber).toMatch(/^AN\d+$/);
@@ -130,6 +137,30 @@ describe("decideTeacherApplication", () => {
         reason: "x",
       }),
     ).toEqual({ ok: false, reason: "not_pending" });
+  });
+
+  it("refuses to approve an unconfirmed email, but a rejection still goes through", async () => {
+    const admin = await createUser(conn, { role: "admin" });
+    const teacherId = await applied({ verified: false });
+    const [listed] = (await listTeacherApplications()).filter((a) => a.teacherId === teacherId);
+    expect(listed?.emailVerified).toBe(false);
+    expect(
+      await decideTeacherApplication({
+        adminId: admin.id,
+        teacherId,
+        decision: "approve",
+        reason: "",
+      }),
+    ).toEqual({ ok: false, reason: "unverified" });
+    expect(await profileOf(teacherId)).toMatchObject({ status: "applied" });
+    expect(
+      await decideTeacherApplication({
+        adminId: admin.id,
+        teacherId,
+        decision: "reject",
+        reason: "Unknown applicant",
+      }),
+    ).toMatchObject({ ok: true });
   });
 
   it("a rejection needs a reason, which is stored and audited", async () => {
@@ -244,7 +275,12 @@ describe("teacher invites", () => {
       status: "approved",
       decidedBy: admin.id,
     });
-    expect(await auditFor("teacher.invite_redeemed", redeemed.userId)).toHaveLength(1);
+    const [redeemAudit] = await auditFor("teacher.invite_redeemed", redeemed.userId);
+    // The invitee acted; the inviter is recorded beside them.
+    expect(redeemAudit).toMatchObject({
+      actorId: redeemed.userId,
+      after: { status: "approved", invitedBy: admin.id },
+    });
     expect(await peekTeacherInvite(issued.token)).toBeNull();
     expect(
       await redeemTeacherInvite({
@@ -254,6 +290,35 @@ describe("teacher invites", () => {
         locale: "en",
       }),
     ).toEqual({ ok: false, reason: "invalid_link" });
+  });
+
+  it("a new invite replaces the live one for the address", async () => {
+    const admin = await createUser(conn, { role: "admin" });
+    const email = `reissued-${crypto.randomUUID()}@example.test`;
+    const first = await issueTeacherInvite({ adminId: admin.id, name: "First", email }, deps());
+    const second = await issueTeacherInvite({ adminId: admin.id, name: "Second", email }, deps());
+    if (!first.ok || !second.ok) throw new Error("issue failed");
+    expect(await peekTeacherInvite(first.token)).toBeNull();
+    expect(await peekTeacherInvite(second.token)).toEqual({ name: "Second", email });
+  });
+
+  it("an address that signs up after the invite is reported as taken, and the invite stays", async () => {
+    const admin = await createUser(conn, { role: "admin" });
+    const email = `raced-${crypto.randomUUID()}@example.test`;
+    const issued = await issueTeacherInvite({ adminId: admin.id, name: "Raced", email }, deps());
+    if (!issued.ok) throw new Error(issued.reason);
+    const squatter = await createUser(conn, { role: "student" });
+    await conn.update(schema.users).set({ email }).where(eq(schema.users.id, squatter.id));
+    expect(
+      await redeemTeacherInvite({
+        token: issued.token,
+        password: "Invited-pass-1",
+        dateOfBirth: "1988-08-08",
+        locale: "en",
+      }),
+    ).toEqual({ ok: false, reason: "taken" });
+    // The transaction rolled back: the invite was not spent.
+    expect(await peekTeacherInvite(issued.token)).toEqual({ name: "Raced", email });
   });
 
   it("refuses existing addresses and bad input, expires after 7 days, and is rate limited", async () => {

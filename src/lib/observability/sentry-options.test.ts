@@ -64,6 +64,22 @@ describe("scrubEvent", () => {
     expect(redactText("no secrets here")).toBe("no secrets here");
   });
 
+  it("masks the teacher invite token in URLs, breadcrumbs and free text", () => {
+    const token = "Zm9vYmFyYmF6cXV4_-0123456789abcdefghijklmn";
+    const event = scrubEvent({
+      request: { url: `https://alnamer.example/teach/invite/${token}?x=1` },
+      message: `failed at https://alnamer.example/teach/invite/${token}`,
+      breadcrumbs: [{ data: { from: `/teach/invite/${token}`, to: "/dashboard" } }],
+    });
+    expect(event.request?.url).toBe("https://alnamer.example/teach/invite/[token]");
+    expect(event.message).toBe("failed at https://alnamer.example/teach/invite/[token]");
+    expect(event.breadcrumbs?.[0]?.data).toEqual({
+      from: "/teach/invite/[token]",
+      to: "/dashboard",
+    });
+    expect(JSON.stringify(event)).not.toContain(token);
+  });
+
   it("leaves an empty event alone", () => {
     expect(scrubEvent({})).toEqual({});
     expect(withoutQuery("/plain")).toBe("/plain");

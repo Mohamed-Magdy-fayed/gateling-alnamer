@@ -48,6 +48,18 @@ export async function issueTeacherInvite(
   if (existing) return { ok: false, reason: "exists" };
   const token = randomBytes(32).toString("base64url");
   await db().transaction(async (tx) => {
+    // A new invite replaces any live one for the address (a mistyped or resent link stops working).
+    const now = clock.now();
+    await tx
+      .update(teacherInvites)
+      .set({ usedAt: now })
+      .where(
+        and(
+          eq(teacherInvites.email, email.data),
+          isNull(teacherInvites.usedAt),
+          gt(teacherInvites.expiresAt, now),
+        ),
+      );
     const id = uuidv7();
     await tx.insert(teacherInvites).values({
       id,

@@ -48,7 +48,7 @@ export function TermsCard({ t, versionId, body, isPlaceholder }: Props) {
         aria-labelledby={headingId}
         className="rounded-sm border border-border bg-muted/40 p-4 text-sm leading-7 whitespace-pre-line"
       >
-        {body}
+        <bdi>{body}</bdi>
       </section>
       {error ? <Alert tone="danger">{error}</Alert> : null}
       <Button type="button" size="lg" onClick={accept} disabled={pending} aria-busy={pending}>

@@ -20,8 +20,7 @@ const summaryLinkClass =
   "inline-flex min-h-11 items-center font-medium underline underline-offset-4";
 
 /** Focuses the field a summary entry points at (a plain fragment jump does not focus buttons). */
-function FieldLink({ field, children }: { field: string; children: string }) {
-  const id = `field-${field}`;
+function FieldLink({ id, children }: { id: string; children: string }) {
   return (
     <a
       href={`#${id}`}
@@ -44,7 +43,18 @@ function toneOf(state: FormState): MessageTone {
  * Form-level result. After every submit it takes focus (a `tabIndex={-1}` alert) so keyboard and
  * screen-reader users land on the outcome; field-format errors are listed as links to the fields.
  */
-export function Message({ state, t, id }: { state: FormState; t: AuthText; id?: string }) {
+export function Message({
+  state,
+  t,
+  id,
+  fieldIds,
+}: {
+  state: FormState;
+  t: AuthText;
+  id?: string;
+  /** Element ids for fields that do not use the default `field-<name>` id. */
+  fieldIds?: Partial<Record<string, string>>;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (state.status !== "idle") ref.current?.focus();
@@ -76,7 +86,7 @@ export function Message({ state, t, id }: { state: FormState; t: AuthText; id?: 
         <ul className="mt-1 list-disc ps-5">
           {failing.map(([field, message]) => (
             <li key={field}>
-              <FieldLink field={field}>{message}</FieldLink>
+              <FieldLink id={fieldIds?.[field] ?? `field-${field}`}>{message}</FieldLink>
             </li>
           ))}
         </ul>

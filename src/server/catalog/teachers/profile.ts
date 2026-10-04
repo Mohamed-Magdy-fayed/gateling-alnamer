@@ -54,6 +54,8 @@ export type TeacherOnboardingState = {
   publicNumber: string | null;
   /** The current terms when an approved teacher has not accepted them yet; null otherwise. */
   termsToAccept: TermsVersion | null;
+  /** The same rule as `canAuthor`: approved and the current terms accepted. */
+  canAuthor: boolean;
 };
 
 /** What the teacher dashboard shows before authoring (C1); null when the user has no profile. */
@@ -78,5 +80,6 @@ export async function teacherOnboardingState(
     decisionReason: row.decisionReason,
     publicNumber: row.publicNumber,
     termsToAccept: terms && terms.id !== row.accepted ? terms : null,
+    canAuthor: terms !== null && terms.id === row.accepted,
   };
 }

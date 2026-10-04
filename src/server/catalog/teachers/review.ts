@@ -1,5 +1,5 @@
 import "server-only";
-import { asc, count, eq } from "drizzle-orm";
+import { asc, count, eq, sql } from "drizzle-orm";
 import { writeAudit } from "@/server/audit/repository";
 import { clock } from "@/server/clock";
 import { db } from "@/server/db";
@@ -14,6 +14,8 @@ export type TeacherApplication = {
   email: string | null;
   note: string | null;
   appliedAt: Date;
+  /** Approval waits for this: the applicant proved the mailbox (anyone can type an address). */
+  emailVerified: boolean;
 };
 
 /** Applications waiting for a decision, oldest first. */
@@ -25,6 +27,7 @@ export async function listTeacherApplications(): Promise<TeacherApplication[]> {
       email: users.email,
       note: teacherProfiles.applicationNote,
       appliedAt: teacherProfiles.createdAt,
+      emailVerified: sql<boolean>`${users.emailVerifiedAt} is not null`,
     })
     .from(teacherProfiles)
     .innerJoin(users, eq(users.id, teacherProfiles.userId))
@@ -36,12 +39,16 @@ export type Decision = "approve" | "reject";
 
 export type DecideResult =
   | { ok: true; recipient: { email: string | null; name: string; locale: string | null } }
-  | { ok: false; reason: "not_found" | "not_pending" | "reason_required" | "reason_too_long" };
+  | {
+      ok: false;
+      reason: "not_found" | "not_pending" | "unverified" | "reason_required" | "reason_too_long";
+    };
 
 /**
  * Approves or rejects an application. A rejection needs a reason (it is mailed); both write the
  * decision, who and when with the audit row in one transaction. Only an `applied` profile can be
- * decided. The caller queues the email with the returned recipient.
+ * decided, and only an applicant with a confirmed email can be approved (otherwise anyone could
+ * apply under someone else's address and teach as them). The caller queues the email.
  */
 export async function decideTeacherApplication(input: {
   adminId: string;
@@ -60,6 +67,7 @@ export async function decideTeacherApplication(input: {
         email: users.email,
         name: users.name,
         locale: users.locale,
+        verifiedAt: users.emailVerifiedAt,
       })
       .from(teacherProfiles)
       .innerJoin(users, eq(users.id, teacherProfiles.userId))
@@ -67,6 +75,8 @@ export async function decideTeacherApplication(input: {
       .for("update", { of: teacherProfiles });
     if (!row) return { ok: false, reason: "not_found" } as const;
     if (row.status !== "applied") return { ok: false, reason: "not_pending" } as const;
+    if (input.decision === "approve" && !row.verifiedAt)
+      return { ok: false, reason: "unverified" } as const;
     const status = input.decision === "approve" ? "approved" : "rejected";
     await tx
       .update(teacherProfiles)

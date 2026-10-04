@@ -63,9 +63,6 @@ export default async function DashboardPage({
     !sample && user.role === "teacher" ? teacherOnboardingState(user.id) : null,
     !sample && user.role === "admin" ? countTeacherApplications() : 0,
   ]);
-  // A teacher who can author has nothing left to deal with: no gate.
-  const onboarding =
-    onboard && (onboard.status !== "approved" || onboard.termsToAccept) ? onboard : null;
 
   return (
     <Container className="py-8">
@@ -118,7 +115,7 @@ export default async function DashboardPage({
           </>
         ) : null}
         {sample === null && user.role === "teacher" ? (
-          <TeacherLanding t={t} locale={locale} courses={teaching} onboarding={onboarding} />
+          <TeacherLanding t={t} locale={locale} courses={teaching} onboarding={onboard} />
         ) : null}
         {sample === null && user.role === "reviewer" ? <ReviewerLanding t={t} /> : null}
         {sample === null && user.role === "admin" ? (

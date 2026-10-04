@@ -21,18 +21,28 @@ type ScrubbableEvent = {
   breadcrumbs?: Crumb[];
 };
 
-/** A URL without its query and fragment (reset links and OAuth callbacks carry secrets there). */
+/** Path segments that are secrets themselves (the teacher invite token, C1). */
+const SECRET_PATH = /(\/teach\/invite\/)[^\s/?#"']+/g;
+
+function maskSecretPaths(text: string): string {
+  return text.replace(SECRET_PATH, "$1[token]");
+}
+
+/**
+ * A URL without its query and fragment (reset links and OAuth callbacks carry secrets there) and
+ * with secret path segments masked.
+ */
 export function withoutQuery(url: string): string {
   const cut = url.search(/[?#]/);
-  return cut === -1 ? url : url.slice(0, cut);
+  return maskSecretPaths(cut === -1 ? url : url.slice(0, cut));
 }
 
 const EMAIL = /[^\s@"'<>()]+@[^\s@"'<>()]+\.[^\s@"'<>()]+/g;
 const URL_QUERY = /(https?:\/\/[^\s?#"']*|\/[^\s?#"']*)[?#][^\s"']*/g;
 
-/** Free text (messages, exception values): no email addresses, no URL queries or fragments. */
+/** Free text (messages, exception values): no email addresses, URL queries, fragments or secret paths. */
 export function redactText(text: string): string {
-  return text.replace(EMAIL, "[email]").replace(URL_QUERY, "$1");
+  return maskSecretPaths(text.replace(EMAIL, "[email]").replace(URL_QUERY, "$1"));
 }
 
 /** Breadcrumb data that may leave: the rest (query and fragment keys, bodies) is dropped. */

@@ -11,11 +11,12 @@ type Props = { t: TeachersText; locale: Locale; state: TeacherOnboardingState };
 
 /**
  * What a teacher sees before authoring (C1): the review status, the rejection reason, a suspension
- * notice, or the terms to accept. Null when the teacher can author.
+ * notice, or the terms to accept. Shown only while the teacher cannot author.
  */
 export function TeacherOnboarding({ t, locale, state }: Props) {
   if (state.status === "approved") {
-    if (!state.termsToAccept) return null;
+    // Approved but no terms are published: nothing to accept, nothing to author yet.
+    if (!state.termsToAccept) return <Alert tone="warning">{t.status.unavailable}</Alert>;
     return (
       <TermsCard
         t={t}

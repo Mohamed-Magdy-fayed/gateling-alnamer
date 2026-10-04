@@ -50,6 +50,7 @@ export default async function AdminTeachersPage({
                     name={application.name}
                     email={application.email}
                     note={application.note}
+                    emailVerified={application.emailVerified}
                     appliedOn={format(a.appliedOn, {
                       date: formatDate(locale, application.appliedAt),
                     })}
