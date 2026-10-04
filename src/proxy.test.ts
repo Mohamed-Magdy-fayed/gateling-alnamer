@@ -50,3 +50,29 @@ describe("proxy ?lang=", () => {
     expect(re.test("/robots.txt")).toBe(false);
   });
 });
+
+describe("proxy CSP (F5b)", () => {
+  const nonceOf = (csp: string | null) => csp?.match(/'nonce-([^']+)'/)?.[1];
+
+  it("sends a report-only CSP with a fresh nonce and hands the same nonce to the render", () => {
+    const first = call("/courses");
+    const csp = first.headers.get("content-security-policy-report-only");
+    const nonce = nonceOf(csp);
+    expect(nonce).toMatch(/^[A-Za-z0-9+/]{22}==$/);
+    expect(first.headers.get("x-middleware-request-x-nonce")).toBe(nonce);
+    expect(nonceOf(first.headers.get("x-middleware-request-content-security-policy"))).toBe(nonce);
+    // Not enforced yet: no enforcing header.
+    expect(first.headers.get("content-security-policy")).toBeNull();
+    const second = call("/courses").headers.get("content-security-policy-report-only");
+    expect(nonceOf(second)).not.toBe(nonce);
+  });
+
+  it("asks for upgrades only on https", () => {
+    const http = call("/").headers.get("content-security-policy-report-only");
+    expect(http).not.toContain("upgrade-insecure-requests");
+    const https = proxy(new NextRequest("https://alnamer.example/")).headers.get(
+      "content-security-policy-report-only",
+    );
+    expect(https).toContain("upgrade-insecure-requests");
+  });
+});

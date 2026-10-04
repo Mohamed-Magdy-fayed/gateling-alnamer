@@ -133,3 +133,5 @@ export const PASSKEY_OPTIONS_LIMIT: LimitRule = { max: 30, windowSec: 10 * 60 };
 
 /** A3: Google sign-in callbacks per client IP. */
 export const OAUTH_CALLBACK_LIMIT: LimitRule = { max: 20, windowSec: 15 * 60 };
+/** CSP violation reports (F5b): public by design, so capped per IP. */
+export const CSP_REPORT_LIMIT: LimitRule = { max: 60, windowSec: 15 * 60 };

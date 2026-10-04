@@ -2,6 +2,7 @@ import {
   AUTH_LIMITS,
   type AuthLimits,
   CHECKOUT_LIMIT,
+  CSP_REPORT_LIMIT,
   DRAFT_COURSE_LIMIT,
   type LimitRule,
   OAUTH_CALLBACK_LIMIT,
@@ -384,4 +385,12 @@ export async function guardOAuthCallback(
     `rl:oauth:ip:${hasherOf(deps).hash(input.ip)}`,
     OAUTH_CALLBACK_LIMIT,
   );
+}
+
+/** CSP reports (F5b): per IP, so the public endpoint cannot flood the logs. */
+export async function guardCspReport(
+  input: { ip: string },
+  deps: AbuseDeps = {},
+): Promise<GuardResult> {
+  return within(limiterOf(deps), `rl:csp:ip:${hasherOf(deps).hash(input.ip)}`, CSP_REPORT_LIMIT);
 }

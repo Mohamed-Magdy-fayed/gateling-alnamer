@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans_Arabic, Readex_Pro } from "next/font/google";
+import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { dirOf } from "@/i18n/config";
 import { getDictionary, getLocale } from "@/i18n/server";
@@ -34,7 +35,9 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const [locale, theme] = await Promise.all([getLocale(), getTheme()]);
+  const [locale, theme, requestHeaders] = await Promise.all([getLocale(), getTheme(), headers()]);
+  // The proxy's CSP nonce (F5b): the one inline script must carry it.
+  const nonce = requestHeaders.get("x-nonce") ?? undefined;
   return (
     <html
       lang={locale}
@@ -45,8 +48,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     >
       {theme === "system" && (
         <head>
-          {/* biome-ignore lint/security/noDangerouslySetInnerHtml: constant string, no user input; F5b adds the CSP nonce */}
-          <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
+          {/* biome-ignore lint/security/noDangerouslySetInnerHtml: constant string, no user input; carries the CSP nonce */}
+          <script nonce={nonce} dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
         </head>
       )}
       <body>
