@@ -75,6 +75,8 @@ const schema = z.object({
   FIREBASE_STORAGE_BUCKET: optionalText,
   /** The local storage driver's directory (default `.storage` in the project). */
   STORAGE_LOCAL_DIR: optionalText,
+  /** Server errors go to Sentry when set (F5b); the browser uses NEXT_PUBLIC_SENTRY_DSN. */
+  SENTRY_DSN: optionalText,
   SMTP_HOST: optionalText,
   SMTP_PORT: z.preprocess(blankAsUnset, z.coerce.number().int().positive().optional()),
   SMTP_USER: optionalText,
